@@ -1,4 +1,4 @@
-import std/[os, strutils, unicode]
+import std/[os, strutils, times, unicode]
 import windy, vmath
 import buffer, render, skk
 
@@ -300,7 +300,10 @@ proc dispatch(c: string) =
     beginMini("search", if isearch.state.direction > 0: "I-search: " else: "I-search backward: ")
   else: echo = full & " is undefined"
 
+var dirty = true  # set by every input callback; the loop only redraws when it is set
+
 window.onButtonPress = proc(key: Button) =
+  dirty = true
   if key in {KeyLeftControl, KeyRightControl, KeyLeftAlt, KeyRightAlt,
              KeyLeftShift, KeyRightShift, KeyLeftSuper, KeyRightSuper,
              KeyCapsLock, KeyNumLock, KeyScrollLock, KeyPause, KeyMenu, KeyPrintScreen,
@@ -332,6 +335,7 @@ window.onButtonPress = proc(key: Button) =
   except CatchableError as e: echo = e.msg
 
 window.onRune = proc(rune: Rune) =
+  dirty = true
   if ctrl() or alt() or int(rune) < 32 or int(rune) == 127: return
   if suppressRune:
     suppressRune = false
@@ -362,6 +366,7 @@ window.onRune = proc(rune: Rune) =
   except CatchableError as e: echo = e.msg
 
 window.onImeChange = proc() =
+  dirty = true
   if window.imeCompositionString.len > 0:
     prefix = ""
     suppressRune = false
@@ -384,8 +389,14 @@ proc redraw() =
     if skkShown: inputMethod.preedit() else: "", inputMethod.tag())
 
 window.onResize = redraw
+var lastDraw = 0.0
 while running and not window.closed:
   pollEvents()
-  redraw()
-  if window.minimized or window.size.x == 0 or window.size.y == 0: sleep(16)
+  # ponytail: redraw after input or every 250 ms; an unconditional per-frame redraw kept ~2 cores busy while idle
+  if dirty or epochTime() - lastDraw > 0.25:
+    redraw()
+    dirty = false
+    lastDraw = epochTime()
+  else:
+    sleep(8)
 window.close()
