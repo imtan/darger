@@ -1,8 +1,8 @@
 # darger
 
-A small GPU text editor for Nim 2.2.12 and Windows 11. Windy owns the window,
-OpenGL context, input and clipboard; Pixie rasterizes glyphs into Boxy's GPU atlas.
-macOS/Linux builds are intended but untested; `agent-command` can use
+A small GPU text editor for Windows 11 and Linux, built with Nim 2.2.10+. Windy owns
+the window, OpenGL context, input and clipboard; Pixie rasterizes glyphs into Boxy's
+GPU atlas. macOS compiles but is untested; `agent-command` can use
 `claude -p --output-format text` unchanged.
 
 ```powershell
@@ -11,21 +11,52 @@ nimble build -d:release
 nim r tests/tbuffer.nim
 ```
 
-Without a file, the editor opens `*scratch*`. UTF-8 files retain CRLF/LF on save;
-finding a nonexistent file creates an empty buffer bound to that path.
-A UTF-8 BOM is kept as a file prefix, not an editable character. Save writes a
-unique temporary file beside the target, checks and flushes it, then replaces
-the target; on any failure the temporary file is removed, the original stays
-intact and the buffer stays modified. Directory targets are rejected.
+```sh
+nimble build -d:release       # or: nimble install -d && nim c -d:release --outdir:. src/darger.nim
+./darger [file]
+nim r tests/tbuffer.nim
+nim r tests/tfileio.nim   # POSIX save behaviour
+```
 
-Set `$env:DARGER_FONT = 'C:\path\to\monospace.ttf'` to choose a font. Defaults:
-per-user HackGen Console NF, Cascadia Mono, Consolas, Courier New, then common
-DejaVu Sans Mono / Menlo paths. `DARGER_FALLBACK_FONTS` accepts semicolon-separated
-TTF/OTF/TTC paths; by default the editor tries BIZ UD Gothic, Yu Gothic, MS Gothic,
-Malgun Gothic, Segoe UI Emoji and Segoe UI Symbol. Unreadable fonts are skipped
-with a message on stderr. TTC files use their first face.
+Nimble older than 0.24 (e.g. the 0.22.x bundled with Nim 2.2.10) fails with
+`cannot open file: opengl`; use the `nim c` line instead.
+
+On Linux windy uses X11 + GLX only, so Wayland sessions need XWayland. libX11,
+libXext, libXcursor and libGL.so.1 are loaded with dlopen at startup (`ldd` does not
+list them): Arch `libx11 libxext libxcursor libglvnd mesa xorg-xwayland`, Debian
+`libx11-6 libxext6 libxcursor1 libgl1`. `config.nims` swaps in patched copies of
+windy 0.5.0's X11 backend from `patches/windy` via `patchFile` on Linux only (see
+`patches/windy/README.md`); windy stays pinned to 0.5.0.
+
+Without a file, the editor opens `*scratch*` with the built-in manual (Japanese)
+shown over it. F1 (or `M-x help`) toggles the manual outside prompts and review. In it,
+navigation keys and C-v / M-v / PageDown / PageUp / C-l scroll; q, Enter, Escape,
+C-g or F1 close it and C-x C-c quits. The edited buffer is never touched.
+
+UTF-8 files retain CRLF/LF on save; finding a nonexistent file creates an empty
+buffer bound to that path. A UTF-8 BOM is kept as a file prefix, not an editable
+character. Save writes a unique temporary file beside the target, checks and
+flushes it, then replaces the target; on any failure the temporary file is removed,
+the original stays intact and the buffer stays modified. Directory targets are
+rejected. On Linux/macOS read-only files are refused, a symlink is written through
+to its target, the file mode (and owner, when permitted) is kept, and `~` expands
+in the find/write prompts.
+
+Set `$env:DARGER_FONT = 'C:\path\to\monospace.ttf'` (POSIX:
+`DARGER_FONT=/path/mono.ttf DARGER_FALLBACK_FONTS=/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc ./darger`)
+to choose fonts. Default primary: per-user HackGen Console NF, Cascadia Mono,
+Consolas, Courier New (Windows), then DejaVu Sans Mono, Liberation Mono, Noto Sans
+Mono, Adwaita Mono (Linux) and Menlo paths; on Linux `fc-match monospace` is the last
+resort. `DARGER_FALLBACK_FONTS` accepts TTF/OTF/TTC paths separated by `;` on every
+OS; by default the editor tries BIZ UD Gothic, Yu Gothic, MS Gothic, Malgun Gothic,
+Segoe UI Emoji and Segoe UI Symbol on Windows, and Noto Sans CJK, Noto Sans Symbols 2
+and Hiragino elsewhere, plus `fc-match` picks for Japanese and Korean on Linux.
+Colour emoji fonts (CBDT, sbix) are unsupported. Unreadable fonts are skipped with a
+message on stderr. TTC files use their first face.
 
 Text is 16 pixels times the window DPI scale, with aligned fallback baselines.
+`DARGER_SCALE` (e.g. `2`) overrides the scale; on Linux, when windy reports 1.0
+(X11 without `Xft.dpi`, XWayland), `GDK_SCALE` is used if set.
 CJK and the supported emoji ranges occupy two cells; combining marks, variation
 selectors, joiners and skin-tone modifiers occupy zero cells. U+2600..27BF stays
 one cell like Emacs. Emoji use monochrome outlines without shaping: ZWJ sequences,
@@ -34,6 +65,8 @@ File tabs display at eight-cell stops; Tab inserts spaces to the next four-cell
 stop. Long lines scroll horizontally, keeping the entire cursor block visible.
 IME composition appears inline with a highlighted background and moves the
 displayed suffix right, without changing the buffer until text is committed.
+Native IME works on Windows/macOS only: windy's X11 backend has no XIM, so
+fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK (C-x C-j).
 
 `C-` means Ctrl, `M-` means Alt; either left or right modifier works.
 
@@ -57,6 +90,7 @@ displayed suffix right, without changing the buffer until text is committed.
 | Incremental search forward / backward | C-s / C-r; repeat for next / previous |
 | Cancel | C-g |
 | SKK Japanese input on / off | C-x C-j |
+| Manual (help) on / off | F1 |
 
 Search ignores case for all-lowercase queries. Typing extends the current match;
 a search that hits the buffer edge shows `Failing I-search`, and repeating C-s/C-r
