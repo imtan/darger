@@ -1,5 +1,5 @@
 # Drives darger.exe with PostMessage key events (no focus needed) and screenshots each step.
-# Usage: powershell -File testsdrive.ps1 <workdir> <file>   (ASCII only: PS 5.1 reads BOM-less files as ANSI)
+# Usage: powershell -File tests\drive.ps1 <workdir> <file>   (ASCII only: PS 5.1 reads BOM-less files as ANSI)
 Add-Type -AssemblyName System.Drawing
 Add-Type @"
 using System; using System.Runtime.InteropServices;
