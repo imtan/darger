@@ -68,6 +68,22 @@ when defined(windows):
   proc terminateJobObject(job: Handle, code: uint32): WINBOOL {.stdcall, importc: "TerminateJobObject", dynlib: "kernel32".}
 else:
   import std/posix
+  when defined(linux):
+    # windy's buttonToggle never reads the X lock state, so query it on a private connection.
+    proc XOpenDisplay(name: cstring): pointer {.cdecl, importc, dynlib: "libX11.so(|.6)".}
+    # XWayland can leave the Num Lock LED out of sync with the locked modifier that
+    # X uses for keysym translation, so read the effective locked mods, not the LED.
+    type XkbStateRec {.bycopy.} = object
+      group, locked_group: uint8
+      base_group, latched_group: uint16
+      mods, base_mods, latched_mods, locked_mods: uint8
+      compat_state: uint8
+      grab_mods, compat_grab_mods, lookup_mods, compat_lookup_mods: uint8
+      ptr_buttons: uint16
+    proc XkbGetState(d: pointer, spec: cuint, state: ptr XkbStateRec): cint {.cdecl, importc, dynlib: "libX11.so(|.6)".}
+    proc XkbKeysymToModifiers(d: pointer, ks: culong): cuint {.cdecl, importc, dynlib: "libX11.so(|.6)".}
+    let lockDisplay = XOpenDisplay(nil)
+    let numLockMask = if lockDisplay != nil: XkbKeysymToModifiers(lockDisplay, 0xff7f) else: 0  # XK_Num_Lock
 
 var b = newBuffer()
 var startupMessage: string
@@ -119,6 +135,11 @@ proc shift(): bool = window.buttonDown[KeyLeftShift] or window.buttonDown[KeyRig
 
 proc keypadNavigation(): bool =
   when defined(windows): (getKeyState(0x90) and 1) == 0
+  elif defined(linux):
+    var state: XkbStateRec  # 0x100 = XkbUseCoreKbd
+    if lockDisplay != nil and numLockMask != 0 and XkbGetState(lockDisplay, 0x100, state.addr) == 0:
+      (state.locked_mods.cuint and numLockMask) == 0
+    else: not window.buttonToggle[KeyNumLock]
   else: not window.buttonToggle[KeyNumLock]
 
 proc chord(key: Button): string =
@@ -374,14 +395,17 @@ if fileExists(initPath):
   except CatchableError as e: echo = e.msg
 
 proc confirmMini() =
-  let value = mini.text
   let kind = mode
+  let value = when defined(windows): mini.text
+              else: (if kind in ["find", "write"]: expandTilde(mini.text) else: mini.text)
   if kind == "search" and value.len > 0: lastSearch = value
   case kind
   of "agent": startAgent(value)
   of "eval", "execute":
     try:
-      if kind == "eval": echo = $interp.evalString(value, "<minibuffer>")
+      if kind == "eval":
+        let r = $interp.evalString(value, "<minibuffer>")
+        if mode == kind: echo = r  # (help) / (agent-prompt) switched mode; keep their message
       else: discard interp.call(symbol(value), @[])
     except LispError as e:
       echo = if e.line == 0: "<minibuffer>:1: " & e.msg else: e.msg
@@ -706,10 +730,17 @@ while running and not window.closed:
     lastDraw = epochTime()
   else:
     sleep(8)
+window.close()
 if agentProcess != nil:
   cancelAgent()
+  when not defined(windows):
+    # A CLI that ignores TERM would block waitForExit forever; hard-kill like TerminateJobObject.
+    let deadline = epochTime() + 1.5  # total exit (grace + SIGKILL + reap) stays under 2 s
+    while agentProcess.peekExitCode() == -1 and epochTime() < deadline: sleep(20)
+    let pid = Pid(agentProcess.processID)
+    if agentGroup: discard posix.kill(-pid, SIGKILL)  # the sh leader may be gone while the CLI ignored TERM; ESRCH is fine
+    elif agentProcess.peekExitCode() == -1: discard posix.kill(pid, SIGKILL)
   discard agentProcess.waitForExit()
   agentProcess.close()
   when defined(windows): discard closeHandle(agentJob)
   cleanAgentFiles()
-window.close()
