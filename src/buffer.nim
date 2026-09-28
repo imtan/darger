@@ -273,6 +273,12 @@ proc command*(b: Buffer, cmd: string, clipboard = ""): string =
     b.insert("\n")
     b.cursor = b.point(n)
   of "delete", "backspace":
+    if b.regionActive and b.region.a != b.region.z:
+      # An active region is deleted as a whole, without touching the kill ring.
+      let (a, z) = b.region
+      b.snapshot()
+      b.splice(a, z, "")
+      return
     let a = if cmd == "backspace": n - 1 else: n
     if a < 0: return "Beginning of buffer"
     if a >= total: return "End of buffer"

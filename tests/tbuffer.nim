@@ -36,6 +36,16 @@ block:
   doAssert b.kills == @["two", "FOUR"]
   b.run("backward")
   doAssert b.command("yank-pop") == "Previous command was not a yank"
+block: # Backspace/Delete remove an active region without killing it.
+  let b = newBuffer("one two three")
+  b.run("forward-word", "forward", "mark", "forward-word", "backspace")
+  doAssert b.text == "one  three" and b.cursor == (0, 4) and not b.regionActive and b.kills.len == 0
+  b.run("mark", "backward-word", "delete")
+  doAssert b.text == " three" and b.cursor == (0, 0)
+  b.run("undo")
+  doAssert b.text == "one  three"
+  b.run("mark", "mark", "eol", "backspace")  # deactivated mark: plain one-character backspace
+  doAssert b.text == "one  thre"
 block:
   let b = newBuffer()
   for c in "abc": b.insert($c, true)

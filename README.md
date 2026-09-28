@@ -100,7 +100,8 @@ Enter accepts the match, any other command ends the search at the match and runs
 and C-g restores the original point. Minibuffers support insertion, Backspace,
 C-a/C-e/C-f/C-b, C-k, C-y, Enter and C-g; the Find/Write/Agent prompts and
 incremental search also take C-x C-j to toggle SKK. Answer confirmation prompts with `y`
-or `n`, then Enter. Killing/copying updates the clipboard; C-y uses the clipboard
+or `n`, then Enter. Backspace and Delete remove an active region without killing it.
+Killing/copying updates the clipboard; C-y uses the clipboard
 when the 60-entry kill ring is empty. Undo keeps 200 snapshots and groups runs of
 non-whitespace self-inserts. Snapshot undo and flattened edits favor small files.
 
