@@ -2,6 +2,8 @@
 
 A small GPU text editor for Nim 2.2.12 and Windows 11. Windy owns the window,
 OpenGL context, input and clipboard; Pixie rasterizes glyphs into Boxy's GPU atlas.
+macOS/Linux builds are intended but untested; `agent-command` can use
+`claude -p --output-format text` unchanged.
 
 ```powershell
 nimble build -d:release

@@ -1,4 +1,4 @@
-import std/[os, osproc, streams, tempfiles, strutils, times, unicode, tables, sets]
+import std/[os, osproc, tempfiles, strutils, times, unicode, tables, sets]
 import windy, vmath
 import buffer, render, skk, lisp, review
 
@@ -61,11 +61,13 @@ const
 """
 
 when defined(windows):
-  import std/winlean
+  import std/[winlean, streams]
   proc getKeyState(key: int32): int16 {.stdcall, importc: "GetKeyState", dynlib: "user32".}
   proc createJobObject(attributes: pointer, name: WideCString): Handle {.stdcall, importc: "CreateJobObjectW", dynlib: "kernel32".}
   proc assignProcessToJobObject(job, process: Handle): WINBOOL {.stdcall, importc: "AssignProcessToJobObject", dynlib: "kernel32".}
   proc terminateJobObject(job: Handle, code: uint32): WINBOOL {.stdcall, importc: "TerminateJobObject", dynlib: "kernel32".}
+else:
+  import std/posix
 
 var b = newBuffer()
 var startupMessage: string
@@ -99,13 +101,16 @@ var
   keymap: Table[string, Value]
   prefixKeys = toHashSet(["C-x", "M-g"])
   agentProcess: Process
-  agentJob: Handle
   agentDir: string
   agentCancelled = false
   reviewState: Review
   reviewBuf: Buffer
   reviewColors: seq[int8]
   currentHunk, savedTop, savedLeft: int
+when defined(windows):
+  var agentJob: Handle
+else:
+  var agentGroup: bool
 echo = startupMessage
 
 proc ctrl(): bool = window.buttonDown[KeyLeftControl] or window.buttonDown[KeyRightControl]
@@ -210,26 +215,37 @@ proc startAgent(instruction: string) =
   if strutils.strip(command).len == 0: raise newException(ValueError, "agent-command is empty")
   agentDir = createTempDir("darger-agent-", "")
   try:
-    agentJob = createJobObject(nil, nil)
-    if agentJob == 0: raiseOSError(osLastError())
+    when defined(windows):
+      agentJob = createJobObject(nil, nil)
+      if agentJob == 0: raiseOSError(osLastError())
     # ponytail: full-file round trips are unsuitable for huge files; add region-only input if needed.
     writeFile(agentDir / "prompt.txt",
       "You are editing a text file. Apply the instruction to the file and output ONLY the complete new file content. No explanations, no code fences.\n" &
       "File path: " & (if b.path.len > 0: b.path else: "(unnamed)") & "\n" &
       "Instruction: " & instruction & "\n--- FILE START ---\n" & b.text & "\n--- FILE END ---\n")
-    let redirected = command & " < \"" & agentDir / "prompt.txt" & "\" > \"" &
-      agentDir / "out.txt" & "\" 2> \"" & agentDir / "err.txt" & "\""
-    # Gate the CLI until cmd.exe belongs to the job, so no child escapes cancellation.
-    agentProcess = startProcess("cmd /d /s /c \"set /p dargerAgentReady= >nul & " & redirected & "\"",
-      options = {poEvalCommand, poUsePath, poDaemon})
-    let handle = openProcess(PROCESS_SET_QUOTA or PROCESS_TERMINATE, 0, DWORD(agentProcess.processID))
-    if handle == 0: raiseOSError(osLastError())
-    let assigned = assignProcessToJobObject(agentJob, handle)
-    let error = osLastError()
-    discard closeHandle(handle)
-    if assigned == 0: raiseOSError(error)
-    agentProcess.inputStream.writeLine("ready")
-    agentProcess.inputStream.flush()
+    when defined(windows):
+      let redirected = command & " < \"" & agentDir / "prompt.txt" & "\" > \"" &
+        agentDir / "out.txt" & "\" 2> \"" & agentDir / "err.txt" & "\""
+      # Gate the CLI until cmd.exe belongs to the job, so no child escapes cancellation.
+      agentProcess = startProcess("cmd /d /s /c \"set /p dargerAgentReady= >nul & " & redirected & "\"",
+        options = {poEvalCommand, poUsePath, poDaemon})
+      let handle = openProcess(PROCESS_SET_QUOTA or PROCESS_TERMINATE, 0, DWORD(agentProcess.processID))
+      if handle == 0: raiseOSError(osLastError())
+      let assigned = assignProcessToJobObject(agentJob, handle)
+      let error = osLastError()
+      discard closeHandle(handle)
+      if assigned == 0: raiseOSError(error)
+      agentProcess.inputStream.writeLine("ready")
+      agentProcess.inputStream.flush()
+    else:
+      let redirected = command & " < " & quoteShell(agentDir / "prompt.txt") &
+        " > " & quoteShell(agentDir / "out.txt") & " 2> " & quoteShell(agentDir / "err.txt")
+      let setsid = findExe("setsid")
+      agentGroup = setsid.len > 0
+      let shell = if agentGroup: "exec " & quoteShell(setsid) & " /bin/sh -c " & quoteShell(redirected)
+                  else: redirected
+      # ponytail: without setsid (e.g. macOS), cancellation only stops the shell; install setsid for group cleanup.
+      agentProcess = startProcess("/bin/sh", args = ["-c", shell], options = {poUsePath})
     agentCancelled = false
     echo = "Agent running..."
   except CatchableError:
@@ -237,17 +253,28 @@ proc startAgent(instruction: string) =
       agentProcess.kill()
       agentProcess.close()
       agentProcess = nil
-    if agentJob != 0:
-      discard terminateJobObject(agentJob, 1)
-      discard closeHandle(agentJob)
-      agentJob = 0
+    when defined(windows):
+      if agentJob != 0:
+        discard terminateJobObject(agentJob, 1)
+        discard closeHandle(agentJob)
+        agentJob = 0
     cleanAgentFiles()
     raise
 
 proc cancelAgent() =
   if agentProcess == nil or agentCancelled: return
-  # Killing only cmd.exe leaves the CLI running; stop its job's descendants too.
-  if terminateJobObject(agentJob, 1) == 0: raiseOSError(osLastError())
+  when defined(windows):
+    # Killing only cmd.exe leaves the CLI running; stop its job's descendants too.
+    if terminateJobObject(agentJob, 1) == 0: raiseOSError(osLastError())
+  else:
+    if agentProcess.peekExitCode() == -1:
+      let pid = Pid(agentProcess.processID)
+      if posix.kill(if agentGroup: -pid else: pid, SIGTERM) != 0:
+        let error = osLastError()
+        if error != OSErrorCode(ESRCH): raiseOSError(error)
+        # Cancellation may arrive before setsid has established the group.
+        if agentGroup and posix.kill(pid, SIGTERM) != 0 and osLastError() != OSErrorCode(ESRCH):
+          raiseOSError(osLastError())
   agentCancelled = true
   echo = "Agent cancelling..."
 
@@ -267,8 +294,9 @@ proc pollAgent(): bool =
   result = true
   agentProcess.close()
   agentProcess = nil
-  discard closeHandle(agentJob)
-  agentJob = 0
+  when defined(windows):
+    discard closeHandle(agentJob)
+    agentJob = 0
   try:
     if agentCancelled: echo = "Agent cancelled"
     elif code != 0:
@@ -682,6 +710,6 @@ if agentProcess != nil:
   cancelAgent()
   discard agentProcess.waitForExit()
   agentProcess.close()
-  discard closeHandle(agentJob)
+  when defined(windows): discard closeHandle(agentJob)
   cleanAgentFiles()
 window.close()
