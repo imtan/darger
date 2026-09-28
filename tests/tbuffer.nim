@@ -198,7 +198,7 @@ block: # #24: failed replacement cleans its unique temp and permits retry.
   try:
     setFilePermissions(path, {fpUserRead})
     try: atomicWrite(path, "replacement")
-    except OSError: failed = true
+    except IOError, OSError: failed = true
   finally: setFilePermissions(path, permissions)
   when defined(windows): doAssert failed and readFile(path) == "original"
   atomicWrite(path, "retry")
