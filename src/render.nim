@@ -1,6 +1,7 @@
 import std/[os, unicode, sets, tables, math, strutils]
 import windy, boxy, pixie, opengl
 import buffer
+when not defined(windows) and not defined(macosx): import std/osproc
 
 type Renderer* = ref object
   gpu: Boxy
@@ -8,6 +9,7 @@ type Renderer* = ref object
   chosen: Table[int, int]
   glyphs: HashSet[string]
   scale: float32
+  lastTitle: string
   cellW*, cellH*, rows*, cols*, top*, left*: int
 
 let
@@ -20,16 +22,35 @@ let
   reviewColors = [bg, parseHtmlColor("#512e3a").color, parseHtmlColor("#294638").color,
     parseHtmlColor("#784452").color, parseHtmlColor("#3e6950").color]
 
+when not defined(windows) and not defined(macosx):
+  proc fcMatch(pattern: string): string =
+    try:
+      # Keep stderr out: fontconfig warnings would corrupt the path.
+      let (o, c) = execCmdEx("fc-match -f '%{file}' " & quoteShell(pattern), {poUsePath})
+      if c == 0 and fileExists(o.strip): result = o.strip
+    except CatchableError: discard
+
 proc newRenderer*(): Renderer =
   result = Renderer()
   var paths: seq[string]
   let primary = getEnv("DARGER_FONT")
   if primary.len > 0: paths.add primary
-  paths.add @[getEnv("LOCALAPPDATA") / "Microsoft/Windows/Fonts/HackGenConsoleNF-Regular.ttf",
-    "C:/Windows/Fonts/CascadiaMono.ttf", "C:/Windows/Fonts/consola.ttf",
-    "C:/Windows/Fonts/cour.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
-    "/usr/share/fonts/dejavu/DejaVuSansMono.ttf", "/System/Library/Fonts/Menlo.ttc",
-    "/Library/Fonts/Menlo.ttf"]
+  when defined(windows):
+    paths.add @[getEnv("LOCALAPPDATA") / "Microsoft/Windows/Fonts/HackGenConsoleNF-Regular.ttf",
+      "C:/Windows/Fonts/CascadiaMono.ttf", "C:/Windows/Fonts/consola.ttf",
+      "C:/Windows/Fonts/cour.ttf"]
+  else:
+    paths.add @["/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+      "/usr/share/fonts/dejavu/DejaVuSansMono.ttf",
+      "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
+      "/usr/share/fonts/dejavu-sans-mono-fonts/DejaVuSansMono.ttf",
+      "/usr/share/fonts/liberation/LiberationMono-Regular.ttf",
+      "/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
+      "/usr/share/fonts/liberation-mono-fonts/LiberationMono-Regular.ttf",
+      "/usr/share/fonts/noto/NotoSansMono-Regular.ttf",
+      "/usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf",
+      "/usr/share/fonts/Adwaita/AdwaitaMono-Regular.ttf",
+      "/System/Library/Fonts/Menlo.ttc", "/Library/Fonts/Menlo.ttf"]
   proc load(path: string): Font =
     try:
       # readTypeface rejects .ttc; readTypefaces parses ttcf directory offsets.
@@ -41,32 +62,77 @@ proc newRenderer*(): Renderer =
       result.paint = color(1, 1, 1, 1)
     except CatchableError as e:
       stderr.writeLine("Skipping font " & path & ": " & e.msg)
+  # File names of loaded default fonts, so distro and fc-match duplicates load once.
+  var loaded: HashSet[string]
   for path in paths:
     if not fileExists(path) and path != primary: continue
     let font = load(path)
     if font != nil:
       result.fonts.add font
+      loaded.incl extractFilename(path)
       break
+  when not defined(windows) and not defined(macosx):
+    if result.fonts.len == 0:
+      let path = fcMatch("monospace:spacing=mono")
+      let font = if path.len > 0: load(path) else: nil
+      if font != nil:
+        result.fonts.add font
+        loaded.incl extractFilename(path)
   if result.fonts.len == 0:
     raise newException(IOError, "Set DARGER_FONT to a readable monospace font")
   let fallbacks = getEnv("DARGER_FALLBACK_FONTS")
-  paths = if fallbacks.len > 0: fallbacks.split(';') else:
-    @["C:/Windows/Fonts/BIZ-UDGothicR.ttc", "C:/Windows/Fonts/YuGothM.ttc",
-      "C:/Windows/Fonts/msgothic.ttc", "C:/Windows/Fonts/malgun.ttf",
-      "C:/Windows/Fonts/seguiemj.ttf", "C:/Windows/Fonts/seguisym.ttf"]
+  if fallbacks.len > 0: paths = fallbacks.split(';')
+  else:
+    when defined(windows):
+      paths = @["C:/Windows/Fonts/BIZ-UDGothicR.ttc", "C:/Windows/Fonts/YuGothM.ttc",
+        "C:/Windows/Fonts/msgothic.ttc", "C:/Windows/Fonts/malgun.ttf",
+        "C:/Windows/Fonts/seguiemj.ttf", "C:/Windows/Fonts/seguisym.ttf"]
+    else:
+      # No colour emoji: pixie rejects CBDT and sbix.
+      paths = @["/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/google-noto-sans-cjk-fonts/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/noto/NotoSansSymbols2-Regular.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf",
+        "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc"]
+      when not defined(macosx):
+        # %{file} only: the TTC face index would pick a Korean face; lang=ja matches non-CJK fonts.
+        paths.add fcMatch("monospace:charset=3042 6f22")
+        paths.add fcMatch("monospace:charset=d55c")
   for entry in paths:
     let path = entry.strip
     if path.len == 0 or (fallbacks.len == 0 and not fileExists(path)): continue
+    if fallbacks.len == 0 and extractFilename(path) in loaded: continue
     let font = load(path)
-    if font != nil: result.fonts.add font
+    if font != nil:
+      result.fonts.add font
+      loaded.incl extractFilename(path)
   loadExtensions()
   result.gpu = newBoxy()
 
+proc envScale(name: string): float32 =
+  try:
+    let v = parseFloat(getEnv(name))
+    if v.classify == fcNormal and v > 0 and v < 16: return v.float32
+  except ValueError: discard
+
+proc uiScale(window: Window): float32 =
+  let forced = envScale("DARGER_SCALE")
+  if forced > 0: return forced
+  result = window.contentScale
+  when defined(linux):
+    # XWayland with zero scaling reports 1.0 on HiDPI; GDK_SCALE carries the real factor.
+    if result == 1:
+      let g = envScale("GDK_SCALE")
+      if g > 0: result = g
+
 proc resize*(r: Renderer, window: Window, b: Buffer) =
-  if r.scale != window.contentScale:
+  let scale = window.uiScale
+  if r.scale != scale:
     for key in r.glyphs: r.gpu.removeImage(key)
     r.glyphs.clear()
-    r.scale = window.contentScale
+    r.scale = scale
     for font in r.fonts: font.size = 16 * r.scale
     let primary = r.fonts[0]
     r.cellW = max(1, int(ceil(primary.typeface.getAdvance(Rune(77)) * primary.scale)))
@@ -170,7 +236,8 @@ proc status(r: Renderer, window: Window, text: string, row: int, cursor = -1,
   if cursor >= 0:
     let span = cursorSpan(displayLine(text.toRunes, composition, cursor), cursor + imeCursor)
     scroll = max(0, span.cell + span.width - r.cols)
-    window.imePos = ivec2(((span.cell-scroll)*r.cellW).int32, ((row+1)*r.cellH).int32)
+    when defined(windows) or defined(macosx):
+      window.imePos = ivec2(((span.cell-scroll)*r.cellW).int32, ((row+1)*r.cellH).int32)
   r.drawLine(text.toRunes, row, scroll, cursor, composition = composition, imeCursor = imeCursor)
 
 proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
@@ -187,9 +254,10 @@ proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
     r.top = max(0, b.cursor.line - r.rows div 2)
   if span.cell < r.left: r.left = span.cell
   if span.cell + span.width > r.left + r.cols: r.left = max(0, span.cell + span.width - r.cols)
-  if miniCursor < 0:
-    window.imePos = ivec2(((span.cell-r.left)*r.cellW).int32,
-      ((b.cursor.line-r.top+1)*r.cellH).int32)
+  when defined(windows) or defined(macosx):
+    if miniCursor < 0:
+      window.imePos = ivec2(((span.cell-r.left)*r.cellW).int32,
+        ((b.cursor.line-r.top+1)*r.cellH).int32)
   r.gpu.beginFrame(window.size)
   r.gpu.drawRect(rect(0, 0, window.size.x.float32, window.size.y.float32), bg)
   let selection = b.region
@@ -215,4 +283,4 @@ proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
   r.gpu.endFrame()
   window.swapBuffers()
   let title = "darger — " & name
-  if window.title != title: window.title = title
+  if r.lastTitle != title: (window.title = title; r.lastTitle = title)
