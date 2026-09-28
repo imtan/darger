@@ -1,6 +1,62 @@
-import std/[os, strutils, times, unicode]
+import std/[os, strutils, times, unicode, tables, sets]
 import windy, vmath
-import buffer, render, skk
+import buffer, render, skk, lisp
+
+const
+  bufferCommands = ["forward", "backward", "next-line", "previous-line", "bol", "eol",
+    "bob", "eob", "indent", "forward-word", "backward-word", "newline", "tab", "open-line",
+    "delete", "backspace", "kill-line", "kill-word", "backward-kill-word", "mark", "exchange",
+    "whole", "kill-region", "copy-region", "yank", "yank-pop", "undo", "transpose",
+    "upcase", "downcase", "capitalize", "quit"]
+  defaultBindings = """
+(global-set-key "C-f" 'forward)
+(global-set-key "right" 'forward)
+(global-set-key "C-b" 'backward)
+(global-set-key "left" 'backward)
+(global-set-key "C-n" 'next-line)
+(global-set-key "down" 'next-line)
+(global-set-key "C-p" 'previous-line)
+(global-set-key "up" 'previous-line)
+(global-set-key "C-a" 'bol)
+(global-set-key "home" 'bol)
+(global-set-key "C-e" 'eol)
+(global-set-key "end" 'eol)
+(global-set-key "M-f" 'forward-word)
+(global-set-key "M-b" 'backward-word)
+(global-set-key "M-<" 'bob)
+(global-set-key "C-home" 'bob)
+(global-set-key "M->" 'eob)
+(global-set-key "C-end" 'eob)
+(global-set-key "M-m" 'indent)
+(global-set-key "enter" 'newline)
+(global-set-key "C-m" 'newline)
+(global-set-key "C-j" 'newline)
+(global-set-key "tab" 'tab)
+(global-set-key "C-i" 'tab)
+(global-set-key "backspace" 'backspace)
+(global-set-key "C-h" 'backspace)
+(global-set-key "C-d" 'delete)
+(global-set-key "delete" 'delete)
+(global-set-key "C-k" 'kill-line)
+(global-set-key "C-o" 'open-line)
+(global-set-key "C-t" 'transpose)
+(global-set-key "M-d" 'kill-word)
+(global-set-key "M-backspace" 'backward-kill-word)
+(global-set-key "M-u" 'upcase)
+(global-set-key "M-l" 'downcase)
+(global-set-key "M-c" 'capitalize)
+(global-set-key "C-SPC" 'mark)
+(global-set-key "C-@" 'mark)
+(global-set-key "C-x C-x" 'exchange)
+(global-set-key "C-w" 'kill-region)
+(global-set-key "M-w" 'copy-region)
+(global-set-key "C-y" 'yank)
+(global-set-key "M-y" 'yank-pop)
+(global-set-key "C-x h" 'whole)
+(global-set-key "C-/" 'undo)
+(global-set-key "C-_" 'undo)
+(global-set-key "C-x u" 'undo)
+"""
 
 when defined(windows):
   proc getKeyState(key: int32): int16 {.stdcall, importc: "GetKeyState", dynlib: "user32".}
@@ -33,6 +89,9 @@ var
   matchStart = -1
   pendingPath: string
   highSurrogate = 0
+  interp = newInterp()
+  keymap: Table[string, Value]
+  prefixKeys = toHashSet(["C-x", "M-g"])
 echo = startupMessage
 
 proc ctrl(): bool = window.buttonDown[KeyLeftControl] or window.buttonDown[KeyRightControl]
@@ -51,6 +110,7 @@ proc chord(key: Button): string =
       if keypadNavigation(): ["insert", "end", "down", "pagedown", "left", "", "right", "home", "up", "pageup"][ord(key)-ord(Numpad0)]
       else: $char(ord('0')+ord(key)-ord(Numpad0))
     of NumpadDecimal: (if keypadNavigation(): "delete" else: ".")
+    of KeySemicolon: (if shift(): ":" else: ";")
     of KeySlash: "/"
     of KeyMinus: (if shift(): "_" else: "-")
     of KeyComma: (if shift(): "<" else: ",")
@@ -87,11 +147,55 @@ proc search(next = false, direction = 0) =
   b.searchStep(isearch, query, next, direction)
   syncSearch()
 
+proc runCommand(name: string): Value =
+  if name notin bufferCommands: raise newException(LispError, "Unknown buffer command: " & name)
+  echo = b.command(name, if name == "yank" and b.kills.len == 0: getClipboardString() else: "")
+  if b.last in ["kill", "copy"] and b.kills.len > 0: setClipboardString(b.kills[0])
+  nilValue()
+
+proc registerCommand(name: string) =
+  interp.defPrimitive(name, proc(args: seq[Value]): Value =
+    args.arity(0, 0)
+    runCommand(name))
+
+for name in bufferCommands: registerCommand(name)
+interp.defPrimitive("global-set-key", proc(args: seq[Value]): Value =
+  args.arity(2, 2)
+  let key = args[0].asString
+  if key.len == 0 or args[1].kind notin {vSymbol, vLambda, vPrimitive}:
+    raise newException(LispError, "Expected key and symbol or function")
+  keymap[key] = args[1]
+  let tokens = strutils.splitWhitespace(key)
+  if tokens.len > 1: prefixKeys.incl tokens[0]
+  args[1])
+interp.defPrimitive("insert", proc(args: seq[Value]): Value =
+  args.arity(1, 1)
+  b.insert(args[0].asString)
+  nilValue())
+interp.defPrimitive("message", proc(args: seq[Value]): Value =
+  args.arity(1, 1)
+  echo = args[0].asString
+  args[0])
+interp.defPrimitive("command", proc(args: seq[Value]): Value =
+  args.arity(1, 1)
+  runCommand(args[0].asString))
+discard interp.evalString(defaultBindings, "<default-bindings>")
+let initPath = getHomeDir() / ".darger.el"
+if fileExists(initPath):
+  try: discard interp.evalFile(initPath)
+  except CatchableError as e: echo = e.msg
+
 proc confirmMini() =
   let value = mini.text
   let kind = mode
   if kind == "search" and value.len > 0: lastSearch = value
   case kind
+  of "eval", "execute":
+    try:
+      if kind == "eval": echo = $interp.evalString(value, "<minibuffer>")
+      else: discard interp.call(symbol(value), @[])
+    except LispError as e:
+      echo = if e.line == 0: "<minibuffer>:1: " & e.msg else: e.msg
   of "find":
     if value.len == 0: return
     if b.modified:
@@ -217,51 +321,23 @@ proc dispatch(c: string) =
     return
   let full = if prefix.len > 0: prefix & " " & c else: c
   prefix = ""
-  if full in ["C-x", "M-g"]:
+  if full in prefixKeys:
     prefix = full
     echo = full & "-"
     b.finish()
     return
   if full != "C-l": recenterCycle = 0
-  let cmd = case full
-    of "C-f", "right": "forward"
-    of "C-b", "left": "backward"
-    of "C-n", "down": "next-line"
-    of "C-p", "up": "previous-line"
-    of "C-a", "home": "bol"
-    of "C-e", "end": "eol"
-    of "M-f": "forward-word"
-    of "M-b": "backward-word"
-    of "M-<", "C-home": "bob"
-    of "M->", "C-end": "eob"
-    of "M-m": "indent"
-    of "enter", "C-m", "C-j": "newline"
-    of "tab", "C-i": "tab"
-    of "backspace", "C-h": "backspace"
-    of "C-d", "delete": "delete"
-    of "C-k": "kill-line"
-    of "C-o": "open-line"
-    of "C-t": "transpose"
-    of "M-d": "kill-word"
-    of "M-backspace": "backward-kill-word"
-    of "M-u": "upcase"
-    of "M-l": "downcase"
-    of "M-c": "capitalize"
-    of "C-SPC", "C-@": "mark"
-    of "C-x C-x": "exchange"
-    of "C-w": "kill-region"
-    of "M-w": "copy-region"
-    of "C-y": "yank"
-    of "M-y": "yank-pop"
-    of "C-x h": "whole"
-    of "C-/", "C-_", "C-x u": "undo"
-    else: ""
-  if cmd.len > 0:
-    echo = b.command(cmd, if cmd == "yank" and b.kills.len == 0: getClipboardString() else: "")
-    if b.last in ["kill", "copy"] and b.kills.len > 0: setClipboardString(b.kills[0])
+  if full in keymap:
+    let fn = keymap[full]
+    if fn.kind == vSymbol and fn.str in bufferCommands:
+      discard runCommand(fn.str)
+    else:
+      discard interp.call(fn, @[])
     return
   b.finish()
   case full
+  of "M-:": beginMini("eval", "Eval: ")
+  of "M-x": beginMini("execute", "M-x ")
   of "C-x C-j":
     let message = if inputMethod.loaded: "" else: inputMethod.loadDefaults()
     discard applySkk(inputMethod.toggle())
