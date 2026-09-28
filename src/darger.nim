@@ -526,7 +526,7 @@ proc target(): Buffer = (if inMini(): mini else: b)
 
 proc skkOn(): bool =
   # ponytail: one SKK state serves the buffer and the text minibuffers; y/n and goto prompts bypass it.
-  inputMethod.enabled and mode in ["", "find", "write", "search"] and
+  inputMethod.enabled and mode in ["", "find", "write", "search", "agent"] and
     window.imeCompositionString.len == 0
 
 proc following(): Rune =
@@ -543,6 +543,11 @@ proc applySkk(res: SkkResult): bool =
   if res.consumed: echo = res.echo
   recenterCycle = 0
   res.consumed
+
+proc toggleSkk() =
+  let message = if inputMethod.loaded: "" else: inputMethod.loadDefaults()
+  discard applySkk(inputMethod.toggle())
+  if message.len > 0: echo = message
 
 proc page(buf: Buffer, full: string) =
   let direction = if full in ["C-v", "pagedown"]: 1 else: -1
@@ -625,6 +630,22 @@ proc dispatch(c: string) =
       return
     rebuildReview()
     return
+  if mode in ["find", "write", "search", "agent"]:
+    # Text prompts take C-x only for C-x C-j (SKK); C-j alone still confirms the prompt.
+    if prefix.len == 0 and c == "C-x":
+      prefix = c
+      echo = "C-x-"
+      return
+    if prefix == "C-x":
+      prefix = ""
+      if c == "C-j":
+        toggleSkk()
+        return
+      if mode != "search":
+        echo = "C-x " & c & " is undefined"
+        return
+      confirmMini()  # any other C-x chord ends the search at the match and runs as usual
+      prefix = "C-x"
   if mode == "search":
     if c in ["C-s", "C-r"]:
       search(true, if c == "C-s": 1 else: -1)
@@ -661,10 +682,7 @@ proc dispatch(c: string) =
   case full
   of "M-:": beginMini("eval", "Eval: ")
   of "M-x": beginMini("execute", "M-x ")
-  of "C-x C-j":
-    let message = if inputMethod.loaded: "" else: inputMethod.loadDefaults()
-    discard applySkk(inputMethod.toggle())
-    if message.len > 0: echo = message
+  of "C-x C-j": toggleSkk()
   of "C-v", "pagedown", "M-v", "pageup": page(b, full)
   of "C-l": recenter(b)
   of "M-g g", "M-g M-g": beginMini("goto", "Goto line: ")
