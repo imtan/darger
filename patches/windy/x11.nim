@@ -1,0 +1,1500 @@
+# Patched copy of windy 0.5.0 windy/platforms/linux/x11.nim, loaded via
+# patchFile in darger's config.nims (Linux only). Re-check on any windy bump.
+# Deltas from upstream (besides package-absolute imports):
+#  (a) checkEvent predicates return cint (Xlib Bool), not a 1-byte Nim bool
+#  (b) getClipboardString: refused conversion ends the wait, 1 s deadline,
+#      reply kept apart from the owner-side clipboardContent
+#  (c) clipboard text replies typed STRING/UTF8_STRING (not ATOM); setProperty
+#      counts format-32 items as C longs (XdndAware/_WIN_HINTS pass clong)
+#  (d) property() XFrees the XGetWindowProperty buffer
+#  (e) FocusIn records held keys in buttonDown without firing onButtonPress
+#  (f) newWindow sets WM_CLASS (app file name) before mapping
+#  (g) property() sizes format-32 items as C longs (read side of (c))
+#  (h) getClipboardString asks TARGETS first and converts only a text target,
+#      accepts only UTF8_STRING/STRING replies (STRING transcoded from Latin-1)
+#      that are valid UTF-8 without NUL, follows INCR transfers, and ignores
+#      SelectionNotify for a target it is not waiting on
+#  (i) STRING replies to other clients are Latin-1 ('?' above U+00FF)
+#  (j) destroy flushes so XDestroyWindow takes effect before a slow shutdown
+import
+  std/[os, sequtils, sets, strformat, strutils, times, unicode, uri, pathnorm],
+  windy/[common, internal],
+  vmath, pixie,
+  windy/platforms/linux/x11/[glx, keysym, x, xevent, xlib, xcursor]
+
+import windy/http
+export http
+
+type
+  XWindow = x.Window
+
+  Window* = ref object
+    onCloseRequest*: Callback
+    onFrame*: Callback
+    onMove*: Callback
+    onResize*: Callback
+    onFocusChange*: Callback
+    onMouseMove*: Callback
+    onScroll*: Callback
+    onButtonPress*: ButtonCallback
+    onButtonRelease*: ButtonCallback
+    onRune*: RuneCallback
+    onImeChange*: Callback
+    onFileDrop*: FileDropCallback
+
+    mousePos, mousePrevPos: IVec2
+    buttonClicking, buttonToggle: set[Button]
+
+    perFrame: PerFrame
+    buttonPressed, buttonDown, buttonReleased: set[Button]
+    lastClickTime: times.Time
+    lastClickPosition: IVec2
+    clickSeqLen: int
+
+    prevSize, prevPos: IVec2
+
+    handle: XWindow
+    ctx: GlxContext
+    gc: GC
+    ic: XIC
+    im: XIM
+    xSyncCounter: XSyncCounter
+    lastSync: XSyncValue
+
+    closeRequested, closed: bool
+    innerDecorated: bool
+    innerFocused: bool
+
+    # XDnD state
+    xdndSource: XWindow
+    xdndVersion: int32
+    xdndFormat: Atom
+
+    state: WindowState
+
+  WmForDecoratedKind {.pure.} = enum
+    unsupported
+    motiv
+    kwm
+    other
+
+var
+  quitRequested*: bool
+  onQuitRequest*: Callback
+  multiClickInterval*: Duration = initDuration(milliseconds = 200)
+  multiClickRadius*: float = 4
+
+  initialized: bool
+  windows: seq[Window]
+
+  display: Display
+  decoratedAtom: Atom
+  wmForDecoratedKind: WmForDecoratedKind
+  clipboardWindow: XWindow
+  clipboardContent: string
+  clipboardPending: bool
+  clipboardReply: string
+  clipboardTarget: Atom   # target of the outstanding XConvertSelection
+  clipboardReplyKind: Atom
+  clipboardIncr: bool     # an INCR transfer is in progress
+  xaIncr: Atom
+  xaCardinal: Atom
+  xaWindyXdndTargetProperty: Atom
+
+  # XDnD atoms
+  xaXdndTypeList: Atom
+  xaXdndSelection: Atom
+  xaXdndEnter: Atom
+  xaXdndPosition: Atom
+  xaXdndStatus: Atom
+  xaXdndLeave: Atom
+  xaXdndDrop: Atom
+  xaXdndFinished: Atom
+  xaXdndActionCopy: Atom
+  xaXdndActionMove: Atom
+  xaXdndActionLink: Atom
+  xaXdndActionAsk: Atom
+  xaXdndActionPrivate: Atom
+  xaTextUriList: Atom
+  xaTextPlain: Atom
+  xaXdndAware: Atom
+
+proc initConstants(display: Display) =
+  xaNetWMState = display.XInternAtom("_NET_WM_STATE", 0)
+  xaNetWMStateMaximizedHorz = display.XInternAtom("_NET_WM_STATE_MAXIMIZED_HORZ", 0)
+  xaNetWMStateMaximizedVert = display.XInternAtom("_NET_WM_STATE_MAXIMIZED_VERT", 0)
+  xaWMState = display.XInternAtom("WM_STATE", 0)
+  xaNetWMStateHiden = display.XInternAtom("_NET_WM_STATE_HIDDEN", 0)
+  xaNetWMStateFullscreen = display.XInternAtom("_NET_WM_STATE_FULLSCREEN", 0)
+  xaNetWMName = display.XInternAtom("_NET_WM_NAME", 0)
+  xaUTF8String = display.XInternAtom("UTF8_STRING", 0)
+  xaNetWMIcon = display.XInternAtom("_NET_WM_ICON", 0)
+  xaNetWMIconName = display.XInternAtom("_NET_WM_ICON_NAME", 0)
+  xaWMDeleteWindow = display.XInternAtom("WM_DELETE_WINDOW", 0)
+  xaNetWMSyncRequest = display.XInternAtom("_NET_WM_SYNC_REQUEST", 0)
+  xaNetWMSyncRequestCounter = display.XInternAtom("_NET_WM_SYNC_REQUEST_COUNTER", 0)
+  xaClipboard = display.XInternAtom("CLIPBOARD", 0)
+  xaWindyClipboardTargetProperty = display.XInternAtom("windy_clipboardTargetProperty", 0)
+  xaWindyXdndTargetProperty = display.XInternAtom("windy_xdndTargetProperty", 0)
+  xaTargets = display.XInternAtom("TARGETS", 0)
+  xaText = display.XInternAtom("TEXT", 0)
+  xaIncr = display.XInternAtom("INCR", 0)
+  xaCardinal = display.XInternAtom("CARDINAL", 0)
+
+  # XDnD atoms
+  xaXdndTypeList = display.XInternAtom("XdndTypeList", 0)
+  xaXdndSelection = display.XInternAtom("XdndSelection", 0)
+  xaXdndEnter = display.XInternAtom("XdndEnter", 0)
+  xaXdndPosition = display.XInternAtom("XdndPosition", 0)
+  xaXdndStatus = display.XInternAtom("XdndStatus", 0)
+  xaXdndLeave = display.XInternAtom("XdndLeave", 0)
+  xaXdndDrop = display.XInternAtom("XdndDrop", 0)
+  xaXdndFinished = display.XInternAtom("XdndFinished", 0)
+  xaXdndActionCopy = display.XInternAtom("XdndActionCopy", 0)
+  xaXdndActionMove = display.XInternAtom("XdndActionMove", 0)
+  xaXdndActionLink = display.XInternAtom("XdndActionLink", 0)
+  xaXdndActionAsk = display.XInternAtom("XdndActionAsk", 0)
+  xaXdndActionPrivate = display.XInternAtom("XdndActionPrivate", 0)
+  xaTextUriList = display.XInternAtom("text/uri-list", 0)
+  xaTextPlain = display.XInternAtom("text/plain", 0)
+  xaXdndAware = display.XInternAtom("XdndAware", 0)
+
+proc atomIfExist(name: string): Atom =
+  display.XInternAtom(name, 1)
+
+proc handleXError(d: Display, event: ptr XErrorEvent): bool {.cdecl.} =
+  raise WindyError.newException("Error dealing with X11: " &
+      $event.errorCode.Status)
+
+proc init =
+  if initialized:
+    return
+
+  XSetErrorHandler handleXError
+
+  display = XOpenDisplay(cstring(getEnv("DISPLAY")))
+  if display == nil:
+    raise WindyError.newException("Error opening X11 display, make sure the DISPLAY environment variable is set correctly")
+
+  display.initConstants()
+
+  wmForDecoratedKind =
+    if (decoratedAtom = atomIfExist"_MOTIF_WM_HINTS"; decoratedAtom != 0):
+      WmForDecoratedKind.motiv
+    elif (decoratedAtom = atomIfExist"KWM_WIN_DECORATION"; decoratedAtom != 0):
+      WmForDecoratedKind.kwm
+    elif (decoratedAtom = atomIfExist"_WIN_HINTS"; decoratedAtom != 0):
+      WmForDecoratedKind.other
+    else:
+      WmForDecoratedKind.unsupported
+
+  initialized = true
+
+proc property(
+  window: XWindow,
+  property: Atom
+): tuple[kind: Atom, data: string] =
+  var
+    kind: Atom
+    format: cint
+    length: culong
+    bytesAfter: culong
+    data: cstring
+  display.XGetWindowProperty(
+    window,
+    property,
+    0,
+    -1,
+    false,
+    0,
+    kind.addr,
+    format.addr,
+    length.addr,
+    bytesAfter.addr,
+    data.addr
+  )
+
+  result.kind = kind
+
+  # Xlib hands format-32 items back as C longs (8 bytes on LP64).
+  let itemSize = (if format == 32: sizeof(clong) else: format.int div 8)
+  let len = length.int * itemSize
+  result.data = newString(len)
+  if len != 0:
+    copyMem(result.data[0].addr, data, len)
+  if data != nil:
+    XFree(data)
+
+proc setProperty(
+  window: XWindow, property: Atom, kind: Atom, format: cint, data: string
+) =
+  display.XChangeProperty(
+    window,
+    property,
+    kind,
+    format,
+    pmReplace,
+    data,
+    (if format == 32: data.len div sizeof(clong)
+     elif format == 16: data.len div 2
+     else: data.len).cint
+  )
+
+proc delProperty(window: XWindow, property: Atom) =
+  display.XDeleteProperty(window, property)
+
+proc asSeq(s: string, T: type = uint8): seq[T] =
+  if s.len == 0:
+    return
+  result = newSeq[T]((s.len + T.sizeof - 1) div T.sizeof)
+  copyMem(result[0].addr, s[0].unsafeaddr, s.len)
+
+proc asString[T](x: seq[T]|HashSet[T]): string =
+  result = newStringOfCap(x.len * T.sizeof)
+  for v in x:
+    for v in cast[array[T.sizeof, char]](v):
+      result.add v
+
+proc invert[T](x: var set[T], v: T) =
+  if x.contains v:
+    x.excl v
+  else:
+    x.incl v
+
+proc send(a: XWindow, e: XEvent, mask: clong = NoEventMask, propagate = false) =
+  display.XSendEvent(a, propagate, mask, e.unsafeAddr)
+
+proc newClientMessage[T](
+  window: XWindow,
+  messageKind: Atom,
+  data: openarray[T],
+  serial: int = 0,
+  sendEvent: bool = false
+): XEvent =
+  result.kind = xeClientMessage
+  result.client.messageType = messageKind
+  if data.len * T.sizeof > XClientMessageData.sizeof:
+    raise WindyError.newException(&"To much data in client message (>{XClientMessageData.sizeof} bytes)")
+  if data.len > 0:
+    copyMem(result.client.data.addr, data[0].unsafeaddr, data.len * T.sizeof)
+  result.client.format = case T.sizeof
+    of 1: 8
+    of 2: 16
+    of 4: 32
+    of 8: 32
+    else: 8
+  result.client.window = window
+  result.client.display = display
+  result.client.serial = serial.culong
+  result.client.sendEvent = sendEvent
+
+proc wmState(window: XWindow): HashSet[Atom] =
+  window.property(xaNetWMState).data.asSeq(Atom).toHashSet
+
+proc wmStateSend(window: XWindow, op: int, atom: Atom) =
+  # op: 2 - switch, 1 - set true, 0 - set false
+  display.defaultRootWindow.send(
+    window.newClientMessage(xaNetWMState, [Atom op, atom]),
+    SubstructureNotifyMask or SubstructureRedirectMask
+  )
+
+proc keysymToButton(sym: KeySym): Button =
+  case sym
+  of xk_shiftL: KeyLeftShift
+  of xk_shiftR: KeyRightShift
+  of xk_controlL: KeyLeftControl
+  of xk_controlR: KeyRightControl
+  of xk_bracketLeft: KeyLeftBracket
+  of xk_bracketRight: KeyRightBracket
+  of xk_altL: KeyLeftAlt
+  of xk_altR: KeyRightAlt
+  of xk_superL: KeyLeftSuper
+  of xk_superR: KeyRightSuper
+  of xk_menu: KeyMenu
+  of xk_escape: KeyEscape
+  of xk_semicolon: KeySemicolon
+  of xk_slash: KeySlash
+  of xk_equal: KeyEqual
+  of xk_minus: KeyMinus
+  of xk_comma: KeyComma
+  of xk_period: KeyPeriod
+  of xk_apostrophe: KeyApostrophe
+  of xk_backslash: KeyBackslash
+  of xk_grave: KeyBacktick
+  of xk_space: KeySpace
+  of xk_return: KeyEnter
+  of xk_kpEnter: KeyEnter
+  of xk_backspace: KeyBackspace
+  of xk_tab: KeyTab
+  of xk_prior: KeyPage_up
+  of xk_next: KeyPage_down
+  of xk_end: KeyEnd
+  of xk_home: KeyHome
+  of xk_insert: KeyInsert
+  of xk_delete: KeyDelete
+  of xk_kpAdd: NumpadAdd
+  of xk_kpSubtract: NumpadSubtract
+  of xk_kpMultiply: NumpadMultiply
+  of xk_kpDivide: NumpadDivide
+  of xk_capsLock: KeyCapsLock
+  of xk_numLock: KeyNumLock
+  of xk_scrollLock: KeyScrollLock
+  of xk_print: KeyPrintScreen
+  of xk_kpSeparator: NumpadDecimal
+  of xk_pause: KeyPause
+  of xk_f1: KeyF1
+  of xk_f2: KeyF2
+  of xk_f3: KeyF3
+  of xk_f4: KeyF4
+  of xk_f5: KeyF5
+  of xk_f6: KeyF6
+  of xk_f7: KeyF7
+  of xk_f8: KeyF8
+  of xk_f9: KeyF9
+  of xk_f10: KeyF10
+  of xk_f11: KeyF11
+  of xk_f12: KeyF12
+  of xk_left: KeyLeft
+  of xk_right: KeyRight
+  of xk_up: KeyUp
+  of xk_down: KeyDown
+  of xk_kpInsert: Numpad0
+  of xk_kpEnd: Numpad1
+  of xk_kpDown: Numpad2
+  of xk_kpPagedown: Numpad3
+  of xk_kpLeft: Numpad4
+  of xk_kpBegin: Numpad5
+  of xk_kpRight: Numpad6
+  of xk_kpHome: Numpad7
+  of xk_kpUp: Numpad8
+  of xk_kpPageup: Numpad9
+  of xk_a: KeyA
+  of xk_b: KeyB
+  of xk_c: KeyC
+  of xk_d: KeyD
+  of xk_e: KeyE
+  of xk_f: KeyF
+  of xk_g: KeyG
+  of xk_h: KeyH
+  of xk_i: KeyI
+  of xk_j: KeyJ
+  of xk_k: KeyK
+  of xk_l: KeyL
+  of xk_m: KeyM
+  of xk_n: KeyN
+  of xk_o: KeyO
+  of xk_p: KeyP
+  of xk_q: KeyQ
+  of xk_r: KeyR
+  of xk_s: KeyS
+  of xk_t: KeyT
+  of xk_u: KeyU
+  of xk_v: KeyV
+  of xk_w: KeyW
+  of xk_x: KeyX
+  of xk_y: KeyY
+  of xk_z: KeyZ
+  of xk_0: Key0
+  of xk_1: Key1
+  of xk_2: Key2
+  of xk_3: Key3
+  of xk_4: Key4
+  of xk_5: Key5
+  of xk_6: Key6
+  of xk_7: Key7
+  of xk_8: Key8
+  of xk_9: Key9
+  else: ButtonUnknown
+
+proc queryKeyboardState(): set[0..255] =
+  var r: array[32, char]
+  display.XQueryKeymap(r)
+  return cast[ptr set[0..255]](r.addr)[]
+
+proc destroy(window: Window) =
+  if window.ic != nil:
+    XDestroyIC(window.ic)
+  if window.im != nil:
+    XCloseIM(window.im)
+  if window.gc != nil:
+    display.XFreeGC(window.gc)
+  if window.handle != 0:
+    display.XDestroyWindow(window.handle)
+  if window.xSyncCounter.int != 0:
+    display.XSyncDestroyCounter(window.xSyncCounter)
+  display.XFlush()
+  wasMoved window[]
+  window.closed = true
+
+proc closed*(window: Window): bool = window.closed
+
+proc close*(window: Window) =
+  destroy window
+
+proc makeContextCurrent*(window: Window) =
+  display.glXMakeCurrent(window.handle, window.ctx)
+
+proc swapBuffers*(window: Window) =
+  display.glXSwapBuffers(window.handle)
+
+template blockUntil(expression: untyped) {.dirty.} =
+  ## In X11 many properties are async, you change them and then it takes
+  ## time for them to take effect. This is different from Win/Mac. This
+  ## waits till property changes before continueing to mach behavior.
+  ## It will stop waiting eventually though and just return.
+  let start = epochTime()
+  while true:
+    if expression:
+      break
+    if epochTime() - start > 0.500:
+      # We could throw exception here, Chrome + GLFW do not though,
+      # and just let it slide, giving it kind of best effort.
+      break
+    sleep(1)
+
+proc visible*(window: Window): bool =
+  var
+    attributes: XWindowAttributes
+  display.XGetWindowAttributes(window.handle, attributes.addr)
+  return attributes.map_state == IsViewable
+
+proc `visible=`*(window: Window, v: bool) =
+  if v:
+    display.XMapWindow(window.handle)
+  else:
+    display.XUnmapWindow(window.handle)
+  blockUntil(window.visible == v)
+
+proc pos*(window: Window): IVec2 =
+  var
+    child: XWindow
+  display.XTranslateCoordinates(
+    window.handle,
+    display.defaultRootWindow,
+    0,
+    0,
+    result.x.addr,
+    result.y.addr,
+    child.addr
+  )
+
+proc borderSize(window: Window): IVec2 =
+  # Figure out the chrome size of the window.
+  let originalValue = window.pos
+  display.XMoveWindow(window.handle, 100, 100)
+  blockUntil(originalValue != window.pos)
+  return window.pos - ivec2(100, 100)
+
+proc `pos=`*(window: Window, v: IVec2) =
+  let v = v - window.borderSize()
+  let originalValue = window.pos
+  if originalValue == v:
+    return
+  display.XMoveWindow(window.handle, v.x, v.y)
+  blockUntil(originalValue != window.pos)
+
+proc size*(window: Window): IVec2 =
+  var
+    attributes: XWindowAttributes
+  display.XGetWindowAttributes(window.handle, attributes.addr)
+  return attributes.size
+
+proc framebufferSize*(window: Window): IVec2 =
+  window.size
+
+proc `size=`*(window: Window, v: IVec2) =
+  let originalValue = window.size
+  if originalValue == v:
+    return
+
+  # Its important to swap buffers so that openGL viewport updates.
+  window.swapBuffers()
+  # TODO: for some reason Chrome GLFW just do display.XFlush() and its enough?
+  display.XResizeWindow(window.handle, v.x.uint32, v.y.uint32)
+
+  blockUntil(originalValue != window.size)
+
+proc centerWindow*(window: Window) =
+  ## Calculate centered position for a window on the primary screen.
+  var rootAttrs: XWindowAttributes
+  display.XGetWindowAttributes(display.defaultRootWindow, rootAttrs.addr)
+  let
+    screenWidth = rootAttrs.size.x.int
+    screenHeight = rootAttrs.size.y.int
+    windowSize = window.size
+    # Calculate center position.
+    x = (screenWidth - windowSize.x) div 2
+    y = (screenHeight - windowSize.y) div 2
+  window.pos = ivec2(x.int32, y.int32)
+
+proc maximized*(window: Window): bool =
+  let wmState = window.handle.wmState
+  return xaNetWMStateMaximizedHorz in wmState and
+    xaNetWMStateMaximizedVert in wmState
+
+proc `maximized=`*(window: Window, v: bool) =
+  window.handle.wmStateSend(v.int, xaNetWMStateMaximizedHorz)
+  window.handle.wmStateSend(v.int, xaNetWMStateMaximizedVert)
+  blockUntil(window.maximized == v)
+
+proc minimized*(window: Window): bool =
+  let wState = window.handle.property(xaWMState).data.asSeq(clong)
+  return wState.len >= 1 and wState[0] == 3 or
+    xaNetWMStateHiden in window.handle.wmState
+
+proc `minimized=`*(window: Window, v: bool) =
+  if v:
+    display.XIconifyWindow(window.handle, display.defaultScreen)
+  else:
+    display.XRaiseWindow(window.handle)
+  blockUntil(window.minimized == v)
+
+proc focused*(window: Window): bool =
+  return window.innerFocused
+
+proc focus*(window: Window) =
+  display.XSetInputFocus(window.handle, rtNone)
+
+proc fullscreen*(window: Window): bool =
+  xaNetWMStateFullscreen in window.handle.wmState
+
+proc `fullscreen=`*(window: Window, v: bool) =
+  window.handle.wmStateSend(v.int, xaNetWMStateFullscreen)
+  blockUntil(window.fullscreen == v)
+
+proc style*(window: Window): WindowStyle =
+  if window.innerDecorated:
+    var hints: XSizeHints
+    display.XGetNormalHints(window.handle, hints.addr)
+    if (hints.flags and 0b110000) == 0b110000:
+      WindowStyle.Decorated
+    else:
+      WindowStyle.DecoratedResizable
+  else:
+    WindowStyle.Undecorated
+
+proc `style=`*(window: Window, v: WindowStyle) =
+  if window.fullscreen:
+    return
+
+  let currentStyle = window.style
+  if currentStyle == v:
+    return
+
+  template addDecorations() {.dirty.} =
+    window.innerDecorated = true
+    case wmForDecoratedKind
+    of WmForDecoratedKind.motiv,
+        WmForDecoratedKind.kwm,
+        WmForDecoratedKind.other:
+      window.handle.delProperty(decoratedAtom)
+
+      display.XSetTransientForHint(window.handle, 0)
+      if window.visible:
+        # "reopen" window
+        display.XUnmapWindow(window.handle)
+        display.XMapWindow(window.handle)
+
+      window.size = size # restore window size
+    else:
+      discard
+
+  case v
+  of WindowStyle.Undecorated, WindowStyle.Transparent:
+    window.innerDecorated = false
+    let size = window.size # save current window size
+
+    case wmForDecoratedKind
+    of WmForDecoratedKind.motiv:
+      window.handle.setProperty(
+        decoratedAtom, decoratedAtom, 32, @[1 shl 1, 0, 0, 0, 0].asString
+      )
+    of WmForDecoratedKind.kwm, WmForDecoratedKind.other:
+      window.handle.setProperty(
+        decoratedAtom, decoratedAtom, 32, @[0.clong].asString
+      )
+    else:
+      return
+
+    display.XSetTransientForHint(window.handle, display.defaultRootWindow)
+    if window.visible:
+      # "reopen" window
+      display.XUnmapWindow(window.handle)
+      display.XMapWindow(window.handle)
+
+    window.size = size # restore window size
+
+  of WindowStyle.Decorated:
+    let size = window.size
+
+    if currentStyle == WindowStyle.Undecorated:
+      addDecorations()
+
+    # make window unresizable
+    var hints = XSizeHints(
+      flags: 0b110000,
+      minSize: size,
+      maxSize: size
+    )
+    display.XSetNormalHints(window.handle, hints.addr)
+
+  of WindowStyle.DecoratedResizable:
+    let size = window.size
+
+    if currentStyle == WindowStyle.Undecorated:
+      addDecorations()
+
+    # make window resizable
+    var hints = XSizeHints(flags: 0)
+    display.XSetNormalHints(window.handle, hints.addr)
+
+proc title*(window: Window): string =
+  window.handle.property(xaNetWMName).data
+
+proc `title=`*(window: Window, v: string) =
+  window.handle.setProperty(xaNetWMName, xaUTF8String, 8, v)
+  window.handle.setProperty(xaNetWMIconName, xaUTF8String, 8, v)
+  display.Xutf8SetWMProperties(window.handle, v, v, nil, 0, nil, nil, nil)
+
+proc contentScale*(window: Window): float32 =
+  const defaultScreenDpi = 96.0
+
+  # Prefer using DPI from Xft.dpi resource for user scaling.
+  let xftDpi = display.XGetDefault("Xft", "dpi")
+  if xftDpi != nil:
+    try:
+      let dpi = parseFloat($xftDpi)
+      if dpi > 0:
+        return dpi / defaultScreenDpi
+    except ValueError:
+      discard
+
+  # otherwise assume no scaling.
+  return 1.0
+
+proc runeInputEnabled*(window: Window): bool =
+  window.state.runeInputEnabled
+
+proc `runeInputEnabled=`*(window: Window, v: bool) =
+  window.state.runeInputEnabled = v
+
+proc cursor*(window: Window): common.Cursor =
+  window.state.cursor
+
+proc applyCursor(window: Window) =
+  # Minimal mapping using Xlib font cursors.
+  # Values are standard XC_* constants from cursorfont.h.
+  # We inline the numeric constants to avoid adding another header.
+  const
+    XC_left_ptr = 68'u32
+    XC_hand2 = 60'u32
+    XC_xterm = 152'u32
+    XC_crosshair = 34'u32
+    XC_fleur = 52'u32
+    XC_left_side = 70'u32
+    XC_right_side = 96'u32
+    XC_top_side = 138'u32
+    XC_bottom_side = 16'u32
+    XC_sb_h_double_arrow = 108'u32
+    XC_sb_v_double_arrow = 116'u32
+    XC_X_cursor = 0'u32
+    XC_watch = 150'u32
+
+  if window.state.cursor.kind == CustomCursor:
+    # Create custom cursor from image using Xcursor library.
+    let img = window.state.cursor.image
+    let xcImage = XcursorImageCreate(img.width.cint, img.height.cint)
+
+    if xcImage != nil:
+      xcImage.xhot = window.state.cursor.hotspot.x.uint32
+      xcImage.yhot = window.state.cursor.hotspot.y.uint32
+      xcImage.size = max(img.width, img.height).uint32
+
+      # Convert RGBA pixel data to ARGB format expected by Xcursor.
+      for y in 0..<img.height:
+        for x in 0..<img.width:
+          let
+            idx = y * img.width + x
+            pixel = img.data[idx]
+            # Xcursor uses ARGB format (alpha in high byte).
+            argbPixel =
+              (pixel.a.uint32 shl 24) or
+              (pixel.r.uint32 shl 16) or
+              (pixel.g.uint32 shl 8) or
+              pixel.b.uint32
+          cast[ptr UncheckedArray[XcursorPixel]](xcImage.pixels)[idx] = argbPixel
+
+      let cursor = XcursorImageLoadCursor(display, xcImage)
+      display.XDefineCursor(window.handle, cursor)
+      XcursorImageDestroy(xcImage)
+      display.XFlush()
+      return
+
+  # Use font cursors for standard cursor types.
+  let shape: cuint = case window.state.cursor.kind
+    of ArrowCursor: XC_left_ptr
+    of PointerCursor: XC_hand2
+    of IBeamCursor: XC_xterm
+    of CrosshairCursor: XC_crosshair
+    of ClosedHandCursor: XC_fleur      # approximate
+    of OpenHandCursor: XC_fleur        # approximate
+    of ResizeLeftCursor: XC_left_side
+    of ResizeRightCursor: XC_right_side
+    of ResizeLeftRightCursor: XC_sb_h_double_arrow
+    of ResizeUpCursor: XC_top_side
+    of ResizeDownCursor: XC_bottom_side
+    of ResizeUpDownCursor: XC_sb_v_double_arrow
+    of OperationNotAllowedCursor: XC_X_cursor
+    of WaitCursor: XC_watch
+    of CustomCursor: XC_left_ptr  # Unused, see custom cursor above.
+
+  let c = display.XCreateFontCursor(shape)
+  display.XDefineCursor(window.handle, c)
+  display.XFlush()
+
+proc `cursor=`*(window: Window, v: common.Cursor) =
+  window.state.cursor = v
+  window.applyCursor()
+
+proc newWindow*(
+  title: string,
+  size: IVec2,
+  style = DecoratedResizable,
+  visible = true,
+  vsync = true,
+  openglVersion = OpenGL4Dot1,
+  msaa = msaaDisabled,
+  depthBits = 24,
+  stencilBits = 8
+): Window =
+  ## Creates a new window. Intitializes Windy if needed.
+  init()
+  result = Window()
+  result.innerDecorated = true
+  result.state.runeInputEnabled = true
+
+  let root = display.defaultRootWindow
+
+  var vi: XVisualInfo
+  if style == Transparent:
+    display.XMatchVisualInfo(display.defaultScreen, 32, TrueColor, vi.addr)
+  else:
+    display.XMatchVisualInfo(display.defaultScreen, 24, TrueColor, vi.addr)
+    # strangely, glx returns nil when -d:danger
+    # var attribList = [GlxRgba, GlxDepthSize, 24, GlxDoublebuffer]
+    # vi = display.glXChooseVisual(display.defaultScreen, attribList[0].addr)[]
+
+  let cmap = display.XCreateColormap(root, vi.visual, AllocNone)
+  var swa = XSetWindowAttributes(colormap: cmap)
+
+  result.handle = display.XCreateWindow(
+    root,
+    0, 0,
+    size.x.cuint, size.y.cuint,
+    0,
+    vi.depth.cuint,
+    InputOutput,
+    vi.visual,
+    CwColormap or CwEventMask or CwBorderPixel,
+    swa.addr
+  )
+
+  display.XSelectInput(
+    result.handle,
+    ExposureMask or
+    KeyPressMask or
+    KeyReleaseMask or
+    PointerMotionMask or
+    ButtonPressMask or
+    ButtonReleaseMask or
+    StructureNotifyMask or
+    EnterWindowMask or
+    LeaveWindowMask or
+    FocusChangeMask or
+    PropertyChangeMask
+  )
+
+  var wmProtocols = [xaWMDeleteWindow, xaNetWMSyncRequest]
+  display.XSetWMProtocols(
+    result.handle, wmProtocols[0].addr, cint wmProtocols.len
+  )
+
+  result.im = display.XOpenIM
+  result.ic = result.im.XCreateIC(
+    "clientWindow",
+    result.handle,
+    "focusWindow",
+    result.handle,
+    "inputStyle",
+    XimPreeditNothing or XimStatusNothing,
+    nil
+  )
+
+  var gcv: XGCValues
+  result.gc = display.XCreateGC(result.handle, GCForeground or GCBackground, gcv.addr)
+
+  result.ctx = display.glXCreateContext(vi.addr, nil, 1)
+
+  if result.ctx == nil:
+    raise WindyError.newException("Error creating OpenGL context")
+
+  result.title = title
+
+  # Set a default cursor
+  result.state.cursor = common.Cursor(kind: ArrowCursor)
+  result.applyCursor()
+
+  # Enable XDnD awareness (version 5)
+  const xdndVersion = 5.clong
+  result.handle.setProperty(xaXdndAware, xaCardinal, 32, @[xdndVersion].asString)
+
+  makeContextCurrent result
+
+  if vsync:
+    if glXSwapIntervalEXT != nil:
+      display.glXSwapIntervalEXT(result.handle, 1)
+    elif glXSwapIntervalMESA != nil:
+      glXSwapIntervalMESA(1)
+    elif glXSwapIntervalSGI != nil:
+      glXSwapIntervalSGI(1)
+    else:
+      raise WindyError.newException("VSync is not supported")
+
+  type XClassHint = object
+    resName, resClass: cstring
+  proc XSetClassHint(d: Display, w: XWindow, h: ptr XClassHint): cint
+    {.importc, cdecl, dynlib: libX11.}
+  let cls = getAppFilename().splitFile.name
+  var hint = XClassHint(resName: cls.cstring, resClass: cls.cstring)
+  discard display.XSetClassHint(result.handle, hint.addr)
+
+  if visible:
+    result.visible = true
+
+  block xsync:
+    var vEv, vEr: cint
+    if display.XSyncQueryExtension(vEv.addr, vEr.addr):
+      var vMaj, vMin: cint
+      display.XSyncInitialize(vMaj.addr, vMin.addr)
+      result.xSyncCounter = display.XSyncCreateCounter(XSyncValue())
+      result.handle.setProperty(
+        xaNetWMSyncRequestCounter,
+        xaCardinal,
+        32,
+        @[result.xSyncCounter].asString
+      )
+
+  result.style = style
+
+  windows.add result
+
+proc pollEvents(window: Window) =
+
+  # Clear all per-frame data
+  window.perFrame = PerFrame()
+  window.buttonPressed = {}
+  window.buttonReleased = {}
+
+  # signal that frame was drawn
+  display.XSyncSetCounter(window.xSyncCounter, window.lastSync)
+
+  var ev: XEvent
+
+  proc checkEvent(
+    d: Display,
+    event: ptr XEvent,
+    userData: pointer
+  ): cint {.cdecl.} =
+    cint(event.any.window == cast[Window](userData).handle)
+
+  template pushButtonEvent(
+    button: Button,
+    press: bool = ev.kind == xeButtonPress
+  ) =
+    if press:
+      window.buttonDown.incl button
+      window.buttonPressed.incl button
+      window.buttonClicking.incl button
+      window.buttonToggle.invert button
+      if window.onButtonPress != nil:
+        window.onButtonPress(button)
+    else:
+      window.buttonDown.excl button
+      window.buttonReleased.incl button
+      if window.onButtonRelease != nil:
+        window.onButtonRelease(button)
+
+  proc handleRune(window: Window, rune: Rune) =
+    handleRuneTemplate()
+
+  while display.XCheckIfEvent(ev.addr, checkEvent, cast[pointer](window)):
+    case ev.kind
+
+    of xeClientMessage:
+      if ev.client.data.l[0] == xaWMDeleteWindow.clong:
+        window.closeRequested = true
+        if window.onCloseRequest != nil:
+          window.onCloseRequest()
+        return # end polling events immediently
+
+      elif ev.client.data.l[0] == xaNetWMSyncRequest.clong:
+        window.lastSync = XSyncValue(
+          lo: cast[uint32](ev.client.data.l[2]),
+          hi: cast[int32](ev.client.data.l[3])
+        )
+
+      elif ev.client.messageType == xaXdndEnter:
+        # XDnD drag entered.
+        window.xdndSource = cast[XWindow](ev.client.data.l[0])
+        window.xdndVersion = (ev.client.data.l[1] shr 24).int32
+        window.xdndFormat = 0
+
+        if window.xdndVersion > 5:
+          continue
+
+        var formats: seq[Atom]
+
+        # Try to get the full type list from source window.
+        let prop = window.xdndSource.property(xaXdndTypeList)
+        if prop.data.len > 0:
+          formats = prop.data.asSeq(Atom)
+        else:
+          # Fall back to formats from client message data.
+          for i in 2..4:
+            if ev.client.data.l[i] != 0:
+              formats.add(cast[Atom](ev.client.data.l[i]))
+
+        # Look for text/uri-list or text/plain formats.
+        for fmt in formats:
+          if fmt == xaTextUriList or fmt == xaTextPlain:
+            window.xdndFormat = fmt
+            break
+
+        # If no standard format found, request text/uri-list anyway.
+        # Many file managers respond to it even if not advertised.
+        if window.xdndFormat == 0:
+          window.xdndFormat = xaTextUriList
+
+      elif ev.client.messageType == xaXdndPosition:
+        # XDnD position update.
+        if window.xdndVersion > 5:
+          continue
+
+        # Send status back to source.
+        let acceptFlag: clong = if window.xdndFormat != 0: 1 else: 0
+        let action: clong = if window.xdndVersion >= 2 and window.xdndFormat != 0: cast[clong](xaXdndActionCopy) else: 0
+        let reply = window.xdndSource.newClientMessage(xaXdndStatus, [
+          cast[clong](window.handle),
+          acceptFlag,
+          0.clong, 0.clong,
+          action
+        ])
+        window.xdndSource.send(reply)
+        display.XFlush()
+
+      elif ev.client.messageType == xaXdndLeave:
+        # XDnD drag left
+        window.xdndSource = 0
+        window.xdndVersion = 0
+        window.xdndFormat = 0
+
+      elif ev.client.messageType == xaXdndDrop:
+        if window.xdndVersion > 5 or window.xdndFormat == 0:
+          # Send finished message if we can't handle it.
+          if window.xdndVersion >= 2:
+            let reply = window.xdndSource.newClientMessage(xaXdndFinished, [
+              cast[clong](window.handle),
+              0.clong,
+              0.clong
+            ])
+            window.xdndSource.send(reply)
+          window.xdndSource = 0
+          window.xdndVersion = 0
+          window.xdndFormat = 0
+          continue
+
+        # Request the selection data.
+        let time: int32 = if window.xdndVersion >= 1: ev.client.data.l[2].int32 else: CurrentTime
+        display.XConvertSelection(
+          xaXdndSelection,
+          window.xdndFormat,
+          xaWindyXdndTargetProperty,
+          window.handle,
+          time
+        )
+        display.XFlush()
+
+    of xeFocusIn:
+      if window.innerFocused:
+        return # was duplicated
+      window.innerFocused = true
+
+      if window.ic != nil:
+        XSetICFocus window.ic
+
+      # press currently pressed keys
+      for k in queryKeyboardState().mapit(
+          keysymToButton display.XKeycodeToKeysym(it.char, 0
+        )):
+        if k == ButtonUnknown:
+          continue
+        window.buttonDown.incl k
+
+      if window.onFocusChange != nil:
+        window.onFocusChange()
+
+    of xeFocusOut:
+      if not window.innerFocused:
+        return # was duplicated
+      window.innerFocused = false
+
+      if window.ic != nil:
+        XUnsetICFocus window.ic
+
+      # release currently pressed keys
+      let bd = window.buttonDown
+      window.buttonDown = {}
+      for k in bd:
+        pushButtonEvent(k.Button, false)
+
+      if window.onFocusChange != nil:
+        window.onFocusChange()
+
+    of xeConfigure:
+      let pos = window.pos
+      if pos != window.prevPos:
+        window.prevPos = pos
+        if window.onMove != nil:
+          window.onMove()
+
+      if ev.configure.size != window.prevSize:
+        window.prevSize = ev.configure.size
+        if window.onResize != nil:
+          window.onResize()
+        if window.onFrame != nil:
+          window.onFrame()
+
+    of xeMotion:
+      window.mousePrevPos = window.mousePos
+      window.mousePos = ev.motion.pos
+      window.perFrame.mouseDelta += window.mousePos - window.mousePrevPos
+      if (window.mousePos - window.lastClickPosition).vec2.length > multiClickRadius:
+        window.buttonClicking = {}
+        window.clickSeqLen = 0
+      if window.onMouseMove != nil:
+        window.onMouseMove()
+
+    of xeButtonPress, xeButtonRelease:
+
+      template pushScrollEvent(delta: Vec2) =
+        window.perFrame.scrollDelta = delta
+        if window.onScroll != nil:
+          window.onScroll()
+
+      let
+        now = getTime()
+        isDblclk = now - window.lastClickTime <= multiClickInterval
+      window.lastClickTime = now
+      window.lastClickPosition = window.mousePos
+
+      case ev.button.button
+      of 1:
+        pushButtonEvent(MouseLeft)
+
+        if ev.kind == xeButtonRelease and MouseLeft in window.buttonClicking and isDblclk:
+          inc window.clickSeqLen
+          if window.clickSeqLen >= 2:
+            pushButtonEvent(DoubleClick, true)  # Send as press event first
+            pushButtonEvent(DoubleClick, false) # Then send as release event
+          if window.clickSeqLen >= 3:
+            pushButtonEvent(TripleClick, true)
+            pushButtonEvent(TripleClick, false)
+          if window.clickSeqLen >= 4:
+            pushButtonEvent(QuadrupleClick, true)
+            pushButtonEvent(QuadrupleClick, false)
+
+      of 2: pushButtonEvent(MouseMiddle)
+      of 3: pushButtonEvent(MouseRight)
+      of 8: pushButtonEvent(MouseButton4)
+      of 9: pushButtonEvent(MouseButton5)
+
+      of 4: pushScrollEvent(vec2(0, -10.0)) # scroll up
+      of 5: pushScrollEvent(vec2(0, 10.0)) # scroll down
+      of 6: pushScrollEvent(vec2(-10.0, 0)) # scroll left
+      of 7: pushScrollEvent(vec2(10.0, 0)) # scroll right
+      else: discard
+
+      if not isDblclk:
+        window.clickSeqLen = 0
+
+    of xeKeyPress, xeKeyRelease:
+      var key = ButtonUnknown
+      var i = 0
+      while i < 4 and key == ButtonUnknown:
+        key = keysymToButton(XLookupKeysym(ev.key.addr, i.cint))
+        inc i
+      if key != ButtonUnknown:
+        pushButtonEvent(key, ev.kind == xeKeyPress)
+
+      # handle text input
+      if window.state.runeInputEnabled and
+        ev.kind == xeKeyPress and
+        window.ic != nil and
+        (ev.key.state and ControlMask) == 0:
+          var
+            status: cint
+            s = newString(16)
+          s.setLen(window.ic.Xutf8LookupString(
+            ev.key.addr, s.cstring, 16, nil, status.addr
+          ))
+          if status == XLookupChars or status == XLookupBoth:
+            for rune in s.runes:
+              window.handleRune(rune)
+
+    of xeSelection:
+      # Handle XDnD selection data.
+      if ev.selection.property == xaWindyXdndTargetProperty:
+        let prop = window.handle.property(xaWindyXdndTargetProperty)
+        if prop.data.len > 0:
+          # Parse URI list (files separated by newlines).
+          let uriList = prop.data
+          for line in uriList.splitLines():
+            if line.len > 0 and line.startsWith("file://"):
+              # Convert URI to local path and decode percent-encoding.
+              var filePath = decodeUrl(line[7..^1])
+              if window.onFileDrop != nil:
+                let fileContent = readFile(filePath)
+                window.onFileDrop(filePath, fileContent)
+
+        # Clean up the property.
+        window.handle.delProperty(xaWindyXdndTargetProperty)
+
+        # Send finished message.
+        if window.xdndVersion >= 2:
+          let reply = window.xdndSource.newClientMessage(xaXdndFinished, [
+            cast[clong](window.handle),
+            1.clong,  # Data received successfully
+            cast[clong](xaXdndActionCopy)
+          ])
+          window.xdndSource.send(reply)
+          display.XFlush()
+
+        # Reset XDnD state.
+        window.xdndSource = 0
+        window.xdndVersion = 0
+        window.xdndFormat = 0
+
+    else:
+      discard
+
+proc mousePos*(window: Window): IVec2 =
+  window.mousePos
+
+proc mousePrevPos*(window: Window): IVec2 =
+  window.mousePrevPos
+
+proc mouseDelta*(window: Window): IVec2 =
+  window.perFrame.mouseDelta
+
+proc scrollDelta*(window: Window): Vec2 =
+  window.perFrame.scrollDelta
+
+proc buttonDown*(window: Window): ButtonView =
+  ButtonView window.buttonDown
+
+proc buttonPressed*(window: Window): ButtonView =
+  ButtonView window.buttonPressed
+
+proc buttonReleased*(window: Window): ButtonView =
+  ButtonView window.buttonReleased
+
+proc buttonToggle*(window: Window): ButtonView =
+  ButtonView window.buttonToggle
+
+proc closeRequested*(window: Window): bool =
+  window.closeRequested
+
+proc `closeRequested=`*(window: Window, v: bool) =
+  window.closeRequested = v
+  if v:
+    if window.onCloseRequest != nil:
+      window.onCloseRequest()
+
+proc initClipboard =
+  if clipboardWindow != 0:
+    return
+  clipboardWindow = display.XCreateSimpleWindow(
+    display.defaultRootWindow, 0, 0, 1, 1, 0, 0, 0
+  )
+  # INCR transfers arrive as PropertyNotify on the target property.
+  display.XSelectInput(clipboardWindow, PropertyChangeMask.clong)
+
+proc latin1ToUtf8(s: string): string =
+  for c in s:
+    result.add Rune(ord(c)).toUTF8
+
+proc utf8ToLatin1(s: string): string =
+  for r in s.runes:
+    result.add (if int32(r) <= 0xFF: char(int32(r)) else: '?')
+
+proc clipboardText(kind: Atom, data: string): string =
+  ## Reply bytes as UTF-8 text, or "" when they are not text (image data
+  ## mislabelled UTF8_STRING, a stray INCR size, ...).
+  if kind notin [xaUTF8String, xaString] or '\0' in data:
+    return ""
+  result = if kind == xaString: latin1ToUtf8(data) else: data
+  if result.validateUtf8() != -1:
+    return ""
+
+proc processClipboardEvents: bool =
+  var ev: XEvent
+
+  proc checkEvent(
+    d: Display,
+    event: ptr XEvent,
+    userData: pointer
+  ): cint {.cdecl.} =
+    cint(event.any.window == cast[XWindow](userData))
+
+  while display.XCheckIfEvent(
+    ev.addr, checkEvent, cast[pointer](clipboardWindow)
+  ):
+    case ev.kind
+    of xeSelection:
+      template e: untyped = ev.selection
+
+      if e.selection != xaClipboard or not clipboardPending or
+          clipboardIncr or e.target != clipboardTarget:
+        continue  # stale or foreign notify
+      if e.property == 0:
+        clipboardReply = ""
+        clipboardReplyKind = 0
+        clipboardPending = false
+        return true
+
+      let p = clipboardWindow.property(xaWindyClipboardTargetProperty)
+      # Deleting the property also tells an INCR owner to send the first chunk.
+      clipboardWindow.delProperty(xaWindyClipboardTargetProperty)
+      if p.kind == xaIncr:
+        clipboardIncr = true
+        clipboardReply = ""
+        clipboardReplyKind = 0
+        continue
+      clipboardReply = p.data
+      clipboardReplyKind = p.kind
+      clipboardPending = false
+
+      return true
+
+    of xeProperty:
+      template e: untyped = ev.property
+
+      if not clipboardIncr or e.atom != xaWindyClipboardTargetProperty or
+          e.state != PropertyNewValue:
+        continue  # our own deletes, or a chunk nobody is waiting for
+      let p = clipboardWindow.property(xaWindyClipboardTargetProperty)
+      clipboardWindow.delProperty(xaWindyClipboardTargetProperty)
+      if p.data.len == 0:
+        clipboardIncr = false
+        clipboardPending = false
+        return true
+      if clipboardReplyKind == 0:
+        clipboardReplyKind = p.kind
+      clipboardReply.add p.data
+      display.XFlush()
+
+    of xeSelectionRequest:
+      template e: untyped = ev.selectionRequest
+
+      var resp = XSelectionEvent(
+        kind: xeSelection,
+        requestor: e.requestor,
+        selection: e.selection,
+        property: e.property,
+        target: e.target,
+        time: e.time
+      )
+
+      if e.selection == xaClipboard:
+        if e.target == xaTargets:
+          # request requests that we can handle
+          e.requestor.setProperty(e.property, xaAtom, 32, @[
+            xaTargets,
+            xaText,
+            xaString,
+            xaUTF8String
+          ].asString)
+          e.requestor.send(XEvent(selection: resp), propagate = true)
+          continue
+
+        elif e.target in {xaString, xaText, xaUTF8String}:
+          # request clipboard data
+          if e.target == xaString:
+            e.requestor.setProperty(
+              e.property, xaString, 8, utf8ToLatin1(clipboardContent)
+            )
+          else:
+            e.requestor.setProperty(
+              e.property, xaUTF8String, 8, clipboardContent
+            )
+          e.requestor.send(XEvent(selection: resp), propagate = true)
+          continue
+
+      # we can't handle this request
+      resp.property = 0
+      e.requestor.send(XEvent(selection: resp), propagate = true)
+
+    else:
+      discard
+
+proc getClipboardString*: string =
+  initClipboard()
+  if display.XGetSelectionOwner(xaClipboard) == 0:
+    return ""
+
+  if display.XGetSelectionOwner(xaClipboard) == clipboardWindow:
+    return clipboardContent
+
+  proc request(target: Atom): bool =
+    ## Converts CLIPBOARD to `target`; true once a reply (possibly a refusal)
+    ## arrived. The deadline restarts on every INCR chunk.
+    clipboardPending = false
+    clipboardIncr = false
+    discard processClipboardEvents()  # drop notifies left by an earlier request
+    clipboardWindow.delProperty(xaWindyClipboardTargetProperty)
+    clipboardReply = ""
+    clipboardReplyKind = 0
+    clipboardTarget = target
+    clipboardPending = true
+    display.XConvertSelection(
+      xaClipboard,
+      target,
+      xaWindyClipboardTargetProperty,
+      clipboardWindow
+    )
+    var deadline = epochTime() + 1.0
+    var received = 0
+    while not processClipboardEvents():
+      if clipboardReply.len != received:
+        received = clipboardReply.len
+        deadline = epochTime() + 1.0
+      if epochTime() > deadline:
+        clipboardPending = false
+        clipboardIncr = false
+        return false
+      sleep(1)
+    true
+
+  # Negotiate first: some owners (Hyprland's XWM) answer a UTF8_STRING request
+  # for an image selection with the image bytes labelled UTF8_STRING.
+  var target = xaUTF8String
+  if not request(xaTargets):
+    return ""  # owner did not answer within the deadline
+  if clipboardReplyKind != 0:
+    let offered = clipboardReply.asSeq(Atom)
+    if xaUTF8String in offered: target = xaUTF8String
+    elif xaString in offered: target = xaString
+    elif xaText in offered: target = xaText
+    else: return ""
+  # Owners that refuse TARGETS still get a UTF8_STRING request; the reply
+  # is validated either way.
+  if not request(target):
+    return ""
+  result = clipboardText(clipboardReplyKind, clipboardReply)
+  clipboardReply = ""
+
+proc setClipboardString*(s: string) =
+  initClipboard()
+  clipboardContent = s
+  display.XSetSelectionOwner(xaClipboard, clipboardWindow)
+
+proc pollEvents*() =
+  for window in windows:
+    if window.onFrame != nil:
+      window.onFrame()
+
+  let ws = windows
+  windows = @[]
+
+  for window in ws:
+    if window.closed:
+      destroy window
+    else:
+      windows.add window
+
+  if clipboardWindow != 0:
+    discard processClipboardEvents()
+
+  for window in windows:
+    pollEvents(window)
+
+  pollHttp()
+
+proc closeIme*(window: Window) =
+  discard
+
+proc imeCursorIndex*(window: Window): int =
+  discard
+
+proc imeCompositionString*(window: Window): string =
+  discard
+
+proc `icon=`*(window: Window, icon: Image) =
+  var data: seq[uint64]
+  data.add icon.width.uint64
+  data.add icon.height.uint64
+  for c in icon.data:
+    data.add (cast[uint32](c)).uint64
+
+  display.XChangeProperty(
+    window.handle,
+    xaNetWMIcon,
+    xaCardinal,
+    32,
+    pmReplace,
+    cast[cstring](data[0].addr),
+    (data.len).cint
+  )
+
+proc url*(window: Window): string =
+  ## Url cannot be gotten on linux.
+  warn "Url cannot be gotten on linux"
+
+proc getConfigHome*(appName: string): string =
+  ## Returns the platform-appropriate user config directory for the given app name.
+  ## For Linux: Honors XDG_CONFIG_HOME, defaults to ~/.config/<appName>.
+  let xdgConfigHome = getEnv("XDG_CONFIG_HOME")
+  if xdgConfigHome != "":
+    result = (xdgConfigHome / appName).normalizePath
+  else:
+    result = (getHomeDir() / ".config" / appName).normalizePath
+
+proc getConfig*(appName: string, fileName: string): string =
+  ## Returns the contents of a config file for the given app and filename.
+  ## Returns empty string if the file doesn't exist.
+  let configDir = getConfigHome(appName)
+  let configPath = configDir / fileName
+  if fileExists(configPath):
+    result = readFile(configPath)
+  else:
+    result = ""
+
+proc setConfig*(appName: string, fileName: string, content: string) =
+  ## Saves content to a config file for the given app and filename.
+  ## Creates the config directory if it doesn't exist.
+  let configDir = getConfigHome(appName)
+  if not dirExists(configDir):
+    createDir(configDir)
+  let configPath = configDir / fileName
+  writeFile(configPath, content)
+
+proc openUrl*(url: string) =
+  ## Open a URL in the default browser.
+  discard execShellCmd("xdg-open " & url)
+
+proc openTempTextFile*(title, text: string) =
+  ## Open a text file in the default text editor.
+  if not dirExists("tmp"):
+    createDir("tmp")
+  writeFile("tmp/" & title, text)
+  discard execShellCmd("xdg-open tmp/" & title)
