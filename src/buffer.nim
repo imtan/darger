@@ -122,13 +122,13 @@ proc region*(b: Buffer): tuple[a, z: int] =
   let z = b.offset(b.mark)
   (min(a, z), max(a, z))
 
-proc snapshot(b: Buffer, coalesce = false) =
+proc snapshot*(b: Buffer, coalesce = false) =
   # ponytail: full snapshot per step; go diff-based if large files matter.
   if not coalesce:
     b.undoStack.add (b.lines, b.cursor)
     if b.undoStack.len > 200: b.undoStack.delete(0)
 
-proc splice(b: Buffer, a, z: int, s: string) =
+proc splice*(b: Buffer, a, z: int, s: string) =
   # ponytail: flatten on edits; use line-local splices if large files matter.
   let runes = b.text.toRunes
   let inserted = s.toRunes

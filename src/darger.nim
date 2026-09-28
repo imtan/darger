@@ -1,6 +1,6 @@
-import std/[os, strutils, times, unicode, tables, sets]
+import std/[os, osproc, streams, tempfiles, strutils, times, unicode, tables, sets]
 import windy, vmath
-import buffer, render, skk, lisp
+import buffer, render, skk, lisp, review
 
 const
   bufferCommands = ["forward", "backward", "next-line", "previous-line", "bol", "eol",
@@ -56,10 +56,16 @@ const
 (global-set-key "C-/" 'undo)
 (global-set-key "C-_" 'undo)
 (global-set-key "C-x u" 'undo)
+(global-set-key "C-c a" 'agent-prompt)
+(setq agent-command "claude -p --output-format text")
 """
 
 when defined(windows):
+  import std/winlean
   proc getKeyState(key: int32): int16 {.stdcall, importc: "GetKeyState", dynlib: "user32".}
+  proc createJobObject(attributes: pointer, name: WideCString): Handle {.stdcall, importc: "CreateJobObjectW", dynlib: "kernel32".}
+  proc assignProcessToJobObject(job, process: Handle): WINBOOL {.stdcall, importc: "AssignProcessToJobObject", dynlib: "kernel32".}
+  proc terminateJobObject(job: Handle, code: uint32): WINBOOL {.stdcall, importc: "TerminateJobObject", dynlib: "kernel32".}
 
 var b = newBuffer()
 var startupMessage: string
@@ -92,6 +98,14 @@ var
   interp = newInterp()
   keymap: Table[string, Value]
   prefixKeys = toHashSet(["C-x", "M-g"])
+  agentProcess: Process
+  agentJob: Handle
+  agentDir: string
+  agentCancelled = false
+  reviewState: Review
+  reviewBuf: Buffer
+  reviewColors: seq[int8]
+  currentHunk, savedTop, savedLeft: int
 echo = startupMessage
 
 proc ctrl(): bool = window.buttonDown[KeyLeftControl] or window.buttonDown[KeyRightControl]
@@ -130,7 +144,145 @@ proc beginMini(kind, label: string, initial = "") =
   echo = ""
   prefix = ""
 
+proc reviewMessage(): string =
+  "Review hunk " & $(currentHunk + 1) & "/" & $reviewState.hunks.len &
+    "  y:accept k:skip a:all q:done"
+
+proc rebuildReview() =
+  let display = reviewState.view(currentHunk)
+  reviewBuf = newBuffer(display.text)
+  reviewBuf.path = b.path
+  reviewColors = display.colors
+  reviewBuf.cursor = (min(display.starts[currentHunk], reviewBuf.lines.high), 0)
+  renderer.top = reviewBuf.cursor.line
+  renderer.left = 0
+  echo = reviewMessage()
+
+proc beginReview(proposed: string) =
+  reviewState = newReview(b.text, proposed)
+  if reviewState.hunks.len == 0:
+    echo = "Agent: no changes"
+    return
+  b.finish()
+  savedTop = renderer.top
+  savedLeft = renderer.left
+  currentHunk = 0
+  mode = "review"
+  prefix = ""
+  matchStart = -1
+  window.closeIme()
+  rebuildReview()
+
+proc finishReview(cancel = false) =
+  if cancel: echo = "Review cancelled"
+  else:
+    let text = reviewState.appliedText()
+    var count = 0
+    for decision in reviewState.decisions:
+      if decision == accepted: inc count
+    if text != b.text:
+      let point = b.offset(b.cursor)
+      b.snapshot()
+      b.splice(0, b.text.runeLen, text)
+      b.cursor = b.point(point)
+      b.finish()
+    echo = "Applied " & $count & " of " & $reviewState.hunks.len & " hunks"
+  mode = ""
+  reviewBuf = nil
+  reviewColors = @[]
+  reviewState = Review()
+  renderer.top = savedTop
+  renderer.left = savedLeft
+
+proc cleanAgentFiles() =
+  if agentDir.len == 0: return
+  try:
+    for name in ["prompt.txt", "out.txt", "err.txt"]:
+      let path = agentDir / name
+      if fileExists(path): removeFile(path)
+    removeDir(agentDir)
+  except OSError as e: echo = "Agent cleanup: " & e.msg
+  agentDir = ""
+
+proc startAgent(instruction: string) =
+  if agentProcess != nil: raise newException(ValueError, "Agent already running")
+  let command = interp.env.values["agent-command"].asString
+  if strutils.strip(command).len == 0: raise newException(ValueError, "agent-command is empty")
+  agentDir = createTempDir("darger-agent-", "")
+  try:
+    agentJob = createJobObject(nil, nil)
+    if agentJob == 0: raiseOSError(osLastError())
+    # ponytail: full-file round trips are unsuitable for huge files; add region-only input if needed.
+    writeFile(agentDir / "prompt.txt",
+      "You are editing a text file. Apply the instruction to the file and output ONLY the complete new file content. No explanations, no code fences.\n" &
+      "File path: " & (if b.path.len > 0: b.path else: "(unnamed)") & "\n" &
+      "Instruction: " & instruction & "\n--- FILE START ---\n" & b.text & "\n--- FILE END ---\n")
+    let redirected = command & " < \"" & agentDir / "prompt.txt" & "\" > \"" &
+      agentDir / "out.txt" & "\" 2> \"" & agentDir / "err.txt" & "\""
+    # Gate the CLI until cmd.exe belongs to the job, so no child escapes cancellation.
+    agentProcess = startProcess("cmd /d /s /c \"set /p dargerAgentReady= >nul & " & redirected & "\"",
+      options = {poEvalCommand, poUsePath, poDaemon})
+    let handle = openProcess(PROCESS_SET_QUOTA or PROCESS_TERMINATE, 0, DWORD(agentProcess.processID))
+    if handle == 0: raiseOSError(osLastError())
+    let assigned = assignProcessToJobObject(agentJob, handle)
+    let error = osLastError()
+    discard closeHandle(handle)
+    if assigned == 0: raiseOSError(error)
+    agentProcess.inputStream.writeLine("ready")
+    agentProcess.inputStream.flush()
+    agentCancelled = false
+    echo = "Agent running..."
+  except CatchableError:
+    if agentProcess != nil:
+      agentProcess.kill()
+      agentProcess.close()
+      agentProcess = nil
+    if agentJob != 0:
+      discard terminateJobObject(agentJob, 1)
+      discard closeHandle(agentJob)
+      agentJob = 0
+    cleanAgentFiles()
+    raise
+
+proc cancelAgent() =
+  if agentProcess == nil or agentCancelled: return
+  # Killing only cmd.exe leaves the CLI running; stop its job's descendants too.
+  if terminateJobObject(agentJob, 1) == 0: raiseOSError(osLastError())
+  agentCancelled = true
+  echo = "Agent cancelling..."
+
+proc cleanAgentOutput(text: string): string =
+  result = text.replace("\r\n", "\n")
+  let tail = strutils.strip(result, leading = false)
+  if tail.endsWith("```") and (tail.len == 3 or tail[^4] == '\n'):
+    result = tail[0..<tail.len - 3]
+    if result.startsWith("```"):
+      let newline = result.find('\n')
+      if newline >= 0: result = result[newline + 1..^1]
+
+proc pollAgent(): bool =
+  if agentProcess == nil: return false
+  let code = agentProcess.peekExitCode()
+  if code == -1: return false
+  result = true
+  agentProcess.close()
+  agentProcess = nil
+  discard closeHandle(agentJob)
+  agentJob = 0
+  try:
+    if agentCancelled: echo = "Agent cancelled"
+    elif code != 0:
+      let errors = readFile(agentDir / "err.txt").splitLines()
+      echo = if errors.len > 0 and errors[0].len > 0: errors[0] else: "Agent exited with code " & $code
+    else:
+      let text = cleanAgentOutput(readFile(agentDir / "out.txt"))
+      if validateUtf8(text) != -1: raise newException(ValueError, "Agent output is not valid UTF-8")
+      beginReview(text)
+  except CatchableError as e: echo = e.msg
+  finally: cleanAgentFiles()
+
 proc quitEditor() =
+  if mode == "review": finishReview(true)
   if b.modified: beginMini("exit", "Modified buffers exist; exit anyway? (y or n) ")
   else: running = false
 
@@ -179,6 +331,14 @@ interp.defPrimitive("message", proc(args: seq[Value]): Value =
 interp.defPrimitive("command", proc(args: seq[Value]): Value =
   args.arity(1, 1)
   runCommand(args[0].asString))
+interp.defPrimitive("agent", proc(args: seq[Value]): Value =
+  args.arity(1, 1)
+  startAgent(args[0].asString)
+  nilValue())
+interp.defPrimitive("agent-prompt", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  beginMini("agent", "Agent: ")
+  nilValue())
 discard interp.evalString(defaultBindings, "<default-bindings>")
 let initPath = getHomeDir() / ".darger.el"
 if fileExists(initPath):
@@ -190,6 +350,7 @@ proc confirmMini() =
   let kind = mode
   if kind == "search" and value.len > 0: lastSearch = value
   case kind
+  of "agent": startAgent(value)
   of "eval", "execute":
     try:
       if kind == "eval": echo = $interp.evalString(value, "<minibuffer>")
@@ -295,12 +456,36 @@ proc applySkk(res: SkkResult): bool =
 
 proc dispatch(c: string) =
   if c == "C-g":
+    if agentProcess != nil: cancelAgent()
+    if mode == "review":
+      finishReview(true)
+      return
     if mode == "search": b.cursor = isearch.origin
     mode = ""
     prefix = ""
     matchStart = -1
-    echo = ""
+    echo = if agentCancelled and agentProcess != nil: "Agent cancelling..." else: ""
     discard b.command("quit")
+    return
+  if mode == "review":
+    case c
+    of "n": currentHunk = min(currentHunk + 1, reviewState.hunks.high)
+    of "p": currentHunk = max(currentHunk - 1, 0)
+    of "y", "k":
+      reviewState.decisions[currentHunk] = if c == "y": accepted else: rejected
+      currentHunk = min(currentHunk + 1, reviewState.hunks.high)
+    of "a":
+      for decision in reviewState.decisions.mitems:
+        if decision == pending: decision = accepted
+      finishReview()
+      return
+    of "enter", "C-m", "C-j", "q":
+      finishReview()
+      return
+    else:
+      echo = c & " is undefined"
+      return
+    rebuildReview()
     return
   if mode == "search":
     if c in ["C-s", "C-r"]:
@@ -399,6 +584,9 @@ window.onButtonPress = proc(key: Button) =
   try:
     let c = chord(key)
     if c.len == 0 or c == "insert": return
+    if c == "C-g" and agentProcess != nil:
+      dispatch(c)
+      return
     if prefix.len == 0 and c in ["enter", "backspace", "tab", "C-j", "C-g"] and skkOn():
       let key = case c
         of "enter": skEnter
@@ -428,6 +616,9 @@ window.onRune = proc(rune: Rune) =
   if scalar > 0x10FFFF: return
   echo = ""
   try:
+    if mode == "review":
+      dispatch($Rune(scalar))
+      return
     if prefix.len > 0:
       dispatch($Rune(scalar))
       return
@@ -443,6 +634,9 @@ window.onRune = proc(rune: Rune) =
 
 window.onImeChange = proc() =
   dirty = true
+  if mode == "review":
+    if window.imeCompositionString.len > 0: window.closeIme()
+    return
   if window.imeCompositionString.len > 0:
     prefix = ""
     suppressRune = false
@@ -453,21 +647,30 @@ window.onCloseRequest = proc() = quitEditor()
 
 proc redraw() =
   if not running or window.closed or window.minimized or window.size.x == 0 or window.size.y == 0: return
-  renderer.resize(window, b)
+  let displayed = if mode == "review": reviewBuf else: b
+  renderer.resize(window, displayed)
   let skkShown = skkOn()
   # The candidate page lives in echo; a command that cleared echo brings it back.
-  let message = if echo.len == 0 and skkShown: inputMethod.page() else: echo
+  let message = if agentProcess != nil:
+      (if agentCancelled: "Agent cancelling..." else: "Agent running...")
+    elif mode == "review": reviewMessage() & (if echo != reviewMessage(): "  " & echo else: "")
+    elif echo.len == 0 and skkShown: inputMethod.page() else: echo
   let miniText = prompt & mini.text & (if message.len > 0: "  [" & message & "]" else: "")
-  renderer.draw(window, b, message, miniText,
-    if mode.len > 0: prompt.runeLen + mini.cursor.col else: -1,
+  renderer.draw(window, displayed, message, miniText,
+    if mode.len > 0 and mode != "review": prompt.runeLen + mini.cursor.col else: -1,
     if mode == "search": matchStart else: -1,
     if mode == "search": mini.text.runeLen else: 0,
-    if skkShown: inputMethod.preedit() else: "", inputMethod.tag())
+    if skkShown: inputMethod.preedit() else: "",
+    if mode == "review": "[Review]" else: inputMethod.tag(), reviewColors)
 
 window.onResize = redraw
 var lastDraw = 0.0
 while running and not window.closed:
   pollEvents()
+  try:
+    if pollAgent(): dirty = true
+  except CatchableError as e:
+    echo = e.msg
   # ponytail: redraw after input or every 250 ms; an unconditional per-frame redraw kept ~2 cores busy while idle
   if dirty or epochTime() - lastDraw > 0.25:
     redraw()
@@ -475,4 +678,10 @@ while running and not window.closed:
     lastDraw = epochTime()
   else:
     sleep(8)
+if agentProcess != nil:
+  cancelAgent()
+  discard agentProcess.waitForExit()
+  agentProcess.close()
+  discard closeHandle(agentJob)
+  cleanAgentFiles()
 window.close()

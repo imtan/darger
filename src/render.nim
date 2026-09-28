@@ -17,6 +17,8 @@ let
   regionColor = parseHtmlColor("#45475a").color
   modeColor = parseHtmlColor("#313244").color
   searchColor = parseHtmlColor("#f9e2af").color
+  reviewColors = [bg, parseHtmlColor("#512e3a").color, parseHtmlColor("#294638").color,
+    parseHtmlColor("#784452").color, parseHtmlColor("#3e6950").color]
 
 proc newRenderer*(): Renderer =
   result = Renderer()
@@ -173,7 +175,7 @@ proc status(r: Renderer, window: Window, text: string, row: int, cursor = -1,
 
 proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
            miniCursor = -1, matchStart = -1, matchLen = 0,
-           inputSegment = "", modeTag = "") =
+           inputSegment = "", modeTag = "", lineColors: seq[int8] = @[]) =
   let cursorCell = b.cellCol(b.cursor)
   let nativeIme = window.imeCompositionString.len > 0
   let composition = (if nativeIme: window.imeCompositionString else: inputSegment).toRunes
@@ -194,6 +196,8 @@ proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
   var offset = b.offset((min(r.top, b.lines.high), 0))
   for line in r.top..<min(b.lines.len, r.top + r.rows):
     let row = line - r.top
+    if line < lineColors.len and lineColors[line] in 1'i8..4'i8:
+      r.fill(0, row, r.cols + 1, reviewColors[lineColors[line]])
     let cursor = if miniCursor < 0 and line == b.cursor.line: b.cursor.col else: -1
     r.drawLine(b.lines[line], row, r.left, cursor,
       if b.regionActive: selection.a-offset else: -1,
