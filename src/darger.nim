@@ -1,6 +1,6 @@
 import std/[os, osproc, tempfiles, strutils, times, unicode, tables, sets]
 import windy, vmath
-import buffer, render, skk, lisp, review
+import buffer, render, skk, lisp, review, manual
 
 const
   bufferCommands = ["forward", "backward", "next-line", "previous-line", "bol", "eol",
@@ -8,6 +8,8 @@ const
     "delete", "backspace", "kill-line", "kill-word", "backward-kill-word", "mark", "exchange",
     "whole", "kill-region", "copy-region", "yank", "yank-pop", "undo", "transpose",
     "upcase", "downcase", "capitalize", "quit"]
+  helpNavigation = ["forward", "backward", "next-line", "previous-line", "bol", "eol", "bob", "eob"]
+  helpMessage = "Help  q:close  F1:toggle"
   defaultBindings = """
 (global-set-key "C-f" 'forward)
 (global-set-key "right" 'forward)
@@ -57,6 +59,7 @@ const
 (global-set-key "C-_" 'undo)
 (global-set-key "C-x u" 'undo)
 (global-set-key "C-c a" 'agent-prompt)
+(global-set-key "f1" 'help)
 (setq agent-command "claude -p --output-format text")
 """
 
@@ -123,6 +126,8 @@ var
   reviewBuf: Buffer
   reviewColors: seq[int8]
   currentHunk, savedTop, savedLeft: int
+  helpBuf: Buffer
+  helpTop, helpLeft: int
 when defined(windows):
   var agentJob: Handle
 else:
@@ -170,6 +175,30 @@ proc beginMini(kind, label: string, initial = "") =
   echo = ""
   prefix = ""
 
+proc inMini(): bool =
+  ## A minibuffer prompt (search, find, y/n, ...) is active; review and help are overlays.
+  mode.len > 0 and mode notin ["review", "help"]
+
+proc beginHelp() =
+  b.finish()
+  helpTop = renderer.top
+  helpLeft = renderer.left
+  mode = "help"
+  prefix = ""
+  matchStart = -1
+  window.closeIme()
+  helpBuf = newBuffer(manualText)
+  helpBuf.path = "*Help*"
+  renderer.top = 0
+  renderer.left = 0
+
+proc finishHelp() =
+  renderer.top = helpTop
+  renderer.left = helpLeft
+  mode = ""
+  helpBuf = nil
+  echo = ""
+
 proc reviewMessage(): string =
   "Review hunk " & $(currentHunk + 1) & "/" & $reviewState.hunks.len &
     "  y:accept k:skip a:all q:done"
@@ -189,6 +218,7 @@ proc beginReview(proposed: string) =
   if reviewState.hunks.len == 0:
     echo = "Agent: no changes"
     return
+  if mode == "help": finishHelp()  # the agent finished while the manual was open
   b.finish()
   savedTop = renderer.top
   savedLeft = renderer.left
@@ -332,6 +362,7 @@ proc pollAgent(): bool =
 
 proc quitEditor() =
   if mode == "review": finishReview(true)
+  if mode == "help": finishHelp()
   if b.modified: beginMini("exit", "Modified buffers exist; exit anyway? (y or n) ")
   else: running = false
 
@@ -387,6 +418,12 @@ interp.defPrimitive("agent", proc(args: seq[Value]): Value =
 interp.defPrimitive("agent-prompt", proc(args: seq[Value]): Value =
   args.arity(0, 0)
   beginMini("agent", "Agent: ")
+  nilValue())
+interp.defPrimitive("help", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  if mode == "help": finishHelp()
+  elif mode in ["", "eval", "execute"]: beginHelp()  # M-x help / M-: (help) reach here from their prompt
+  else: echo = "help is unavailable here"
   nilValue())
 discard interp.evalString(defaultBindings, "<default-bindings>")
 let initPath = getHomeDir() / ".darger.el"
@@ -455,6 +492,7 @@ proc confirmMini() =
       echo = "Please answer y or n"
       return
   else: discard
+  if mode != kind: return  # the command opened help or another prompt
   mode = ""
   matchStart = -1
   b.finish()
@@ -484,7 +522,7 @@ proc editMini(c: string): bool =
   if mode == "search": search()
   true
 
-proc target(): Buffer = (if mode.len > 0: mini else: b)
+proc target(): Buffer = (if inMini(): mini else: b)
 
 proc skkOn(): bool =
   # ponytail: one SKK state serves the buffer and the text minibuffers; y/n and goto prompts bypass it.
@@ -506,7 +544,55 @@ proc applySkk(res: SkkResult): bool =
   recenterCycle = 0
   res.consumed
 
+proc page(buf: Buffer, full: string) =
+  let direction = if full in ["C-v", "pagedown"]: 1 else: -1
+  if direction > 0 and renderer.top + renderer.rows > buf.lines.high:
+    echo = "End of buffer"
+    return
+  if direction < 0 and renderer.top == 0:
+    echo = "Beginning of buffer"
+    return
+  let delta = direction * max(1, renderer.rows-2)
+  buf.vertical(delta)
+  renderer.top = clamp(renderer.top + delta, 0, max(0, buf.lines.len-renderer.rows))
+
+proc recenter(buf: Buffer) =
+  let row = case recenterCycle
+    of 0: renderer.rows div 2
+    of 1: 0
+    else: renderer.rows - 1
+  renderer.top = max(0, buf.cursor.line - row)
+  recenterCycle = (recenterCycle + 1) mod 3
+
+proc dispatchHelp(c: string) =
+  ## Help mode only moves helpBuf; the edited buffer b is never touched.
+  let full = if prefix.len > 0: prefix & " " & c else: c
+  prefix = ""
+  if full in ["q", "C-g", "enter", "C-m", "C-j", "f1", "escape"]:
+    finishHelp()
+    return
+  if full == "C-x C-c":
+    quitEditor()
+    return
+  if full in prefixKeys:
+    prefix = full
+    echo = full & "-"
+    return
+  if full != "C-l": recenterCycle = 0
+  let fn = keymap.getOrDefault(full)
+  if fn != nil and fn.kind == vSymbol and fn.str == "help":
+    finishHelp()
+  elif fn != nil and fn.kind == vSymbol and fn.str in helpNavigation:
+    let message = helpBuf.command(fn.str)
+    if message.len > 0: echo = message
+  elif full in ["C-v", "pagedown", "M-v", "pageup"]: page(helpBuf, full)
+  elif full == "C-l": recenter(helpBuf)
+  else: echo = "q: close help"
+
 proc dispatch(c: string) =
+  if mode == "help":
+    dispatchHelp(c)  # C-g only closes the manual; a running agent keeps running
+    return
   if c == "C-g":
     if agentProcess != nil: cancelAgent()
     if mode == "review":
@@ -552,7 +638,7 @@ proc dispatch(c: string) =
       return
     confirmMini()
     if c in ["enter", "C-m", "C-j"]: return
-  if mode.len > 0:
+  if inMini():
     if c in ["enter", "C-m", "C-j"]: confirmMini()
     elif not editMini(c): echo = c & " is undefined"
     return
@@ -579,24 +665,8 @@ proc dispatch(c: string) =
     let message = if inputMethod.loaded: "" else: inputMethod.loadDefaults()
     discard applySkk(inputMethod.toggle())
     if message.len > 0: echo = message
-  of "C-v", "pagedown", "M-v", "pageup":
-    let direction = if full in ["C-v", "pagedown"]: 1 else: -1
-    if direction > 0 and renderer.top + renderer.rows > b.lines.high:
-      echo = "End of buffer"
-      return
-    if direction < 0 and renderer.top == 0:
-      echo = "Beginning of buffer"
-      return
-    let delta = direction * max(1, renderer.rows-2)
-    b.vertical(delta)
-    renderer.top = clamp(renderer.top + delta, 0, max(0, b.lines.len-renderer.rows))
-  of "C-l":
-    let row = case recenterCycle
-      of 0: renderer.rows div 2
-      of 1: 0
-      else: renderer.rows - 1
-    renderer.top = max(0, b.cursor.line - row)
-    recenterCycle = (recenterCycle + 1) mod 3
+  of "C-v", "pagedown", "M-v", "pageup": page(b, full)
+  of "C-l": recenter(b)
   of "M-g g", "M-g M-g": beginMini("goto", "Goto line: ")
   of "C-x C-s":
     if b.path.len == 0: beginMini("write", "Write file: ", getCurrentDir() & DirSep)
@@ -620,7 +690,8 @@ window.onButtonPress = proc(key: Button) =
   if key in {KeyLeftControl, KeyRightControl, KeyLeftAlt, KeyRightAlt,
              KeyLeftShift, KeyRightShift, KeyLeftSuper, KeyRightSuper,
              KeyCapsLock, KeyNumLock, KeyScrollLock, KeyPause, KeyMenu, KeyPrintScreen,
-             KeyInsert, KeyEscape} or key < Key0: return
+             KeyInsert} or key < Key0: return
+  if key == KeyEscape and mode != "help": return  # Escape only closes the manual
   if window.imeCompositionString.len > 0:
     if key == KeyG and ctrl():
       window.closeIme()
@@ -668,7 +739,7 @@ window.onRune = proc(rune: Rune) =
   if scalar > 0x10FFFF: return
   echo = ""
   try:
-    if mode == "review":
+    if mode in ["review", "help"]:
       dispatch($Rune(scalar))
       return
     if prefix.len > 0:
@@ -676,7 +747,7 @@ window.onRune = proc(rune: Rune) =
       return
     if skkOn() and applySkk(if scalar == 32: inputMethod.feed(skSpace)
                            else: inputMethod.feed(Rune(scalar), following())): return
-    if mode.len > 0:
+    if inMini():
       mini.insert($Rune(scalar), true)
       if mode == "search": search()
     else:
@@ -686,7 +757,7 @@ window.onRune = proc(rune: Rune) =
 
 window.onImeChange = proc() =
   dirty = true
-  if mode == "review":
+  if mode in ["review", "help"]:
     if window.imeCompositionString.len > 0: window.closeIme()
     return
   if window.imeCompositionString.len > 0:
@@ -699,23 +770,25 @@ window.onCloseRequest = proc() = quitEditor()
 
 proc redraw() =
   if not running or window.closed or window.minimized or window.size.x == 0 or window.size.y == 0: return
-  let displayed = if mode == "review": reviewBuf else: b
+  let displayed = if mode == "review": reviewBuf elif mode == "help": helpBuf else: b
   renderer.resize(window, displayed)
   let skkShown = skkOn()
   # The candidate page lives in echo; a command that cleared echo brings it back.
   let message = if agentProcess != nil:
       (if agentCancelled: "Agent cancelling..." else: "Agent running...")
     elif mode == "review": reviewMessage() & (if echo != reviewMessage(): "  " & echo else: "")
+    elif mode == "help": helpMessage & (if echo.len > 0 and echo != helpMessage: "  " & echo else: "")
     elif echo.len == 0 and skkShown: inputMethod.page() else: echo
   let miniText = prompt & mini.text & (if message.len > 0: "  [" & message & "]" else: "")
   renderer.draw(window, displayed, message, miniText,
-    if mode.len > 0 and mode != "review": prompt.runeLen + mini.cursor.col else: -1,
+    if inMini(): prompt.runeLen + mini.cursor.col else: -1,
     if mode == "search": matchStart else: -1,
     if mode == "search": mini.text.runeLen else: 0,
     if skkShown: inputMethod.preedit() else: "",
-    if mode == "review": "[Review]" else: inputMethod.tag(), reviewColors)
+    if mode == "review": "[Review]" elif mode == "help": "[Help]" else: inputMethod.tag(), reviewColors)
 
 window.onResize = redraw
+if paramCount() == 0: beginHelp()  # first screen: the manual over an empty *scratch*
 var lastDraw = 0.0
 while running and not window.closed:
   pollEvents()
