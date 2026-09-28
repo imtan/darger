@@ -797,13 +797,15 @@ proc redraw() =
     elif mode == "review": reviewMessage() & (if echo != reviewMessage(): "  " & echo else: "")
     elif mode == "help": helpMessage & (if echo.len > 0 and echo != helpMessage: "  " & echo else: "")
     elif echo.len == 0 and skkShown: inputMethod.page() else: echo
-  let miniText = prompt & mini.text & (if message.len > 0: "  [" & message & "]" else: "")
-  renderer.draw(window, displayed, message, miniText,
-    if inMini(): prompt.runeLen + mini.cursor.col else: -1,
+  # Prompts float in a popup; isearch stays on the bottom line so its match is visible.
+  let popup = inMini() and mode != "search"
+  renderer.draw(window, displayed, message, mini.text,
+    if inMini(): mini.cursor.col else: -1,
     if mode == "search": matchStart else: -1,
     if mode == "search": mini.text.runeLen else: 0,
     if skkShown: inputMethod.preedit() else: "",
-    if mode == "review": "[Review]" elif mode == "help": "[Help]" else: inputMethod.tag(), reviewColors)
+    if mode == "review": "[Review]" elif mode == "help": "[Help]" else: inputMethod.tag(), reviewColors,
+    prompt, popup)
 
 window.onResize = redraw
 if paramCount() == 0: beginHelp()  # first screen: the manual over an empty *scratch*

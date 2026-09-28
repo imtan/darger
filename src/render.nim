@@ -19,6 +19,8 @@ let
   regionColor = parseHtmlColor("#45475a").color
   modeColor = parseHtmlColor("#313244").color
   searchColor = parseHtmlColor("#f9e2af").color
+  borderColor = parseHtmlColor("#585b70").color
+  labelColor = parseHtmlColor("#a6adc8").color
   reviewColors = [bg, parseHtmlColor("#512e3a").color, parseHtmlColor("#294638").color,
     parseHtmlColor("#784452").color, parseHtmlColor("#3e6950").color]
 
@@ -204,7 +206,9 @@ proc displayLine(line, composition: seq[Rune], cursor: int): seq[Rune] =
 
 proc drawLine(r: Renderer, line: seq[Rune], row, scroll: int, cursor = -1,
               selectionStart = -1, selectionEnd = -1, matchStart = -1, matchEnd = -1,
-              composition: seq[Rune] = @[], imeCursor = 0) =
+              composition: seq[Rune] = @[], imeCursor = 0,
+              x0 = 0, width = -1, tint = fg) =
+  let visible = if width < 0: r.cols else: width
   let rs = displayLine(line, composition, cursor)
   let caret = if composition.len > 0 and cursor >= 0: cursor + imeCursor else: cursor
   let span = if caret >= 0: cursorSpan(rs, caret) else: (-1, 0)
@@ -221,28 +225,50 @@ proc drawLine(r: Renderer, line: seq[Rune], row, scroll: int, cursor = -1,
       let selected = not composing and original >= selectionStart and original < selectionEnd
       let matched = not composing and original >= matchStart and original < matchEnd
       let underCursor = caret >= 0 and at < span.cell + span.width and at + size > span.cell
-      if at + size > scroll and at < scroll + r.cols:
+      # The popup has a frame, so wide runes cut by its edges are skipped.
+      let shown = if width < 0: at + size > scroll and at < scroll + visible
+        else: at >= scroll and at + size <= scroll + visible
+      if shown:
         if pass == 0:
-          if selected or composing: r.fill(at-scroll, row, size, regionColor)
-          if matched: r.fill(at-scroll, row, size, searchColor)
+          if selected or composing: r.fill(x0+at-scroll, row, size, regionColor)
+          if matched: r.fill(x0+at-scroll, row, size, searchColor)
         else:
-          r.glyph(rune, (at-scroll)*r.cellW, row*r.cellH, if matched or underCursor: bg else: fg)
+          r.glyph(rune, (x0+at-scroll)*r.cellW, row*r.cellH, if matched or underCursor: bg else: tint)
       cell += width
-    if pass == 0 and caret >= 0: r.fill(span.cell-scroll, row, span.width, cursorColor)
+    if pass == 0 and caret >= 0: r.fill(x0+span.cell-scroll, row, span.width, cursorColor)
 
 proc status(r: Renderer, window: Window, text: string, row: int, cursor = -1,
-            composition: seq[Rune] = @[], imeCursor = 0) =
+            composition: seq[Rune] = @[], imeCursor = 0, x0 = 0, width = -1) =
+  let visible = if width < 0: r.cols else: width
   var scroll = 0
   if cursor >= 0:
     let span = cursorSpan(displayLine(text.toRunes, composition, cursor), cursor + imeCursor)
-    scroll = max(0, span.cell + span.width - r.cols)
+    scroll = max(0, span.cell + span.width - visible)
     when defined(windows) or defined(macosx):
-      window.imePos = ivec2(((span.cell-scroll)*r.cellW).int32, ((row+1)*r.cellH).int32)
-  r.drawLine(text.toRunes, row, scroll, cursor, composition = composition, imeCursor = imeCursor)
+      window.imePos = ivec2(((x0+span.cell-scroll)*r.cellW).int32, ((row+1)*r.cellH).int32)
+  r.drawLine(text.toRunes, row, scroll, cursor, composition = composition, imeCursor = imeCursor,
+    x0 = x0, width = width)
+
+proc popupBox(r: Renderer, window: Window, label: seq[Rune], text: string, cursor: int,
+              composition: seq[Rune], imeCursor: int) =
+  # Floating minibuffer: label row at y0, input row below, in a borderColor frame
+  # covering whole rows y0-1 .. y0+2.
+  let w = min(max(clamp(r.cols - 6, 24, 80), cellCol(label, label.len)), r.cols - 2)
+  let x0 = (r.cols - w) div 2
+  let y0 = 2
+  let fx = ((x0 - 1) * r.cellW).float32
+  let fy = ((y0 - 1) * r.cellH).float32
+  let fw = ((w + 2) * r.cellW).float32
+  let fh = (4 * r.cellH).float32
+  r.gpu.drawRect(rect(fx - 2, fy - 2, fw + 4, fh + 4), borderColor)
+  r.gpu.drawRect(rect(fx, fy, fw, fh), modeColor)
+  r.drawLine(label, y0, 0, x0 = x0, width = w, tint = labelColor)
+  r.status(window, text, y0 + 1, cursor, composition, imeCursor, x0 = x0, width = w)
 
 proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
            miniCursor = -1, matchStart = -1, matchLen = 0,
-           inputSegment = "", modeTag = "", lineColors: seq[int8] = @[]) =
+           inputSegment = "", modeTag = "", lineColors: seq[int8] = @[],
+           prompt = "", popup = false) =
   let cursorCell = b.cellCol(b.cursor)
   let nativeIme = window.imeCompositionString.len > 0
   let composition = (if nativeIme: window.imeCompositionString else: inputSegment).toRunes
@@ -278,8 +304,19 @@ proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
   let name = if b.path.len == 0: "*scratch*" else: extractFilename(b.path)
   r.status(window, " -" & (if b.modified: "**" else: "--") & "- " & name &
     "   L" & $(b.cursor.line+1) & " C" & $cursorCell & "  (Text) " & modeTag, r.rows)
-  r.status(window, if miniCursor >= 0: mini else: echo, r.rows+1, miniCursor,
-    if miniCursor >= 0: composition else: @[], if miniCursor >= 0: imeCursor else: 0)
+  let miniComp = if miniCursor >= 0: composition else: @[]
+  let miniIme = if miniCursor >= 0: imeCursor else: 0
+  let label = prompt.strip(leading = false).toRunes
+  if popup and miniCursor >= 0 and r.rows >= 6 and r.cols >= 10 and
+      cellCol(label, label.len) <= r.cols - 2:
+    r.status(window, echo, r.rows+1)
+    r.popupBox(window, label, mini, miniCursor, miniComp, miniIme)
+  elif miniCursor >= 0:
+    # Isearch, or a window too small for the popup: the bottom-line minibuffer.
+    r.status(window, prompt & mini & (if echo.len > 0: "  [" & echo & "]" else: ""), r.rows+1,
+      prompt.runeLen + miniCursor, miniComp, miniIme)
+  else:
+    r.status(window, echo, r.rows+1)
   r.gpu.endFrame()
   window.swapBuffers()
   let title = "darger — " & name
