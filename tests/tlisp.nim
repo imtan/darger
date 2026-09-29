@@ -92,4 +92,10 @@ block primitives:
   writeFile(path, "(setq loaded 42)\nloaded")
   doAssert $i.evalFile(path) == "42"
 
+block names:
+  let j = newInterp()
+  j.defPrimitive("zap", proc(args: seq[Value]): Value = nilValue())
+  discard j.evalString("(defun hello () 1) (defun twice (x) x) (setq n 3)", "names.el")
+  doAssert j.names == @["hello", "zap"], $j.names
+
 echo "lisp tests passed"

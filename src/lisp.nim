@@ -1,4 +1,4 @@
-import std/[tables, strutils, unicode, math]
+import std/[tables, strutils, unicode, math, algorithm]
 
 type
   ValueKind* = enum
@@ -352,10 +352,19 @@ proc builtin(name: string, args: seq[Value]): Value =
     stringValue($args[0])
   else: fail("Unknown primitive: " & name)
 
+const builtins = ["+", "-", "*", "/", "=", "<", ">", "<=", ">=", "not", "eq", "equal",
+  "list", "car", "cdr", "cons", "length", "nth", "concat", "string=", "number-to-string", "message"]
+
 proc newInterp*(): Interp =
   result = Interp(env: Env())
   proc register(i: Interp, name: string) =
     i.defPrimitive(name, proc(args: seq[Value]): Value = builtin(name, args))
-  for name in ["+", "-", "*", "/", "=", "<", ">", "<=", ">=", "not", "eq", "equal",
-      "list", "car", "cdr", "cons", "length", "nth", "concat", "string=", "number-to-string", "message"]:
-    register(result, name)
+  for name in builtins: register(result, name)
+
+proc names*(i: Interp): seq[string] =
+  ## Sorted global names that M-x could call: primitives other than the core
+  ## builtins, and lambdas (defuns) without parameters.
+  for name, v in i.env.values:
+    if (v.kind == vPrimitive and name notin builtins) or (v.kind == vLambda and v.params.len == 0):
+      result.add name
+  result.sort()
