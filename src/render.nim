@@ -14,6 +14,8 @@ type
     lastTitle: string
     pad, areaW: int
     cellW*, cellH*, rows*, cols*, top*, left*: int
+    candTop: int  # first candidate row shown in the popup
+  Anchor* = enum atTop, atBottom
   Theme* = object
     bg*, fg*, cursor*, region*, modeLine*, modeLineFg*, search*, searchFg*, border*,
       label*, popup*: Color
@@ -304,27 +306,73 @@ proc status(r: Renderer, window: Window, text: string, row: int, cursor = -1,
   r.drawLine(text.toRunes, row, scroll, cursor, composition = composition, imeCursor = imeCursor,
     x0 = x0, width = width, tint = tint)
 
+proc fitCells(s: string, width: int): seq[Rune] =
+  ## s cut to width cells, ending in "…" when cut.
+  result = s.toRunes
+  if cellCol(result, result.len) <= width: return
+  var cells, n = 0
+  while n < result.len and cells + cellWidth(result[n], cells) <= width - 1:
+    cells += cellWidth(result[n], cells)
+    inc n
+  result = result[0..<n] & Rune(0x2026)
+
+proc popupFit(r: Renderer): int =
+  ## Candidate rows the popup has room for, leaving a few text rows visible
+  ## beside it; 0 when not even 2 fit (the bottom-line prompt is used instead).
+  if r.rows >= 6: min(10, max(2, r.rows - 7)) else: 0
+
+proc popupShown*(r: Renderer, candidates: int): int =
+  ## Candidate rows the popup lists.
+  min(candidates, r.popupFit)
+
+proc popupRows*(r: Renderer, candidates: int, anchor: Anchor): tuple[top, bottom: int] =
+  ## Whole rows the popup frame covers: label, input and candidates plus a margin
+  ## row above and below. The top box may cover the mode line, never the echo line.
+  ## The bottom box sits on the last text row and keeps its full height, so the
+  ## preview above it does not shift while the list is filtered.
+  let fit = r.popupFit
+  if fit == 0: return (r.rows, r.rows)
+  if anchor == atBottom: (r.rows - 4 - fit, r.rows - 1)
+  else: (1, 4 + min(candidates, fit))
+
 proc popupBox(r: Renderer, window: Window, label: seq[Rune], text: string, cursor: int,
-              composition: seq[Rune], imeCursor: int) =
-  # Floating minibuffer: label row at y0, input row below, in a theme.border frame
-  # covering whole rows y0-1 .. y0+2.
-  let w = min(max(clamp(r.cols - 6, 24, 80), cellCol(label, label.len)), r.cols - 2)
+              composition: seq[Rune], imeCursor: int, candidates: openArray[string],
+              selected: int, listed: bool, anchor: Anchor) =
+  # Floating minibuffer: label row at y0, input row below, then the candidate
+  # rows, in a theme.border frame covering popupRows.
+  let count = if listed: $(selected + 1) & "/" & $candidates.len else: ""
+  let reserve = if listed: count.len + 2 else: 0
+  let w = min(max(clamp(r.cols - 6, 24, 80), cellCol(label, label.len) + reserve), r.cols - 2)
   let x0 = (r.cols - w) div 2
-  let y0 = 2
+  let box = r.popupRows(candidates.len, anchor)
+  let y0 = box.top + 1
+  let shown = r.popupShown(candidates.len)
   let fx = (r.pad + (x0 - 1) * r.cellW).float32
   let fy = (r.pad + (y0 - 1) * r.cellH).float32
   let fw = ((w + 2) * r.cellW).float32
-  let fh = (4 * r.cellH).float32
+  let fh = ((box.bottom - box.top + 1) * r.cellH).float32
   r.gpu.drawRect(rect(fx - 2, fy - 2, fw + 4, fh + 4), theme.border)
   r.gpu.drawRect(rect(fx, fy, fw, fh), theme.popup)
-  r.drawLine(label, y0, 0, x0 = x0, width = w, tint = theme.label)
+  r.drawLine(label, y0, 0, x0 = x0, width = max(0, w - reserve), tint = theme.label)
+  if listed and count.len <= w:
+    r.drawLine(count.toRunes, y0, 0, x0 = x0 + w - count.len, width = count.len, tint = theme.label)
   r.status(window, text, y0 + 1, cursor, composition, imeCursor, x0 = x0, width = w)
+  if shown == 0: return
+  if selected >= 0:
+    if selected < r.candTop: r.candTop = selected
+    elif selected >= r.candTop + shown: r.candTop = selected - shown + 1
+  r.candTop = clamp(r.candTop, 0, candidates.len - shown)
+  for i in 0..<shown:
+    let n = r.candTop + i
+    if n == selected: r.fill(x0, y0 + 2 + i, w, theme.region)
+    r.drawLine(fitCells(candidates[n], w), y0 + 2 + i, 0, x0 = x0, width = w)
 
 proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
            miniCursor = -1, matchStart = -1, matchLen = 0,
            inputSegment = "", modeTag = "", lineColors: seq[int8] = @[],
            prompt = "", popup = false, faces: openArray[seq[Face]] = [], modeName = "Text",
-           bufName = "") =
+           bufName = "", candidates: openArray[string] = [], selected = -1, listed = false,
+           anchor = atTop) =
   let cursorCell = b.cellCol(b.cursor)
   let nativeIme = window.imeCompositionString.len > 0
   let composition = (if nativeIme: window.imeCompositionString else: inputSegment).toRunes
@@ -365,13 +413,16 @@ proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
   let miniComp = if miniCursor >= 0: composition else: @[]
   let miniIme = if miniCursor >= 0: imeCursor else: 0
   let label = prompt.strip(leading = false).toRunes
-  if popup and miniCursor >= 0 and r.rows >= 6 and r.cols >= 10 and
+  if popup and miniCursor >= 0 and r.popupFit > 0 and r.cols >= 10 and
       cellCol(label, label.len) <= r.cols - 2:
     r.status(window, echo, r.rows+1)
-    r.popupBox(window, label, mini, miniCursor, miniComp, miniIme)
+    r.popupBox(window, label, mini, miniCursor, miniComp, miniIme, candidates, selected, listed,
+      anchor)
   elif miniCursor >= 0:
     # Isearch, or a window too small for the popup: the bottom-line minibuffer.
-    r.status(window, prompt & mini & (if echo.len > 0: "  [" & echo & "]" else: ""), r.rows+1,
+    # Like icomplete, the fallback shows the candidate Enter would accept.
+    let pick = if listed and selected >= 0: "  {" & candidates[selected] & "}" else: ""
+    r.status(window, prompt & mini & pick & (if echo.len > 0: "  [" & echo & "]" else: ""), r.rows+1,
       prompt.runeLen + miniCursor, miniComp, miniIme)
   else:
     r.status(window, echo, r.rows+1)

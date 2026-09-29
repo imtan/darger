@@ -18,6 +18,7 @@ nim r tests/tbuffer.nim
 nim r tests/tfileio.nim   # POSIX save behaviour
 nim r tests/trecent.nim
 nim r tests/tbuffers.nim
+nim r tests/tcomplete.nim
 nim r tests/tsyntax.nim
 ```
 
@@ -126,6 +127,7 @@ fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK
 | Buffer start / end | M-< / M->, C-Home / C-End |
 | Pages / recenter | C-v / M-v, PageDown / PageUp; C-l cycles center/top/bottom |
 | Go to line | M-g g / M-g M-g |
+| Jump to a matching line (consult-line) | M-g l |
 | Insert / delete | Enter / C-m / C-j, Tab / C-i, Backspace / C-h, C-d / Delete |
 | Open line / transpose | C-o / C-t |
 | Kill line / word / backward word | C-k / M-d / M-Backspace |
@@ -149,10 +151,10 @@ then wraps (`Wrapped`). Repeats never overlap the current match; C-s/C-r with an
 empty query reuses the last search. Backspace returns to the previous search state.
 Enter accepts the match, any other command ends the search at the match and runs,
 and C-g restores the original point. Prompts other than incremental search float in
-a popup near the top of the window (on the bottom line when the window is too
-small); messages stay on the bottom line. Minibuffers support insertion, Backspace,
-C-a/C-e/C-f/C-b, C-k, C-y, Enter and C-g; the Find/Write/Agent prompts and
-incremental search also take C-\ or C-x C-j (any key bound to `skk-mode`) to toggle
+a popup near the top of the window (M-g l's at the bottom; on the bottom line when
+the window is too small); messages stay on the bottom line. Minibuffers support insertion, Backspace,
+C-a/C-e/C-f/C-b, C-k, C-y, Enter and C-g; the Find/Write/Agent/buffer/line prompts
+and incremental search also take C-\ or C-x C-j (any key bound to `skk-mode`) to toggle
 SKK. Answer confirmation prompts with `y` or `n`, then Enter. Backspace and Delete
 remove an active region without killing it. Killing/copying updates the clipboard;
 C-y uses the clipboard when the 60-entry kill ring is empty. Undo keeps 200
@@ -186,6 +188,34 @@ parent directory appended (`darger.nim<src>`, `darger.nim<tests>`, deepening to
 the name typed at C-x b. The mode line and window title show this name. C-x C-s
 saves only the current buffer; C-x C-c asks before exiting when any buffer is
 modified. The kill ring is shared: it follows you to the buffer you switch to.
+
+## Completion
+
+The Find file / Write file (C-x C-f, C-x C-w), M-x, C-x b, C-x k and M-g l prompts
+list candidates under the input, vertico-style: up to 10 rows (fewer in a short
+window, so some text stays visible), the selected one highlighted, and `N/M` (selected / matching) at the right of the prompt. Matching is
+orderless-style: the input is split on spaces and every term must occur somewhere
+in the candidate, in any order, ignoring case (Japanese included). Candidates that
+start with the first term come first, otherwise the source order is kept.
+
+- The first candidate is preselected. C-n / C-p (Down / Up) move and wrap around;
+  C-v / M-v (PageDown / PageUp) move by 10.
+- TAB inserts the selected candidate into the input; Enter accepts it. M-Enter
+  accepts the input exactly as typed, e.g. to create `foo` next to an existing
+  `foobar`, or a new buffer whose name is a prefix of another. With no matches,
+  Enter uses the typed input too.
+- Files: the candidates are the entries of the directory typed so far (up to the
+  last `/`, `~` expanded), directories with a trailing `/`, sorted ignoring case;
+  the rest of the input filters them. Dot-files appear once the rest starts with
+  `.`. TAB or Enter on a directory descends into it instead of opening it.
+- M-x lists every command: buffer commands, primitives callable without arguments
+  and parameterless `defun`s from `~/.darger.el`. C-x b lists buffers most recently
+  used first with the default first; C-x k starts with the current buffer.
+- M-g l (`consult-line`) lists every line as `number  text` (text cut at 200
+  characters) and filters on the text. Moving the selection previews that line,
+  centred and highlighted; Enter stays there, C-g returns to where it started.
+  Its list opens at the bottom of the window, above the mode line, so the
+  previewed line stays visible above it.
 
 ## Init file
 
@@ -226,8 +256,8 @@ one undo step).
   SPC / `x` change page. Enter / C-j commits, Backspace or C-g returns to ▽, and any
   other kana key commits and continues.
 - Other Ctrl/Alt chords run their normal commands. SKK stays out of an active Windows
-  IME composition. Find-file, write-file and isearch minibuffers use SKK as well;
-  y/n and goto-line prompts bypass it.
+  IME composition. Find-file, write-file, agent, buffer, consult-line and isearch
+  minibuffers use SKK as well; y/n and goto-line prompts bypass it.
 - The main dictionary is `$env:DARGER_SKK_JISYO`, else the first existing of
   `~/Dropbox/.emacs.d/skk-get-jisyo/SKK-JISYO.L`, `~/.emacs.d/skk-get-jisyo/SKK-JISYO.L`,
   `~/.skk/SKK-JISYO.L` and `/usr/share/skk/SKK-JISYO.L` (EUC-JP when line 1 has a

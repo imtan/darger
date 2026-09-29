@@ -14,6 +14,7 @@ M-< / M->                バッファ先頭 / 末尾（C-Home / C-End）
 C-v / M-v                次 / 前のページ（PageDown / PageUp）
 C-l                      カーソル行を中央 / 上 / 下に再表示
 M-g g / M-g M-g          行番号を指定して移動
+M-g l                    行を絞り込んで移動（C-g で元の位置）
 
 [編集]
 Enter / C-m / C-j        改行
@@ -75,6 +76,10 @@ M-x                      コマンド名を入力して実行
 M-:                      Lisp 式を評価
 ミニバッファ             C-a C-e C-f C-b C-k C-y が使える
                          Enter で確定、C-g で中止
+候補一覧                 空白区切りの語を順不同で絞り込み
+                         C-n / C-p で選択、C-v / M-v で 10 件
+                         Tab で候補を入力に、Enter で選択を確定
+                         M-Enter で入力どおりに確定
 確認プロンプト           y または n のあと Enter
 
 設定ファイル: ~/.darger.el

@@ -1,6 +1,6 @@
 import std/[os, osproc, tempfiles, strutils, times, unicode, tables, sets, math]
 import windy, vmath
-import buffer, buffers, render, skk, lisp, review, manual, recent, syntax
+import buffer, buffers, render, skk, lisp, review, manual, recent, syntax, complete
 
 const
   bufferCommands = ["forward", "backward", "next-line", "previous-line", "bol", "eol",
@@ -13,6 +13,10 @@ const
   dashMessage = "Dashboard  Enter:open  q:scratch  F1:manual"
   blistMessage = "Buffers  Enter:switch  k:kill  q:close"
   overlays = ["review", "help", "dash", "blist"]
+  textPrompts = ["find", "write", "search", "agent", "switch", "kill", "line"]  # SKK works in these
+  candModes = ["find", "write", "execute", "switch", "kill", "line"]  # prompts with a candidate list
+  argCommands = ["global-set-key", "insert", "command", "agent", "find-file", "load-theme",
+    "hydra"]  # primitives M-x cannot call without arguments
   dashLabels = "123456789abc"
   dashFirst = 4  # line of the first recent-file entry
   defaultBindings = """
@@ -73,6 +77,7 @@ const
 (global-set-key "C-x C-b" 'list-buffers)
 (global-set-key "C-x right" 'next-buffer)
 (global-set-key "C-x left" 'previous-buffer)
+(global-set-key "M-g l" 'consult-line)
 (global-set-key "f2 g" 'zoom-in)
 (global-set-key "f2 l" 'zoom-out)
 (global-set-key "f2 0" 'zoom-reset)
@@ -158,6 +163,13 @@ var
   blistBufs: seq[Buffer]
   pendingKill: Buffer  # awaiting y/n: the "killy" prompt or k in the buffer list
   agentBuf: Buffer
+  candAll, cands: seq[string]  # the prompt's candidates, and those matching mini.text
+  candIndex = -1               # the selected one in cands, -1 = none
+  candText: string             # the mini.text cands were computed for
+  candDir: string              # file prompts: the listed directory (and whether dot-files are in)
+  candSkip: int                # consult-line: bytes of the "  12  " line-number column
+  lineOrigin: Point            # consult-line: where C-g returns to
+  lineTop, lineLeft: int
 when defined(windows):
   var agentJob: Handle
 else:
@@ -249,14 +261,85 @@ proc chord(key: Button): string =
   if ctrl(): name = "C-" & name
   name
 
+proc setMini(text: string) =
+  mini = newBuffer(text)
+  mini.cursor = (0, mini.lines[0].len)
+
+proc commandNames(): seq[string] =
+  for name in interp.names:
+    if name notin argCommands: result.add name
+
+proc lineCandidates(): seq[string] =
+  let width = len($b.lines.len)
+  candSkip = width + 2
+  for i, line in b.lines:
+    if i == b.lines.high and line.len == 0: break  # the empty line after a final newline
+    result.add align($(i + 1), width) & "  " & $line[0..<min(line.len, 200)]
+
+proc restoreOrigin() =
+  b.cursor = lineOrigin
+  renderer.top = lineTop
+  renderer.left = lineLeft
+
+proc abandonLine() =
+  ## A consult-line prompt replaced by another mode leaves the preview like C-g does.
+  if mode == "line":
+    restoreOrigin()
+    mode = ""
+
+proc preview() =
+  ## consult-line shows the selected line centred, or the origin when nothing matches.
+  if candIndex < 0:
+    restoreOrigin()
+    return
+  let line = parseInt(strutils.strip(cands[candIndex][0..<candSkip])) - 1
+  b.cursor = (line, 0)
+  # Centred in the rows above the bottom-anchored list, known from r.rows alone.
+  let space = renderer.popupRows(cands.len, atBottom).top
+  renderer.top = max(0, line - (if space >= 1: space div 2 else: renderer.rows div 2))
+  renderer.left = 0
+
+proc refreshCandidates(force = false) =
+  ## Refilters after mini.text changed; like vertico, the first match is preselected.
+  if mode notin candModes:
+    candAll = @[]
+    cands = @[]
+    candIndex = -1
+    return
+  if not force and mini.text == candText: return
+  candText = mini.text
+  var query = mini.text
+  if mode in ["find", "write"]:
+    let (dir, tail) = splitInput(mini.text)
+    let key = dir & (if tail.startsWith("."): "\0." else: "")
+    if force or key != candDir:
+      candDir = key
+      candAll = listDir(dir, tail.startsWith("."))
+    query = tail
+  if mode == "line":
+    cands = @[]
+    for c in candAll:
+      if matches(query, c[candSkip..^1]): cands.add c
+  else: cands = filter(query, candAll)
+  candIndex = if cands.len > 0: 0 else: -1
+  if mode == "line": preview()
+
 proc beginMini(kind, label: string, initial = "") =
   b.finish()
   mode = kind
   prompt = label
-  mini = newBuffer(initial)
-  mini.cursor = (0, mini.lines[0].len)
+  setMini(initial)
   echo = ""
   prefix = ""
+  if kind == "line": (lineOrigin = b.cursor; lineTop = renderer.top; lineLeft = renderer.left)
+  let names = reg.names  # most recently used first: b, then the default of C-x b
+  candAll = case kind
+    of "execute": commandNames()
+    of "switch": names[1..^1] & names[0..0]
+    of "kill": names
+    of "line": lineCandidates()
+    else: @[]
+  refreshCandidates(true)
 
 proc inMini(): bool =
   ## A minibuffer prompt (search, find, y/n, ...) is active; see overlays for the rest.
@@ -514,12 +597,14 @@ proc pollAgent(): bool =
       let text = cleanAgentOutput(readFile(agentDir / "out.txt"))
       if validateUtf8(text) != -1: raise newException(ValueError, "Agent output is not valid UTF-8")
       if agentBuf notin reg: raise newException(ValueError, "Agent: its buffer was killed")
+      abandonLine()
       switchTo(agentBuf)  # review the buffer the instruction was about
       beginReview(text)
   except CatchableError as e: echo = e.msg
   finally: cleanAgentFiles()
 
 proc quitEditor() =
+  abandonLine()
   if mode == "review": finishReview(true)
   closeOverlay()
   if anyModified(): beginMini("exit", "Modified buffers exist; exit anyway? (y or n) ")
@@ -671,6 +756,7 @@ proc confirmMini() =
     let line = parseInt(value)
     if line < 1: raise newException(ValueError, "Line number must be positive")
     b.cursor = (min(line-1, b.lines.high), 0)
+  of "line": discard  # the preview already moved there
   of "exit":
     if value.toLowerAscii == "y": running = false
     elif value.toLowerAscii != "n":
@@ -694,6 +780,9 @@ proc editMini(c: string): bool =
     of "C-y": "yank"
     else: ""
   if cmd.len == 0: return false
+  if cmd == "tab" and mode in candModes:
+    echo = "No match"  # TAB completes here; it never inserts a tab
+    return true
   if cmd == "yank":
     let s = if b.kills.len > 0: b.kills[0] else: getClipboardString()
     mini.insert(s.replace("\r", "").replace("\n", " "))
@@ -704,14 +793,47 @@ proc editMini(c: string): bool =
       b.yankIndex = 0
       if b.kills.len > 60: b.kills.setLen(60)
       setClipboardString(b.kills[0])
-  if mode == "search": search()
+  if mode == "search": search() else: refreshCandidates()
   true
+
+proc candidateValue(): string =
+  ## The input the selected candidate stands for: file names keep the typed directory.
+  if mode notin ["find", "write"]: return cands[candIndex]
+  mini.text[0 ..< mini.text.len - splitInput(mini.text).tail.len] & cands[candIndex]
+
+proc moveCandidate(delta: int, wrap: bool) =
+  if cands.len == 0: return
+  candIndex = if wrap: floorMod(candIndex + delta, cands.len) else: clamp(candIndex + delta, 0, cands.high)
+  if mode == "line": preview()
+
+proc candidateKey(c: string): bool =
+  ## Vertico's keys in a prompt with a candidate list; false leaves c to editMini.
+  result = true
+  case c
+  of "C-n", "down": moveCandidate(1, true)
+  of "C-p", "up": moveCandidate(-1, true)
+  of "C-v", "pagedown": moveCandidate(10, false)
+  of "M-v", "pageup": moveCandidate(-10, false)
+  of "tab", "C-i":
+    if mode == "line": return  # nothing to complete; TAB does nothing
+    if candIndex < 0: return false
+    setMini(candidateValue())  # a directory is listed next, like vertico-insert
+    refreshCandidates()
+  of "enter", "C-m", "C-j":
+    if candIndex >= 0 and mode != "line":
+      let value = candidateValue()
+      setMini(value)
+      if mode in ["find", "write"] and value.endsWith("/"):
+        refreshCandidates()  # vertico-directory-enter: descend instead of opening
+        return
+    confirmMini()
+  else: result = false
 
 proc target(): Buffer = (if inMini(): mini else: b)
 
 proc skkOn(): bool =
   # ponytail: one SKK state serves the buffer and the text minibuffers; y/n and goto prompts bypass it.
-  inputMethod.enabled and mode in ["", "find", "write", "search", "agent", "switch", "kill"] and
+  inputMethod.enabled and (mode == "" or mode in textPrompts) and
     window.imeCompositionString.len == 0
 
 proc following(): Rune =
@@ -724,6 +846,7 @@ proc applySkk(res: SkkResult, t = target()): bool =
   t.insert(res.text, true)
   if res.move != 0: t.cursor = t.point(t.offset(t.cursor) + res.move)
   if mode == "search" and res.text.len > 0: search()
+  elif inMini(): refreshCandidates()
   if res.consumed: echo = res.echo
   recenterCycle = 0
   res.consumed
@@ -901,6 +1024,7 @@ proc dispatch(c: string) =
       finishReview(true)
       return
     if mode == "search": b.cursor = isearch.origin
+    if mode == "line": restoreOrigin()
     mode = ""
     pendingKill = nil
     prefix = ""
@@ -928,7 +1052,7 @@ proc dispatch(c: string) =
       return
     rebuildReview()
     return
-  if mode in ["find", "write", "search", "agent", "switch", "kill"]:
+  if mode in textPrompts:
     # Text prompts take keys bound to skk-mode (C-\, C-x C-j); C-j alone still confirms.
     if prefix.len == 0 and keymap.getOrDefault(c).symName == "skk-mode":
       toggleSkk()
@@ -961,7 +1085,8 @@ proc dispatch(c: string) =
     confirmMini()
     if c in ["enter", "C-m", "C-j"]: return
   if inMini():
-    if c in ["enter", "C-m", "C-j"]: confirmMini()
+    if mode in candModes and candidateKey(c): return
+    if c in ["enter", "C-m", "C-j", "M-enter"]: confirmMini()  # M-enter: the input as typed
     elif not editMini(c): echo = c & " is undefined"
     return
   let full = if prefix.len > 0: prefix & " " & c else: c
@@ -1064,6 +1189,10 @@ for (name, delta) in [("next-buffer", 1), ("previous-buffer", -1)]:
       args.arity(0, 0)
       switchTo(reg.cycle(b, d))
       nilValue())
+interp.defPrimitive("consult-line", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  beginMini("line", "Go to line: ")
+  nilValue())
 interp.defPrimitive("load-theme", proc(args: seq[Value]): Value =
   args.arity(1, 1)
   let name = args[0].asString
@@ -1148,7 +1277,7 @@ window.onRune = proc(rune: Rune) =
                            else: inputMethod.feed(Rune(scalar), following())): return
     if inMini():
       mini.insert($Rune(scalar), true)
-      if mode == "search": search()
+      if mode == "search": search() else: refreshCandidates()
     else:
       recenterCycle = 0
       b.insert($Rune(scalar), true)
@@ -1196,15 +1325,22 @@ proc redraw() =
     shownVersion = b.version
   # Overlays (help, dashboard, review) are drawn plain.
   let shown = if displayed == b: faces.len else: 0
+  let listed = inMini() and mode in candModes
+  # isearch marks its match; consult-line marks the previewed line.
+  let highlight = if mode == "search": (start: matchStart, len: mini.text.runeLen)
+    elif mode == "line" and candIndex >= 0:
+      (start: b.offset((b.cursor.line, 0)), len: max(1, b.lines[b.cursor.line].len))
+    else: (start: -1, len: 0)
   renderer.draw(window, displayed, message, mini.text,
     if inMini(): mini.cursor.col else: -1,
-    if mode == "search": matchStart else: -1,
-    if mode == "search": mini.text.runeLen else: 0,
+    highlight.start, highlight.len,
     if skkShown: inputMethod.preedit() else: "",
     if mode == "review": "[Review]" elif mode == "help": "[Help]" elif mode == "dash": "[Dash]"
     elif mode == "blist": "[Buffers]" else: inputMethod.tag(), reviewColors,
     prompt, popup, faces.toOpenArray(0, shown - 1), if displayed == b: lang.name else: "Text",
-    if displayed == b or mode == "review": reg.displayName(b) else: displayed.path)
+    if displayed == b or mode == "review": reg.displayName(b) else: displayed.path,
+    cands.toOpenArray(0, if listed: cands.high else: -1), candIndex, listed,
+    if mode == "line": atBottom else: atTop)
 
 window.onResize = redraw
 if paramCount() == 0: beginDash()  # first screen: recent files over an empty *scratch*
