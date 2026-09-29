@@ -167,17 +167,19 @@ proc switchTo(buf: Buffer) =
   ## Makes buf current: parks b's scroll and language in its slot and restores buf's.
   let overlay = mode in ["help", "dash", "blist"]  # b's scroll is parked in overlayTop/Left
   if buf notin reg: reg.add buf
-  if b != buf:
-    if b in reg:
-      reg.slot(b).top = if overlay: overlayTop else: renderer.top
-      reg.slot(b).left = if overlay: overlayLeft else: renderer.left
-      reg.slot(b).lang = lang
-      reg.slot(b).langPath = b.path
-    b.finish()
-    # ponytail: each buffer has its own kill ring, synced on switch so C-y works across buffers.
-    buf.kills = b.kills
-    buf.yankIndex = b.yankIndex
-    b = buf
+  if buf == b:  # its slot holds the scroll from when it was last left
+    reg.touch b
+    return
+  if b in reg:
+    reg.slot(b).top = if overlay: overlayTop else: renderer.top
+    reg.slot(b).left = if overlay: overlayLeft else: renderer.left
+    reg.slot(b).lang = lang
+    reg.slot(b).langPath = b.path
+  b.finish()
+  # ponytail: each buffer has its own kill ring, synced on switch so C-y works across buffers.
+  buf.kills = b.kills
+  buf.yankIndex = b.yankIndex
+  b = buf
   let slot = reg.slot(b)
   if overlay: (overlayTop = slot.top; overlayLeft = slot.left)
   else: (renderer.top = slot.top; renderer.left = slot.left)
@@ -601,6 +603,19 @@ proc killPrompt() =
 proc killQuestion(buf: Buffer): string =
   "Buffer " & reg.displayName(buf) & " modified; kill anyway? (y or n) "
 
+proc otherVisitor(path: string): Buffer =
+  ## The other buffer visiting path, which C-x C-w there replaces; a modified one refuses.
+  result = reg.byPath(path)
+  if result == b: return nil
+  if result != nil and result.modified:
+    raise newException(ValueError, "Buffer " & reg.displayName(result) & " visits that file and is modified")
+
+proc writeTo(path: string) =
+  let other = otherVisitor(path)
+  b.save(path)
+  if other != nil: killBuffer(other)
+  wrote()
+
 proc confirmMini() =
   let kind = mode
   let value = when defined(windows): mini.text
@@ -641,16 +656,14 @@ proc confirmMini() =
     pendingKill = nil
   of "write":
     if value.len == 0: return
+    discard otherVisitor(value)
     if fileExists(value) and absolutePath(value) != b.path:
       pendingPath = value
       beginMini("overwrite", "File exists; overwrite? (y or n) ")
       return
-    b.save(value)
-    wrote()
+    writeTo(value)
   of "overwrite":
-    if value.toLowerAscii == "y":
-      b.save(pendingPath)
-      wrote()
+    if value.toLowerAscii == "y": writeTo(pendingPath)
     elif value.toLowerAscii != "n":
       echo = "Please answer y or n"
       return
