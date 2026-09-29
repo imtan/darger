@@ -1,4 +1,4 @@
-## Startup / F1 key reference shown in help mode.
+## F1 key reference shown in help mode.
 
 const manualText* = """
 darger キー操作一覧      q / Enter / F1 で閉じる
@@ -48,7 +48,7 @@ C-x C-w                  別名で保存
 C-x C-c                  終了
 
 [日本語入力]
-C-x C-j                  SKK の入れ / 切り
+C-x C-j / C-\            SKK の入れ / 切り
                          モードライン: [かな] [カナ] [SKK]
                          大文字で読み開始 SPC:変換 Enter:確定
                          q:カナ切替 l:英数 C-j:かなに戻る
@@ -62,6 +62,9 @@ C-c a                    agent-command に指示を送る
 [その他]
 C-g                      操作を中断
 F1                       このヘルプを表示 / 閉じる
+M-x dashboard            起動画面（最近のファイル一覧）を表示
+F2 g / l / 0             文字の拡大 / 縮小 / 元に戻す（連打可）
+C-c ,                    設定ファイル ~/.darger.el を開く
 M-x                      コマンド名を入力して実行
 M-:                      Lisp 式を評価
 ミニバッファ             C-a C-e C-f C-b C-k C-y が使える
@@ -71,4 +74,5 @@ M-:                      Lisp 式を評価
 設定ファイル: ~/.darger.el
   (global-set-key "C-c f" 'forward-word)
   (setq agent-command "...")
+  (load-theme "catppuccin")    ; 既定は modus-vivendi
 """

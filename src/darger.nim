@@ -1,6 +1,6 @@
-import std/[os, osproc, tempfiles, strutils, times, unicode, tables, sets]
+import std/[os, osproc, tempfiles, strutils, times, unicode, tables, sets, math]
 import windy, vmath
-import buffer, render, skk, lisp, review, manual
+import buffer, render, skk, lisp, review, manual, recent
 
 const
   bufferCommands = ["forward", "backward", "next-line", "previous-line", "bol", "eol",
@@ -10,6 +10,9 @@ const
     "upcase", "downcase", "capitalize", "quit"]
   helpNavigation = ["forward", "backward", "next-line", "previous-line", "bol", "eol", "bob", "eob"]
   helpMessage = "Help  q:close  F1:toggle"
+  dashMessage = "Dashboard  Enter:open  q:scratch  F1:manual"
+  dashLabels = "123456789abc"
+  dashFirst = 4  # line of the first recent-file entry
   defaultBindings = """
 (global-set-key "C-f" 'forward)
 (global-set-key "right" 'forward)
@@ -60,6 +63,13 @@ const
 (global-set-key "C-x u" 'undo)
 (global-set-key "C-c a" 'agent-prompt)
 (global-set-key "f1" 'help)
+(global-set-key "C-x C-j" 'skk-mode)
+(global-set-key "C-backslash" 'skk-mode)
+(global-set-key "C-c ," (lambda () (find-file "~/.darger.el")))
+(global-set-key "f2 g" 'zoom-in)
+(global-set-key "f2 l" 'zoom-out)
+(global-set-key "f2 0" 'zoom-reset)
+(hydra "f2" "zoom  g:in  l:out  0:reset")
 (setq agent-command "claude -p --output-format text")
 """
 
@@ -91,7 +101,9 @@ else:
 var b = newBuffer()
 var startupMessage: string
 if paramCount() > 0:
-  try: b = loadBuffer(paramStr(1))
+  try:
+    b = loadBuffer(paramStr(1))
+    if fileExists(b.path): recordRecent(b.path)
   except CatchableError as e: startupMessage = e.msg
 
 var
@@ -119,6 +131,7 @@ var
   interp = newInterp()
   keymap: Table[string, Value]
   prefixKeys = toHashSet(["C-x", "M-g"])
+  hydras: Table[string, string]  # sticky prefix -> hint
   agentProcess: Process
   agentDir: string
   agentCancelled = false
@@ -126,8 +139,9 @@ var
   reviewBuf: Buffer
   reviewColors: seq[int8]
   currentHunk, savedTop, savedLeft: int
-  helpBuf: Buffer
-  helpTop, helpLeft: int
+  helpBuf, dashBuf: Buffer
+  overlayTop, overlayLeft: int
+  dashFiles: seq[string]
 when defined(windows):
   var agentJob: Handle
 else:
@@ -176,28 +190,72 @@ proc beginMini(kind, label: string, initial = "") =
   prefix = ""
 
 proc inMini(): bool =
-  ## A minibuffer prompt (search, find, y/n, ...) is active; review and help are overlays.
-  mode.len > 0 and mode notin ["review", "help"]
+  ## A minibuffer prompt (search, find, y/n, ...) is active; review, help and dash are overlays.
+  mode.len > 0 and mode notin ["review", "help", "dash"]
 
-proc beginHelp() =
+proc beginOverlay(kind: string) =
   b.finish()
-  helpTop = renderer.top
-  helpLeft = renderer.left
-  mode = "help"
+  overlayTop = renderer.top
+  overlayLeft = renderer.left
+  mode = kind
   prefix = ""
   matchStart = -1
   window.closeIme()
-  helpBuf = newBuffer(manualText)
-  helpBuf.path = "*Help*"
   renderer.top = 0
   renderer.left = 0
 
-proc finishHelp() =
-  renderer.top = helpTop
-  renderer.left = helpLeft
+proc finishOverlay() =
+  renderer.top = overlayTop
+  renderer.left = overlayLeft
   mode = ""
-  helpBuf = nil
   echo = ""
+
+proc beginHelp() =
+  beginOverlay("help")
+  helpBuf = newBuffer(manualText)
+  helpBuf.path = "*Help*"
+
+proc finishHelp() =
+  finishOverlay()
+  helpBuf = nil
+
+proc shortPath(path: string, limit = 64): string =
+  ## ~ for HOME, then cut from the left to fit `limit` cells.
+  let home = strutils.strip(getHomeDir(), leading = false, chars = {DirSep, AltSep})
+  var s = path
+  if home.len > 0 and s.startsWith(home) and (s.len == home.len or s[home.len] in {DirSep, AltSep}):
+    s = "~" & s[home.len..^1]
+  var runes = s.toRunes
+  var width = 0
+  for r in runes: width += runeWidth(r)
+  if width <= limit: return s
+  while width > limit - 3:
+    width -= runeWidth(runes[0])
+    runes.delete(0)
+  "..." & $runes
+
+proc beginDash() =
+  beginOverlay("dash")
+  dashFiles = loadRecent()
+  if dashFiles.len > dashLabels.len: dashFiles.setLen(dashLabels.len)
+  var lines = @["darger", "I'm talking about the present.", "", "Recent files"]
+  let limit = max(30, (if renderer.cols > 0: renderer.cols else: 80) - 5)  # "  1  " prefix
+  for i, f in dashFiles: lines.add "  " & dashLabels[i] & "  " & shortPath(f, limit)
+  if dashFiles.len == 0: lines.add "  (none yet)"
+  lines.add ""
+  lines.add "F1 manual   C-x C-f open   q scratch"
+  dashBuf = newBuffer(lines.join("\n"))
+  dashBuf.path = "*dashboard*"
+  dashBuf.cursor = if dashFiles.len > 0: (dashFirst, 2) else: (0, 0)
+
+proc finishDash() =
+  finishOverlay()
+  dashBuf = nil
+  dashFiles = @[]
+
+proc closeOverlay() =
+  if mode == "help": finishHelp()
+  elif mode == "dash": finishDash()
 
 proc reviewMessage(): string =
   "Review hunk " & $(currentHunk + 1) & "/" & $reviewState.hunks.len &
@@ -218,7 +276,7 @@ proc beginReview(proposed: string) =
   if reviewState.hunks.len == 0:
     echo = "Agent: no changes"
     return
-  if mode == "help": finishHelp()  # the agent finished while the manual was open
+  closeOverlay()  # the agent finished while the manual or dashboard was open
   b.finish()
   savedTop = renderer.top
   savedLeft = renderer.left
@@ -362,7 +420,7 @@ proc pollAgent(): bool =
 
 proc quitEditor() =
   if mode == "review": finishReview(true)
-  if mode == "help": finishHelp()
+  closeOverlay()
   if b.modified: beginMini("exit", "Modified buffers exist; exit anyway? (y or n) ")
   else: running = false
 
@@ -425,11 +483,31 @@ interp.defPrimitive("help", proc(args: seq[Value]): Value =
   elif mode in ["", "eval", "execute"]: beginHelp()  # M-x help / M-: (help) reach here from their prompt
   else: echo = "help is unavailable here"
   nilValue())
-discard interp.evalString(defaultBindings, "<default-bindings>")
-let initPath = getHomeDir() / ".darger.el"
-if fileExists(initPath):
-  try: discard interp.evalFile(initPath)
-  except CatchableError as e: echo = e.msg
+proc visit(path: string) =
+  let loaded = loadBuffer(path)
+  loaded.kills = b.kills
+  b = loaded
+  renderer.top = 0
+  renderer.left = 0
+  if fileExists(b.path): recordRecent(b.path)  # a new file is recorded on its first save
+
+proc wrote() =
+  echo = "Wrote " & b.path
+  recordRecent(b.path)
+
+proc findPrompt() =
+  beginMini("find", "Find file: ", (if b.path.len > 0: parentDir(b.path) else: getCurrentDir()) & DirSep)
+
+proc openFile(path: string) =
+  ## Visits path, first asking to discard a modified buffer (the "replace" prompt).
+  ## Like Emacs, finding the file already shown keeps its edits, point and undo.
+  if b.path.len > 0 and cmpPaths(normalizedPath(absolutePath(path)), normalizedPath(b.path)) == 0:
+    echo = ""
+    return
+  if b.modified:
+    pendingPath = path
+    beginMini("replace", "Buffer modified; discard changes? (y or n) ")
+  else: visit(path)
 
 proc confirmMini() =
   let kind = mode
@@ -448,22 +526,9 @@ proc confirmMini() =
       echo = if e.line == 0: "<minibuffer>:1: " & e.msg else: e.msg
   of "find":
     if value.len == 0: return
-    if b.modified:
-      pendingPath = value
-      beginMini("replace", "Buffer modified; discard changes? (y or n) ")
-      return
-    let loaded = loadBuffer(value)
-    loaded.kills = b.kills
-    b = loaded
-    renderer.top = 0
-    renderer.left = 0
+    openFile(value)
   of "replace":
-    if value.toLowerAscii == "y":
-      let loaded = loadBuffer(pendingPath)
-      loaded.kills = b.kills
-      b = loaded
-      renderer.top = 0
-      renderer.left = 0
+    if value.toLowerAscii == "y": visit(pendingPath)
     elif value.toLowerAscii != "n":
       echo = "Please answer y or n"
       return
@@ -474,11 +539,11 @@ proc confirmMini() =
       beginMini("overwrite", "File exists; overwrite? (y or n) ")
       return
     b.save(value)
-    echo = "Wrote " & b.path
+    wrote()
   of "overwrite":
     if value.toLowerAscii == "y":
       b.save(pendingPath)
-      echo = "Wrote " & b.path
+      wrote()
     elif value.toLowerAscii != "n":
       echo = "Please answer y or n"
       return
@@ -534,9 +599,8 @@ proc following(): Rune =
   let t = target()
   if t.cursor.col < t.lines[t.cursor.line].len: t.lines[t.cursor.line][t.cursor.col] else: Rune(0)
 
-proc applySkk(res: SkkResult): bool =
+proc applySkk(res: SkkResult, t = target()): bool =
   ## Inserts the engine's text like typed input; true when SKK consumed the key.
-  let t = target()
   t.insert(res.text, true)
   if res.move != 0: t.cursor = t.point(t.offset(t.cursor) + res.move)
   if mode == "search" and res.text.len > 0: search()
@@ -544,9 +608,9 @@ proc applySkk(res: SkkResult): bool =
   recenterCycle = 0
   res.consumed
 
-proc toggleSkk() =
+proc toggleSkk(t = target()) =
   let message = if inputMethod.loaded: "" else: inputMethod.loadDefaults()
-  discard applySkk(inputMethod.toggle())
+  discard applySkk(inputMethod.toggle(), t)
   if message.len > 0: echo = message
 
 proc page(buf: Buffer, full: string) =
@@ -569,34 +633,107 @@ proc recenter(buf: Buffer) =
   renderer.top = max(0, buf.cursor.line - row)
   recenterCycle = (recenterCycle + 1) mod 3
 
+
+const
+  zoomCommands = ["zoom-in", "zoom-out", "zoom-reset"]
+  builtinChords = ["C-x C-s", "C-x C-f", "C-x C-w", "C-x C-c", "M-g g", "M-g M-g"]
+
+proc symName(fn: Value): string = (if fn != nil and fn.kind == vSymbol: fn.str else: "")
+
+proc sticky(full: string): string =
+  ## The hydra prefix full belongs to, or "".
+  for key in hydras.keys:
+    if full.startsWith(key & " "): return key
+
+proc rearm(full: string) =
+  let key = sticky(full)
+  if key.len == 0: return
+  prefix = key
+  echo = hydras[key] & (if echo.len > 0: "  " & echo else: "")
+
+proc leavesHydra(full: string): bool =
+  ## An unbound key after a hydra prefix leaves it; built-in chords stay chords.
+  full notin keymap and full notin builtinChords and sticky(full).len > 0
+
+proc overlayKey(c: string): string =
+  ## Prefix, hydra and zoom keys shared by the overlays; "" when c was consumed.
+  if c == "C-g" and prefix.len > 0:
+    prefix = ""  # quit the prefix or hydra, keep the overlay
+    return
+  result = if prefix.len > 0: prefix & " " & c else: c
+  prefix = ""
+  if leavesHydra(result): result = c  # the key's rune stays suppressed
+  if result in prefixKeys:
+    prefix = result
+    echo = hydras.getOrDefault(result, result & "-")
+    return ""
+  let fn = keymap.getOrDefault(result)
+  if fn.symName in zoomCommands:
+    discard interp.call(fn, @[])
+    rearm(result)
+    return ""
+
 proc dispatchHelp(c: string) =
   ## Help mode only moves helpBuf; the edited buffer b is never touched.
-  let full = if prefix.len > 0: prefix & " " & c else: c
-  prefix = ""
+  let full = overlayKey(c)
+  if full.len == 0: return
   if full in ["q", "C-g", "enter", "C-m", "C-j", "f1", "escape"]:
     finishHelp()
     return
   if full == "C-x C-c":
     quitEditor()
     return
-  if full in prefixKeys:
-    prefix = full
-    echo = full & "-"
-    return
   if full != "C-l": recenterCycle = 0
-  let fn = keymap.getOrDefault(full)
-  if fn != nil and fn.kind == vSymbol and fn.str == "help":
+  let name = keymap.getOrDefault(full).symName
+  if name == "help":
     finishHelp()
-  elif fn != nil and fn.kind == vSymbol and fn.str in helpNavigation:
-    let message = helpBuf.command(fn.str)
+  elif name in helpNavigation:
+    let message = helpBuf.command(name)
     if message.len > 0: echo = message
   elif full in ["C-v", "pagedown", "M-v", "pageup"]: page(helpBuf, full)
   elif full == "C-l": recenter(helpBuf)
   else: echo = "q: close help"
 
+proc openEntry(i: int) =
+  if i notin 0..dashFiles.high: return
+  let path = dashFiles[i]
+  if not fileExists(path):
+    echo = "No such file: " & shortPath(path)
+    return
+  finishDash()
+  try: openFile(path)
+  except CatchableError as e:
+    beginDash()
+    echo = e.msg
+
+proc dispatchDash(c: string) =
+  ## Like dispatchHelp: the dashboard only moves between entries or opens one.
+  let full = overlayKey(c)
+  if full.len == 0: return
+  let name = keymap.getOrDefault(full).symName
+  if full in ["q", "C-g", "escape"] or name == "dashboard": finishDash()
+  elif full == "f1" or name == "help":
+    finishDash()
+    beginHelp()
+  elif full == "C-x C-c": quitEditor()
+  elif full == "C-x C-f":
+    finishDash()
+    findPrompt()
+  elif full in ["enter", "C-m", "C-j"]: openEntry(dashBuf.cursor.line - dashFirst)
+  elif name in ["next-line", "previous-line"] or full in ["C-n", "C-p", "down", "up"]:
+    let delta = if name == "previous-line" or full in ["C-p", "up"]: -1 else: 1
+    if dashFiles.len > 0:
+      dashBuf.cursor = (clamp(dashBuf.cursor.line + delta, dashFirst, dashFirst + dashFiles.high), 2)
+  elif full.len == 1 and dashLabels.find(full[0]) in 0..dashFiles.high:
+    openEntry(dashLabels.find(full[0]))
+  else: echo = full & " is undefined"
+
 proc dispatch(c: string) =
   if mode == "help":
     dispatchHelp(c)  # C-g only closes the manual; a running agent keeps running
+    return
+  if mode == "dash":
+    dispatchDash(c)
     return
   if c == "C-g":
     if agentProcess != nil: cancelAgent()
@@ -631,14 +768,17 @@ proc dispatch(c: string) =
     rebuildReview()
     return
   if mode in ["find", "write", "search", "agent"]:
-    # Text prompts take C-x only for C-x C-j (SKK); C-j alone still confirms the prompt.
+    # Text prompts take keys bound to skk-mode (C-\, C-x C-j); C-j alone still confirms.
+    if prefix.len == 0 and keymap.getOrDefault(c).symName == "skk-mode":
+      toggleSkk()
+      return
     if prefix.len == 0 and c == "C-x":
       prefix = c
       echo = "C-x-"
       return
     if prefix == "C-x":
       prefix = ""
-      if c == "C-j":
+      if keymap.getOrDefault("C-x " & c).symName == "skk-mode":
         toggleSkk()
         return
       if mode != "search":
@@ -665,9 +805,14 @@ proc dispatch(c: string) =
     return
   let full = if prefix.len > 0: prefix & " " & c else: c
   prefix = ""
+  if leavesHydra(full):
+    # Like hydra: an unbound key leaves it and runs as usual; text comes back via onRune.
+    if suppressRune: suppressRune = false
+    else: dispatch(c)
+    return
   if full in prefixKeys:
     prefix = full
-    echo = full & "-"
+    echo = hydras.getOrDefault(full, full & "-")
     b.finish()
     return
   if full != "C-l": recenterCycle = 0
@@ -677,12 +822,12 @@ proc dispatch(c: string) =
       discard runCommand(fn.str)
     else:
       discard interp.call(fn, @[])
+    if mode == "": rearm(full)
     return
   b.finish()
   case full
   of "M-:": beginMini("eval", "Eval: ")
   of "M-x": beginMini("execute", "M-x ")
-  of "C-x C-j": toggleSkk()
   of "C-v", "pagedown", "M-v", "pageup": page(b, full)
   of "C-l": recenter(b)
   of "M-g g", "M-g M-g": beginMini("goto", "Goto line: ")
@@ -690,9 +835,8 @@ proc dispatch(c: string) =
     if b.path.len == 0: beginMini("write", "Write file: ", getCurrentDir() & DirSep)
     else:
       b.save()
-      echo = "Wrote " & b.path
-  of "C-x C-f":
-    beginMini("find", "Find file: ", (if b.path.len > 0: parentDir(b.path) else: getCurrentDir()) & DirSep)
+      wrote()
+  of "C-x C-f": findPrompt()
   of "C-x C-w": beginMini("write", "Write file: ", b.path)
   of "C-x C-c": quitEditor()
   of "C-s", "C-r":
@@ -700,6 +844,53 @@ proc dispatch(c: string) =
     matchStart = -1
     beginMini("search", if isearch.state.direction > 0: "I-search: " else: "I-search backward: ")
   else: echo = full & " is undefined"
+
+proc zoom(factor: float32) =
+  renderer.zoom = if factor == 0: 1'f32 else: clamp(renderer.zoom * factor, 0.5'f32, 4'f32)
+  echo = "Zoom " & $int(round(renderer.zoom * 100)) & "%"
+
+for (name, factor) in [("zoom-in", 1.1'f32), ("zoom-out", 1 / 1.1'f32), ("zoom-reset", 0'f32)]:
+  closureScope:
+    let f = factor
+    interp.defPrimitive(name, proc(args: seq[Value]): Value =
+      args.arity(0, 0)
+      zoom(f)
+      nilValue())
+interp.defPrimitive("dashboard", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  if mode == "dash": finishDash()
+  elif mode in ["", "eval", "execute"]: beginDash()
+  else: echo = "dashboard is unavailable here"
+  nilValue())
+interp.defPrimitive("skk-mode", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  # From M-x / M-: the committed reading belongs to the buffer, not the discarded prompt.
+  toggleSkk(if mode in ["eval", "execute"]: b else: target())
+  nilValue())
+interp.defPrimitive("find-file", proc(args: seq[Value]): Value =
+  args.arity(1, 1)
+  let path = expandTilde(args[0].asString)
+  if path.len == 0: raise newException(LispError, "Expected a file name")
+  try: openFile(path)
+  except IOError, ValueError: raise newException(LispError, getCurrentExceptionMsg())
+  nilValue())
+interp.defPrimitive("load-theme", proc(args: seq[Value]): Value =
+  args.arity(1, 1)
+  let name = args[0].asString
+  if not setTheme(name): raise newException(LispError, "No such theme: " & name)
+  args[0])
+interp.defPrimitive("hydra", proc(args: seq[Value]): Value =
+  args.arity(2, 2)
+  let key = args[0].asString
+  if key.len == 0 or ' ' in key: raise newException(LispError, "Expected a single-key prefix")
+  hydras[key] = args[1].asString
+  prefixKeys.incl key
+  args[0])
+discard interp.evalString(defaultBindings, "<default-bindings>")
+let initPath = getHomeDir() / ".darger.el"
+if fileExists(initPath):
+  try: discard interp.evalFile(initPath)
+  except CatchableError as e: echo = e.msg
 
 var dirty = true  # set by every input callback; the loop only redraws when it is set
 
@@ -709,7 +900,7 @@ window.onButtonPress = proc(key: Button) =
              KeyLeftShift, KeyRightShift, KeyLeftSuper, KeyRightSuper,
              KeyCapsLock, KeyNumLock, KeyScrollLock, KeyPause, KeyMenu, KeyPrintScreen,
              KeyInsert} or key < Key0: return
-  if key == KeyEscape and mode != "help": return  # Escape only closes the manual
+  if key == KeyEscape and mode notin ["help", "dash"]: return  # Escape only closes an overlay
   if window.imeCompositionString.len > 0:
     if key == KeyG and ctrl():
       window.closeIme()
@@ -757,7 +948,7 @@ window.onRune = proc(rune: Rune) =
   if scalar > 0x10FFFF: return
   echo = ""
   try:
-    if mode in ["review", "help"]:
+    if mode in ["review", "help", "dash"]:
       dispatch($Rune(scalar))
       return
     if prefix.len > 0:
@@ -775,7 +966,7 @@ window.onRune = proc(rune: Rune) =
 
 window.onImeChange = proc() =
   dirty = true
-  if mode in ["review", "help"]:
+  if mode in ["review", "help", "dash"]:
     if window.imeCompositionString.len > 0: window.closeIme()
     return
   if window.imeCompositionString.len > 0:
@@ -786,16 +977,24 @@ window.onImeChange = proc() =
 
 window.onCloseRequest = proc() = quitEditor()
 
+proc overlayMessage(base: string): string =
+  ## A hydra hint replaces the overlay's own hint so the echo line does not overflow.
+  if prefix in hydras: echo
+  elif echo.len > 0 and echo != base: base & "  " & echo
+  else: base
+
 proc redraw() =
   if not running or window.closed or window.minimized or window.size.x == 0 or window.size.y == 0: return
-  let displayed = if mode == "review": reviewBuf elif mode == "help": helpBuf else: b
+  let displayed = if mode == "review": reviewBuf elif mode == "help": helpBuf
+    elif mode == "dash": dashBuf else: b
   renderer.resize(window, displayed)
   let skkShown = skkOn()
   # The candidate page lives in echo; a command that cleared echo brings it back.
   let message = if agentProcess != nil:
       (if agentCancelled: "Agent cancelling..." else: "Agent running...")
     elif mode == "review": reviewMessage() & (if echo != reviewMessage(): "  " & echo else: "")
-    elif mode == "help": helpMessage & (if echo.len > 0 and echo != helpMessage: "  " & echo else: "")
+    elif mode == "help": overlayMessage(helpMessage)
+    elif mode == "dash": overlayMessage(dashMessage)
     elif echo.len == 0 and skkShown: inputMethod.page() else: echo
   # Prompts float in a popup; isearch stays on the bottom line so its match is visible.
   let popup = inMini() and mode != "search"
@@ -804,11 +1003,12 @@ proc redraw() =
     if mode == "search": matchStart else: -1,
     if mode == "search": mini.text.runeLen else: 0,
     if skkShown: inputMethod.preedit() else: "",
-    if mode == "review": "[Review]" elif mode == "help": "[Help]" else: inputMethod.tag(), reviewColors,
+    if mode == "review": "[Review]" elif mode == "help": "[Help]" elif mode == "dash": "[Dash]"
+    else: inputMethod.tag(), reviewColors,
     prompt, popup)
 
 window.onResize = redraw
-if paramCount() == 0: beginHelp()  # first screen: the manual over an empty *scratch*
+if paramCount() == 0: beginDash()  # first screen: recent files over an empty *scratch*
 var lastDraw = 0.0
 while running and not window.closed:
   pollEvents()

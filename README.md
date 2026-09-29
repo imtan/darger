@@ -16,6 +16,7 @@ nimble build -d:release       # or: nimble install -d && nim c -d:release --outd
 ./darger [file]
 nim r tests/tbuffer.nim
 nim r tests/tfileio.nim   # POSIX save behaviour
+nim r tests/trecent.nim
 ```
 
 Nimble older than 0.24 (e.g. the 0.22.x bundled with Nim 2.2.10) fails with
@@ -28,10 +29,22 @@ list them): Arch `libx11 libxext libxcursor libglvnd mesa xorg-xwayland`, Debian
 windy 0.5.0's X11 backend from `patches/windy` via `patchFile` on Linux only (see
 `patches/windy/README.md`); windy stays pinned to 0.5.0.
 
-Without a file, the editor opens `*scratch*` with the built-in manual (Japanese)
-shown over it. F1 (or `M-x help`) toggles the manual outside prompts and review. In it,
-navigation keys and C-v / M-v / PageDown / PageUp / C-l scroll; q, Enter, Escape,
-C-g or F1 close it and C-x C-c quits. The edited buffer is never touched.
+Without a file, the editor opens `*scratch*` with a dashboard shown over it: up to
+12 recent files labelled 1-9 and a-c (HOME shown as `~`, long paths cut from the
+left). C-n / C-p / arrows move between entries, Enter or an entry's label opens it
+(a file that no longer exists is reported and the dashboard stays), q, C-g or Escape
+close it to `*scratch*`, C-x C-f prompts for a file, F1 switches to the manual and
+C-x C-c quits. `M-x dashboard` opens it and a key bound to `dashboard` also closes
+it; none is bound by default. The list lives in `~/.darger-recent` (one absolute
+UTF-8 path per line, newest first, at most 30, written atomically): every existing
+file visited from the command line, C-x C-f or `find-file`, and every file saved, is
+moved to the top. `*scratch*` is never recorded, and errors reading or writing the
+list are ignored.
+
+F1 (or `M-x help`) toggles the built-in manual (Japanese) outside prompts and
+review. In it, navigation keys and C-v / M-v / PageDown / PageUp / C-l scroll; q,
+Enter, Escape, C-g or F1 close it and C-x C-c quits. The edited buffer is never
+touched.
 
 UTF-8 files retain CRLF/LF on save; finding a nonexistent file creates an empty
 buffer bound to that path. A UTF-8 BOM is kept as a file prefix, not an editable
@@ -44,19 +57,33 @@ in the find/write prompts.
 
 Set `$env:DARGER_FONT = 'C:\path\to\monospace.ttf'` (POSIX:
 `DARGER_FONT=/path/mono.ttf DARGER_FALLBACK_FONTS=/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc ./darger`)
-to choose fonts. Default primary: per-user HackGen Console NF, Cascadia Mono,
-Consolas, Courier New (Windows), then DejaVu Sans Mono, Liberation Mono, Noto Sans
-Mono, Adwaita Mono (Linux) and Menlo paths; on Linux `fc-match monospace` is the last
-resort. `DARGER_FALLBACK_FONTS` accepts TTF/OTF/TTC paths separated by `;` on every
-OS; by default the editor tries BIZ UD Gothic, Yu Gothic, MS Gothic, Malgun Gothic,
-Segoe UI Emoji and Segoe UI Symbol on Windows, and Noto Sans CJK, Noto Sans Symbols 2
-and Hiragino elsewhere, plus `fc-match` picks for Japanese and Korean on Linux.
-Colour emoji fonts (CBDT, sbix) are unsupported. Unreadable fonts are skipped with a
-message on stderr. TTC files use their first face.
+to choose fonts. Default primary: Iosevka Nerd Font Mono first on every OS
+(`IosevkaNerdFontMono-ExtraLight.ttf`, then `-Light`, then `-Regular`; in
+`/usr/share/fonts/TTF` and `~/.local/share/fonts` on Linux, the per-user and
+`C:\Windows\Fonts` folders on Windows, `~/Library/Fonts` on macOS), then per-user
+HackGen Console NF, Cascadia Mono, Consolas, Courier New (Windows), then DejaVu Sans
+Mono, Liberation Mono, Noto Sans Mono, Adwaita Mono (Linux) and Menlo paths; on
+Linux `fc-match monospace` is the last resort. `DARGER_FALLBACK_FONTS` accepts
+TTF/OTF/TTC paths separated by `;` on every OS; by default the editor tries BIZ UD
+Gothic, Yu Gothic, MS Gothic, Malgun Gothic, Segoe UI Emoji and Segoe UI Symbol on
+Windows, and Noto Sans CJK, Noto Sans Symbols 2 and Hiragino elsewhere, plus
+`fc-match` picks for Japanese and Korean on Linux. Colour emoji fonts (CBDT, sbix)
+are unsupported. Unreadable fonts are skipped with a message on stderr. TTC files
+use their first face.
 
-Text is 16 pixels times the window DPI scale, with aligned fallback baselines.
-`DARGER_SCALE` (e.g. `2`) overrides the scale; on Linux, when windy reports 1.0
-(X11 without `Xft.dpi`, XWayland), `GDK_SCALE` is used if set.
+Text is 16 pixels times the window DPI scale times the zoom, with aligned fallback
+baselines. `DARGER_SCALE` (e.g. `2`) overrides the DPI scale; on Linux, when windy
+reports 1.0 (X11 without `Xft.dpi`, XWayland), `GDK_SCALE` is used if set. F2 starts
+a sticky zoom (like Emacs `hydra-zoom`): `g` zooms in (x1.1), `l` out, `0` resets,
+and the keys repeat without F2 until another key leaves the zoom and runs normally
+(C-g just leaves). The zoom stays within 50%..400% and the echo area shows it. Like
+Emacs' `internal-border-width` 32, the text area, mode line and echo line are inset
+by a 32-pixel-times-DPI-scale border (not zoomed) that shrinks in tiny windows.
+
+The default colours are modus-vivendi (black background, as in Emacs'
+modus-themes); `(load-theme "catppuccin")` switches to the previous Catppuccin
+Mocha colours and `(load-theme "modus-vivendi")` back, at any time (M-: or
+`~/.darger.el`). Unknown names report `No such theme: …`.
 CJK and the supported emoji ranges occupy two cells; combining marks, variation
 selectors, joiners and skin-tone modifiers occupy zero cells. U+2600..27BF stays
 one cell like Emacs. Emoji use monochrome outlines without shaping: ZWJ sequences,
@@ -66,7 +93,8 @@ stop. Long lines scroll horizontally, keeping the entire cursor block visible.
 IME composition appears inline with a highlighted background and moves the
 displayed suffix right, without changing the buffer until text is committed.
 Native IME works on Windows/macOS only: windy's X11 backend has no XIM, so
-fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK (C-x C-j).
+fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK
+(C-\ or C-x C-j).
 
 `C-` means Ctrl, `M-` means Alt; either left or right modifier works.
 
@@ -89,32 +117,52 @@ fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK (C-
 | Find / save / save as / exit | C-x C-f / C-x C-s / C-x C-w / C-x C-c |
 | Incremental search forward / backward | C-s / C-r; repeat for next / previous |
 | Cancel | C-g |
-| SKK Japanese input on / off | C-x C-j |
+| SKK Japanese input on / off | C-\ or C-x C-j |
 | Manual (help) on / off | F1 |
+| Dashboard (recent files) on / off | M-x dashboard |
+| Zoom in / out / reset (sticky) | F2 g / l / 0 |
+| Open the init file `~/.darger.el` | C-c , |
 
-Search ignores case for all-lowercase queries. Typing extends the current match;
-a search that hits the buffer edge shows `Failing I-search`, and repeating C-s/C-r
+Search ignores case for all-lowercase queries. Typing extends the current match; a
+search that hits the buffer edge shows `Failing I-search`, and repeating C-s/C-r
 then wraps (`Wrapped`). Repeats never overlap the current match; C-s/C-r with an
 empty query reuses the last search. Backspace returns to the previous search state.
 Enter accepts the match, any other command ends the search at the match and runs,
-and C-g restores the original point. Prompts other than incremental search float
-in a popup near the top of the window (on the bottom line when the window is too
-small); messages stay on the bottom line. Minibuffers support insertion,
-Backspace, C-a/C-e/C-f/C-b, C-k, C-y, Enter and C-g; the Find/Write/Agent prompts
-and incremental search also take C-x C-j to toggle SKK. Answer confirmation
-prompts with `y` or `n`, then Enter. Backspace and Delete remove an active region
-without killing it.
-Killing/copying updates the clipboard; C-y uses the clipboard
-when the 60-entry kill ring is empty. Undo keeps 200 snapshots and groups runs of
-non-whitespace self-inserts. Snapshot undo and flattened edits favor small files.
+and C-g restores the original point. Prompts other than incremental search float in
+a popup near the top of the window (on the bottom line when the window is too
+small); messages stay on the bottom line. Minibuffers support insertion, Backspace,
+C-a/C-e/C-f/C-b, C-k, C-y, Enter and C-g; the Find/Write/Agent prompts and
+incremental search also take C-\ or C-x C-j (any key bound to `skk-mode`) to toggle
+SKK. Answer confirmation prompts with `y` or `n`, then Enter. Backspace and Delete
+remove an active region without killing it. Killing/copying updates the clipboard;
+C-y uses the clipboard when the 60-entry kill ring is empty. Undo keeps 200
+snapshots and groups runs of non-whitespace self-inserts. Snapshot undo and
+flattened edits favor small files.
+
+## Init file
+
+`~/.darger.el` is evaluated at startup after the default bindings; C-c , opens it
+(`(find-file "~/.darger.el")`, which asks first when another buffer is modified and
+does nothing when it is already shown). Besides `global-set-key`, `setq`, `message`,
+`insert` and `command`, it can use `(load-theme "catppuccin")`, `(find-file "path")`
+(`~` expands), `skk-mode`, `zoom-in` / `zoom-out` / `zoom-reset`, and
+`(hydra "PREFIX" "hint")`, which makes a one-key prefix sticky: after a bound
+`PREFIX x` command the prefix stays active and the hint shows in the echo area, as
+the default `(hydra "f2" "zoom  g:in  l:out  0:reset")`.
+
+```elisp
+(global-set-key "f2 r" 'zoom-reset)
+(load-theme "catppuccin")
+```
 
 ## SKK input
 
-C-x C-j toggles a built-in DDSKK-style SKK (turning it off commits anything in
-progress). The mode line shows `[かな]`, `[カナ]` or `[SKK]` (latin); nothing when off.
-Pending romaji, `▽reading` and `▼candidate` are drawn inline at the cursor like an
-IME composition; the buffer changes only when kana complete or a conversion is
-committed, through the normal insert path (a commit is one undo step).
+C-\ or C-x C-j (`skk-mode`) toggles a built-in DDSKK-style SKK (turning it off
+commits anything in progress). The mode line shows `[かな]`, `[カナ]` or `[SKK]`
+(latin); nothing when off. Pending romaji, `▽reading` and `▼candidate` are drawn
+inline at the cursor like an IME composition; the buffer changes only when kana
+complete or a conversion is committed, through the normal insert path (a commit is
+one undo step).
 
 - Direct input follows the DDSKK romaji rules: `nn`/`n'` → ん, a doubled consonant →
   っ, `x` + vowel / `xtu` / `xya` / `xwa` for small kana, `-` ー, `~` 〜, `! ? : [ ]`
@@ -136,7 +184,7 @@ committed, through the normal insert path (a commit is one undo step).
 - The main dictionary is `$env:DARGER_SKK_JISYO`, else the first existing of
   `~/Dropbox/.emacs.d/skk-get-jisyo/SKK-JISYO.L`, `~/.emacs.d/skk-get-jisyo/SKK-JISYO.L`,
   `~/.skk/SKK-JISYO.L` and `/usr/share/skk/SKK-JISYO.L` (EUC-JP when line 1 has a
-  `coding: euc-jp` cookie, UTF-8 otherwise). It loads on the first C-x C-j and
+  `coding: euc-jp` cookie, UTF-8 otherwise). It loads on the first toggle and
   reports `SKK: N entries loaded (t ms)`; without it kana input still works and
   conversion says `No dictionary`.
 - Each commit from ▼ moves the choice to the front and rewrites `~/.darger-skk-jisyo`
