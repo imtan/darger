@@ -1,6 +1,6 @@
 import std/[os, osproc, tempfiles, strutils, times, unicode, tables, sets, math]
 import windy, vmath
-import buffer, render, skk, lisp, review, manual, recent
+import buffer, render, skk, lisp, review, manual, recent, syntax
 
 const
   bufferCommands = ["forward", "backward", "next-line", "previous-line", "bol", "eol",
@@ -100,9 +100,20 @@ else:
 
 var b = newBuffer()
 var startupMessage: string
+var
+  lang = detect("", "")  # b's language, re-detected whenever b or b.path changes
+  shownBuf: Buffer       # the buffer and version that faces were computed for
+  shownVersion: int
+  faces: seq[seq[Face]]
+
+proc detectLang() =
+  lang = detect(b.path, if b.lines.len > 0: $b.lines[0] else: "")
+  shownBuf = nil
+
 if paramCount() > 0:
   try:
     b = loadBuffer(paramStr(1))
+    detectLang()
     if fileExists(b.path): recordRecent(b.path)
   except CatchableError as e: startupMessage = e.msg
 
@@ -487,12 +498,14 @@ proc visit(path: string) =
   let loaded = loadBuffer(path)
   loaded.kills = b.kills
   b = loaded
+  detectLang()
   renderer.top = 0
   renderer.left = 0
   if fileExists(b.path): recordRecent(b.path)  # a new file is recorded on its first save
 
 proc wrote() =
   echo = "Wrote " & b.path
+  detectLang()
   recordRecent(b.path)
 
 proc findPrompt() =
@@ -998,6 +1011,12 @@ proc redraw() =
     elif echo.len == 0 and skkShown: inputMethod.page() else: echo
   # Prompts float in a popup; isearch stays on the bottom line so its match is visible.
   let popup = inMini() and mode != "search"
+  if shownBuf != b or shownVersion != b.version:
+    faces = lang.highlight(b.lines)
+    shownBuf = b
+    shownVersion = b.version
+  # Overlays (help, dashboard, review) are drawn plain.
+  let shown = if displayed == b: faces.len else: 0
   renderer.draw(window, displayed, message, mini.text,
     if inMini(): mini.cursor.col else: -1,
     if mode == "search": matchStart else: -1,
@@ -1005,7 +1024,7 @@ proc redraw() =
     if skkShown: inputMethod.preedit() else: "",
     if mode == "review": "[Review]" elif mode == "help": "[Help]" elif mode == "dash": "[Dash]"
     else: inputMethod.tag(), reviewColors,
-    prompt, popup)
+    prompt, popup, faces.toOpenArray(0, shown - 1), if displayed == b: lang.name else: "Text")
 
 window.onResize = redraw
 if paramCount() == 0: beginDash()  # first screen: recent files over an empty *scratch*

@@ -1,6 +1,6 @@
 import std/[os, unicode, sets, tables, math, strutils]
 import windy, boxy, pixie, opengl
-import buffer
+import buffer, syntax
 when not defined(windows) and not defined(macosx): import std/osproc
 
 type
@@ -17,7 +17,6 @@ type
   Theme* = object
     bg*, fg*, cursor*, region*, modeLine*, modeLineFg*, search*, searchFg*, border*,
       label*, popup*: Color
-    # Syntax faces, not drawn yet.
     comment*, str*, keyword*, fnname*, variable*, typ*, constant*, builtin*: Color
     review*: array[5, Color]  # bg, removed, added, removed-refine, added-refine
 
@@ -36,7 +35,7 @@ let themes = {
     search: hex"#f9e2af", searchFg: hex"#1e1e2e", border: hex"#585b70",
     label: hex"#a6adc8", popup: hex"#313244",
     comment: hex"#6c7086", str: hex"#a6e3a1", keyword: hex"#cba6f7", fnname: hex"#89b4fa",
-    variable: hex"#cdd6f4", typ: hex"#f9e2af", constant: hex"#fab387", builtin: hex"#f38ba8",
+    variable: hex"#b4befe", typ: hex"#f9e2af", constant: hex"#fab387", builtin: hex"#f38ba8",
     review: [hex"#1e1e2e", hex"#512e3a", hex"#294638", hex"#784452", hex"#3e6950"])}.toTable
 var theme* = themes["modus-vivendi"]
 
@@ -245,10 +244,22 @@ proc displayLine(line, composition: seq[Rune], cursor: int): seq[Rune] =
     line[0..<cursor] & composition & line[cursor..<line.len]
   else: line
 
+proc faceColor(f: Face, tint: Color): Color =
+  case f
+  of fPlain: tint
+  of fComment: theme.comment
+  of fString: theme.str
+  of fKeyword: theme.keyword
+  of fFnname: theme.fnname
+  of fVariable: theme.variable
+  of fType: theme.typ
+  of fConstant: theme.constant
+  of fBuiltin: theme.builtin
+
 proc drawLine(r: Renderer, line: seq[Rune], row, scroll: int, cursor = -1,
               selectionStart = -1, selectionEnd = -1, matchStart = -1, matchEnd = -1,
               composition: seq[Rune] = @[], imeCursor = 0,
-              x0 = 0, width = -1, tint = theme.fg) =
+              x0 = 0, width = -1, tint = theme.fg, faces: seq[Face] = @[]) =
   let visible = if width < 0: r.cols else: width
   let rs = displayLine(line, composition, cursor)
   let caret = if composition.len > 0 and cursor >= 0: cursor + imeCursor else: cursor
@@ -274,8 +285,9 @@ proc drawLine(r: Renderer, line: seq[Rune], row, scroll: int, cursor = -1,
           if selected or composing: r.fill(x0+at-scroll, row, size, theme.region)
           if matched: r.fill(x0+at-scroll, row, size, theme.search)
         else:
+          let face = if composing or original >= faces.len: fPlain else: faces[original]
           r.glyph(rune, (x0+at-scroll)*r.cellW, row*r.cellH,
-            if underCursor: theme.bg elif matched: theme.searchFg else: tint)
+            if underCursor: theme.bg elif matched: theme.searchFg else: faceColor(face, tint))
       cell += width
     if pass == 0 and caret >= 0: r.fill(x0+span.cell-scroll, row, span.width, theme.cursor)
 
@@ -311,7 +323,7 @@ proc popupBox(r: Renderer, window: Window, label: seq[Rune], text: string, curso
 proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
            miniCursor = -1, matchStart = -1, matchLen = 0,
            inputSegment = "", modeTag = "", lineColors: seq[int8] = @[],
-           prompt = "", popup = false) =
+           prompt = "", popup = false, faces: openArray[seq[Face]] = [], modeName = "Text") =
   let cursorCell = b.cellCol(b.cursor)
   let nativeIme = window.imeCompositionString.len > 0
   let composition = (if nativeIme: window.imeCompositionString else: inputSegment).toRunes
@@ -341,12 +353,13 @@ proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
       if b.regionActive: selection.z-offset else: -1,
       if matchStart >= 0: matchStart-offset else: -1,
       if matchStart >= 0: matchStart+matchLen-offset else: -1,
-      if cursor >= 0: textComposition else: @[], imeCursor)
+      if cursor >= 0: textComposition else: @[], imeCursor,
+      faces = if line < faces.len: faces[line] else: @[])
     offset += b.lines[line].len + 1
   r.band(r.rows, theme.modeLine)
   let name = if b.path.len == 0: "*scratch*" else: extractFilename(b.path)
   r.status(window, " -" & (if b.modified: "**" else: "--") & "- " & name &
-    "   L" & $(b.cursor.line+1) & " C" & $cursorCell & "  (Text) " & modeTag, r.rows,
+    "   L" & $(b.cursor.line+1) & " C" & $cursorCell & "  (" & modeName & ") " & modeTag, r.rows,
     tint = theme.modeLineFg)
   let miniComp = if miniCursor >= 0: composition else: @[]
   let miniIme = if miniCursor >= 0: imeCursor else: 0

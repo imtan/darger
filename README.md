@@ -17,6 +17,7 @@ nimble build -d:release       # or: nimble install -d && nim c -d:release --outd
 nim r tests/tbuffer.nim
 nim r tests/tfileio.nim   # POSIX save behaviour
 nim r tests/trecent.nim
+nim r tests/tsyntax.nim
 ```
 
 Nimble older than 0.24 (e.g. the 0.22.x bundled with Nim 2.2.10) fails with
@@ -84,6 +85,24 @@ The default colours are modus-vivendi (black background, as in Emacs'
 modus-themes); `(load-theme "catppuccin")` switches to the previous Catppuccin
 Mocha colours and `(load-theme "modus-vivendi")` back, at any time (M-: or
 `~/.darger.el`). Unknown names report `No such theme: …`.
+
+Syntax highlighting is built in (no external grammars or libraries, so it works the
+same on Windows). The language comes from the file extension, case-insensitively,
+or a `#!` line for Python, Ruby and shell scripts, and is shown in the mode line:
+Nim (`.nim .nims .nimble`), Python (`.py .pyi`), Ruby (`.rb .rake`, Gemfile,
+Rakefile), GDScript (`.gd`), JS/TS (`.js .mjs .ts .tsx .jsx`), C/C++ (`.c .h .cpp
+.hpp .cc`), Rust (`.rs`), Go (`.go`), Shell (`.sh .bash .zsh`), Lisp (`.el .lisp .scm
+.clj`, `.emacs`), JSON, TOML, YAML (`.yaml .yml`), Markdown (`.md .markdown`) and
+Org (`.org`); anything else, and `*scratch*`, is Text. It is re-detected after
+visiting or writing a file. Comments, strings, keywords, function and variable
+names, types, constants/numbers and builtins take the theme's faces (for
+modus-vivendi: fg-dim, blue-warmer, magenta-cooler, magenta, cyan, cyan-cooler,
+blue-cooler and magenta-warmer, as in Emacs). The tokenizer is table-driven and
+approximate: block comments, multi-line strings, Markdown fences and Org
+`#+begin_src` blocks carry across lines, but there is no real parsing. The whole
+buffer is re-highlighted after each change (a few ms for 3000 lines); the help,
+dashboard and review overlays stay plain.
+
 CJK and the supported emoji ranges occupy two cells; combining marks, variation
 selectors, joiners and skin-tone modifiers occupy zero cells. U+2600..27BF stays
 one cell like Emacs. Emoji use monochrome outlines without shaping: ZWJ sequences,
