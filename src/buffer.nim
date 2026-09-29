@@ -15,6 +15,7 @@ type
     undoStack: seq[Snapshot]
     yankStart, yankEnd: int
     yankIndex*: int
+    version*: int  # bumped on every change to lines, for caches such as highlighting
   SearchState* = object
     query*: string
     matchStart*: int
@@ -32,6 +33,7 @@ proc text*(b: Buffer): string =
     result.add $line
 
 proc setText(b: Buffer, s: string) =
+  inc b.version
   b.lines = @[]
   for line in s.split('\n'): b.lines.add line.toRunes
 
@@ -346,6 +348,7 @@ proc command*(b: Buffer, cmd: string, clipboard = ""): string =
     let state = b.undoStack.pop()
     let markOffset = b.offset(b.mark)
     b.lines = state.lines
+    inc b.version
     b.cursor = state.cursor
     b.mark = b.point(markOffset)
     b.regionActive = false

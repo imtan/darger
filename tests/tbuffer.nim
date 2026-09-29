@@ -220,4 +220,15 @@ block: # #25: directory targets are rejected before a temp is created.
   try: b.save("nimcache/")
   except IOError: failed = true
   doAssert failed and b.modified and b.path == ""
+block:
+  # Every change to lines bumps version, so the highlight cache notices it.
+  let b = newBuffer("ab")
+  var v = b.version
+  discard b.command("forward")
+  doAssert b.version == v
+  b.insert("x")
+  doAssert b.version > v
+  v = b.version
+  discard b.command("undo")
+  doAssert b.version > v and b.text == "ab"
 echo "All buffer checks passed"
