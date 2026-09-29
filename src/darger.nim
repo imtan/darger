@@ -1,6 +1,6 @@
 import std/[os, osproc, tempfiles, strutils, times, unicode, tables, sets, math]
 import windy, vmath
-import buffer, render, skk, lisp, review, manual, recent, syntax
+import buffer, buffers, render, skk, lisp, review, manual, recent, syntax
 
 const
   bufferCommands = ["forward", "backward", "next-line", "previous-line", "bol", "eol",
@@ -11,6 +11,8 @@ const
   helpNavigation = ["forward", "backward", "next-line", "previous-line", "bol", "eol", "bob", "eob"]
   helpMessage = "Help  q:close  F1:toggle"
   dashMessage = "Dashboard  Enter:open  q:scratch  F1:manual"
+  blistMessage = "Buffers  Enter:switch  k:kill  q:close"
+  overlays = ["review", "help", "dash", "blist"]
   dashLabels = "123456789abc"
   dashFirst = 4  # line of the first recent-file entry
   defaultBindings = """
@@ -66,6 +68,11 @@ const
 (global-set-key "C-x C-j" 'skk-mode)
 (global-set-key "C-backslash" 'skk-mode)
 (global-set-key "C-c ," (lambda () (find-file "~/.darger.el")))
+(global-set-key "C-x b" 'switch-to-buffer)
+(global-set-key "C-x k" 'kill-buffer)
+(global-set-key "C-x C-b" 'list-buffers)
+(global-set-key "C-x right" 'next-buffer)
+(global-set-key "C-x left" 'previous-buffer)
 (global-set-key "f2 g" 'zoom-in)
 (global-set-key "f2 l" 'zoom-out)
 (global-set-key "f2 0" 'zoom-reset)
@@ -98,8 +105,10 @@ else:
     let lockDisplay = XOpenDisplay(nil)
     let numLockMask = if lockDisplay != nil: XkbKeysymToModifiers(lockDisplay, 0xff7f) else: 0  # XK_Num_Lock
 
-var b = newBuffer()
-var startupMessage: string
+var b = newBuffer()  # the current buffer; reg holds every open one
+var reg: Registry
+reg.add b
+reg.touch b
 var
   lang = detect("", "")  # b's language, re-detected whenever b or b.path changes
   shownBuf: Buffer       # the buffer and version that faces were computed for
@@ -109,13 +118,6 @@ var
 proc detectLang() =
   lang = detect(b.path, if b.lines.len > 0: $b.lines[0] else: "")
   shownBuf = nil
-
-if paramCount() > 0:
-  try:
-    b = loadBuffer(paramStr(1))
-    detectLang()
-    if fileExists(b.path): recordRecent(b.path)
-  except CatchableError as e: startupMessage = e.msg
 
 var
   window = newWindow("darger", ivec2(1000, 720), vsync = true)
@@ -150,14 +152,68 @@ var
   reviewBuf: Buffer
   reviewColors: seq[int8]
   currentHunk, savedTop, savedLeft: int
-  helpBuf, dashBuf: Buffer
+  helpBuf, dashBuf, blistBuf: Buffer
   overlayTop, overlayLeft: int
   dashFiles: seq[string]
+  blistBufs: seq[Buffer]
+  pendingKill: Buffer  # awaiting y/n: the "killy" prompt or k in the buffer list
+  agentBuf: Buffer
 when defined(windows):
   var agentJob: Handle
 else:
   var agentGroup: bool
-echo = startupMessage
+
+proc switchTo(buf: Buffer) =
+  ## Makes buf current: parks b's scroll and language in its slot and restores buf's.
+  let overlay = mode in ["help", "dash", "blist"]  # b's scroll is parked in overlayTop/Left
+  if buf notin reg: reg.add buf
+  if b != buf:
+    if b in reg:
+      reg.slot(b).top = if overlay: overlayTop else: renderer.top
+      reg.slot(b).left = if overlay: overlayLeft else: renderer.left
+      reg.slot(b).lang = lang
+      reg.slot(b).langPath = b.path
+    b.finish()
+    # ponytail: each buffer has its own kill ring, synced on switch so C-y works across buffers.
+    buf.kills = b.kills
+    buf.yankIndex = b.yankIndex
+    b = buf
+  let slot = reg.slot(b)
+  if overlay: (overlayTop = slot.top; overlayLeft = slot.left)
+  else: (renderer.top = slot.top; renderer.left = slot.left)
+  if slot.lang.name.len == 0 or slot.langPath != b.path: detectLang()
+  else: lang = slot.lang
+  shownBuf = nil
+  reg.touch b
+
+proc visit(path: string) =
+  ## Like Emacs, visiting a file that is already open switches to it with its edits.
+  var buf = reg.byPath(path)
+  if buf == nil:
+    buf = loadBuffer(path)
+    reg.add buf
+  switchTo(buf)
+  if fileExists(b.path): recordRecent(b.path)  # a new file is recorded on its first save
+
+proc anyModified(): bool =
+  for s in reg.slots:
+    if s.buf.modified: return true
+
+proc killBuffer(buf: Buffer) =
+  ## Killing the current buffer shows the previous one; the last one leaves a fresh *scratch*.
+  reg.remove buf
+  if reg.len == 0: reg.add newBuffer()
+  if buf == b: switchTo(reg.current)
+
+if paramCount() >= 1:
+  var opened: seq[Buffer]
+  for i in 1..paramCount():
+    try:
+      visit(paramStr(i))
+      opened.add b
+    except CatchableError as e: echo = e.msg
+  for i in countdown(opened.high, 1): reg.touch opened[i]
+  if opened.len > 0: switchTo(opened[0])
 
 proc ctrl(): bool = window.buttonDown[KeyLeftControl] or window.buttonDown[KeyRightControl]
 proc alt(): bool = window.buttonDown[KeyLeftAlt] or window.buttonDown[KeyRightAlt]
@@ -201,8 +257,8 @@ proc beginMini(kind, label: string, initial = "") =
   prefix = ""
 
 proc inMini(): bool =
-  ## A minibuffer prompt (search, find, y/n, ...) is active; review, help and dash are overlays.
-  mode.len > 0 and mode notin ["review", "help", "dash"]
+  ## A minibuffer prompt (search, find, y/n, ...) is active; see overlays for the rest.
+  mode.len > 0 and mode notin overlays
 
 proc beginOverlay(kind: string) =
   b.finish()
@@ -264,9 +320,38 @@ proc finishDash() =
   dashBuf = nil
   dashFiles = @[]
 
+proc cells(s: string): int =
+  for r in s.runes: result += runeWidth(r)
+
+proc buildBlist(row = 0) =
+  blistBufs = reg.buffers
+  let names = reg.names
+  var width = 4
+  for n in names: width = max(width, cells(n))
+  var lines = @[" CRM " & "Name" & spaces(width - 4) & "  Path"]
+  for i, buf in blistBufs:
+    lines.add " " & (if buf == b: "." else: " ") & " " & (if buf.modified: "*" else: " ") & " " &
+      names[i] & spaces(width - cells(names[i])) & "  " & (if buf.path.len > 0: shortPath(buf.path) else: "")
+  blistBuf = newBuffer(lines.join("\n"))
+  blistBuf.path = "*Buffer List*"
+  blistBuf.cursor = (clamp(row, 1, max(1, blistBufs.len)), 0)
+
+proc beginBlist() =
+  let row = if reg.other != nil: 2 else: 1  # on the previous buffer, like C-x b's default
+  beginOverlay("blist")
+  pendingKill = nil
+  buildBlist(row)
+
+proc finishBlist() =
+  finishOverlay()
+  blistBuf = nil
+  blistBufs = @[]
+  pendingKill = nil
+
 proc closeOverlay() =
   if mode == "help": finishHelp()
   elif mode == "dash": finishDash()
+  elif mode == "blist": finishBlist()
 
 proc reviewMessage(): string =
   "Review hunk " & $(currentHunk + 1) & "/" & $reviewState.hunks.len &
@@ -367,6 +452,7 @@ proc startAgent(instruction: string) =
       # ponytail: without setsid (e.g. macOS), cancellation only stops the shell; install setsid for group cleanup.
       agentProcess = startProcess("/bin/sh", args = ["-c", shell], options = {poUsePath})
     agentCancelled = false
+    agentBuf = b
     echo = "Agent running..."
   except CatchableError:
     if agentProcess != nil:
@@ -425,6 +511,8 @@ proc pollAgent(): bool =
     else:
       let text = cleanAgentOutput(readFile(agentDir / "out.txt"))
       if validateUtf8(text) != -1: raise newException(ValueError, "Agent output is not valid UTF-8")
+      if agentBuf notin reg: raise newException(ValueError, "Agent: its buffer was killed")
+      switchTo(agentBuf)  # review the buffer the instruction was about
       beginReview(text)
   except CatchableError as e: echo = e.msg
   finally: cleanAgentFiles()
@@ -432,7 +520,7 @@ proc pollAgent(): bool =
 proc quitEditor() =
   if mode == "review": finishReview(true)
   closeOverlay()
-  if b.modified: beginMini("exit", "Modified buffers exist; exit anyway? (y or n) ")
+  if anyModified(): beginMini("exit", "Modified buffers exist; exit anyway? (y or n) ")
   else: running = false
 
 proc syncSearch() =
@@ -494,15 +582,6 @@ interp.defPrimitive("help", proc(args: seq[Value]): Value =
   elif mode in ["", "eval", "execute"]: beginHelp()  # M-x help / M-: (help) reach here from their prompt
   else: echo = "help is unavailable here"
   nilValue())
-proc visit(path: string) =
-  let loaded = loadBuffer(path)
-  loaded.kills = b.kills
-  b = loaded
-  detectLang()
-  renderer.top = 0
-  renderer.left = 0
-  if fileExists(b.path): recordRecent(b.path)  # a new file is recorded on its first save
-
 proc wrote() =
   echo = "Wrote " & b.path
   detectLang()
@@ -511,16 +590,16 @@ proc wrote() =
 proc findPrompt() =
   beginMini("find", "Find file: ", (if b.path.len > 0: parentDir(b.path) else: getCurrentDir()) & DirSep)
 
-proc openFile(path: string) =
-  ## Visits path, first asking to discard a modified buffer (the "replace" prompt).
-  ## Like Emacs, finding the file already shown keeps its edits, point and undo.
-  if b.path.len > 0 and cmpPaths(normalizedPath(absolutePath(path)), normalizedPath(b.path)) == 0:
-    echo = ""
-    return
-  if b.modified:
-    pendingPath = path
-    beginMini("replace", "Buffer modified; discard changes? (y or n) ")
-  else: visit(path)
+proc switchPrompt() =
+  let other = reg.other
+  beginMini("switch", "Switch to buffer" &
+    (if other != nil: " (default " & reg.displayName(other) & ")" else: "") & ": ")
+
+proc killPrompt() =
+  beginMini("kill", "Kill buffer (default " & reg.displayName(b) & "): ")
+
+proc killQuestion(buf: Buffer): string =
+  "Buffer " & reg.displayName(buf) & " modified; kill anyway? (y or n) "
 
 proc confirmMini() =
   let kind = mode
@@ -539,12 +618,27 @@ proc confirmMini() =
       echo = if e.line == 0: "<minibuffer>:1: " & e.msg else: e.msg
   of "find":
     if value.len == 0: return
-    openFile(value)
-  of "replace":
-    if value.toLowerAscii == "y": visit(pendingPath)
+    visit(value)
+  of "switch":
+    let target = if value.len == 0: reg.other else: reg.byName(value)
+    if target != nil: switchTo(target)
+    elif value.len > 0:
+      let fresh = newBuffer()
+      reg.add(fresh, value)
+      switchTo(fresh)
+  of "kill":
+    let target = if value.len == 0: b else: reg.byName(value)
+    if target == nil: echo = "No such buffer: " & value
+    elif target.modified:
+      pendingKill = target
+      beginMini("killy", killQuestion(target))
+    else: killBuffer(target)
+  of "killy":
+    if value.toLowerAscii == "y": killBuffer(pendingKill)
     elif value.toLowerAscii != "n":
       echo = "Please answer y or n"
       return
+    pendingKill = nil
   of "write":
     if value.len == 0: return
     if fileExists(value) and absolutePath(value) != b.path:
@@ -604,7 +698,7 @@ proc target(): Buffer = (if inMini(): mini else: b)
 
 proc skkOn(): bool =
   # ponytail: one SKK state serves the buffer and the text minibuffers; y/n and goto prompts bypass it.
-  inputMethod.enabled and mode in ["", "find", "write", "search", "agent"] and
+  inputMethod.enabled and mode in ["", "find", "write", "search", "agent", "switch", "kill"] and
     window.imeCompositionString.len == 0
 
 proc following(): Rune =
@@ -714,7 +808,7 @@ proc openEntry(i: int) =
     echo = "No such file: " & shortPath(path)
     return
   finishDash()
-  try: openFile(path)
+  try: visit(path)
   except CatchableError as e:
     beginDash()
     echo = e.msg
@@ -741,7 +835,47 @@ proc dispatchDash(c: string) =
     openEntry(dashLabels.find(full[0]))
   else: echo = full & " is undefined"
 
+proc blistKill(buf: Buffer) =
+  let row = blistBuf.cursor.line
+  killBuffer(buf)
+  buildBlist(row)
+  echo = "Killed buffer"
+
+proc dispatchBlist(c: string) =
+  ## Like dispatchDash: the list moves between buffers, switches to one or kills one.
+  if pendingKill != nil:
+    let buf = pendingKill
+    if c notin ["y", "n", "C-g"]:
+      echo = "Please answer y or n"
+      return
+    pendingKill = nil
+    if c == "y": blistKill(buf)
+    return
+  let full = overlayKey(c)
+  if full.len == 0: return
+  let name = keymap.getOrDefault(full).symName
+  let row = blistBuf.cursor.line
+  let buf = if row - 1 in 0..blistBufs.high: blistBufs[row - 1] else: nil
+  if full in ["q", "C-g", "escape"] or name == "list-buffers": finishBlist()
+  elif full == "f1" or name == "help":
+    finishBlist()
+    beginHelp()
+  elif full == "C-x C-c": quitEditor()
+  elif full in ["enter", "C-m", "C-j"] and buf != nil:
+    finishBlist()
+    switchTo(buf)
+  elif full == "k" and buf != nil:
+    if buf.modified: pendingKill = buf
+    else: blistKill(buf)
+  elif name in ["next-line", "previous-line"] or full in ["C-n", "C-p", "down", "up", "n", "p"]:
+    let delta = if name == "previous-line" or full in ["C-p", "up", "p"]: -1 else: 1
+    blistBuf.cursor = (clamp(row + delta, 1, max(1, blistBufs.len)), 0)
+  else: echo = full & " is undefined"
+
 proc dispatch(c: string) =
+  if mode == "blist":
+    dispatchBlist(c)
+    return
   if mode == "help":
     dispatchHelp(c)  # C-g only closes the manual; a running agent keeps running
     return
@@ -755,6 +889,7 @@ proc dispatch(c: string) =
       return
     if mode == "search": b.cursor = isearch.origin
     mode = ""
+    pendingKill = nil
     prefix = ""
     matchStart = -1
     echo = if agentCancelled and agentProcess != nil: "Agent cancelling..." else: ""
@@ -780,7 +915,7 @@ proc dispatch(c: string) =
       return
     rebuildReview()
     return
-  if mode in ["find", "write", "search", "agent"]:
+  if mode in ["find", "write", "search", "agent", "switch", "kill"]:
     # Text prompts take keys bound to skk-mode (C-\, C-x C-j); C-j alone still confirms.
     if prefix.len == 0 and keymap.getOrDefault(c).symName == "skk-mode":
       toggleSkk()
@@ -884,9 +1019,38 @@ interp.defPrimitive("find-file", proc(args: seq[Value]): Value =
   args.arity(1, 1)
   let path = expandTilde(args[0].asString)
   if path.len == 0: raise newException(LispError, "Expected a file name")
-  try: openFile(path)
+  try: visit(path)
   except IOError, ValueError: raise newException(LispError, getCurrentExceptionMsg())
   nilValue())
+interp.defPrimitive("switch-to-buffer", proc(args: seq[Value]): Value =
+  args.arity(0, 1)
+  if args.len == 0:
+    switchPrompt()
+    return nilValue()
+  let name = args[0].asString
+  var buf = reg.byName(name)
+  if buf == nil:
+    buf = newBuffer()
+    reg.add(buf, name)
+  switchTo(buf)
+  nilValue())
+interp.defPrimitive("kill-buffer", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  killPrompt()
+  nilValue())
+interp.defPrimitive("list-buffers", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  if mode == "blist": finishBlist()
+  elif mode in ["", "eval", "execute"]: beginBlist()
+  else: echo = "list-buffers is unavailable here"
+  nilValue())
+for (name, delta) in [("next-buffer", 1), ("previous-buffer", -1)]:
+  closureScope:
+    let d = delta
+    interp.defPrimitive(name, proc(args: seq[Value]): Value =
+      args.arity(0, 0)
+      switchTo(reg.cycle(b, d))
+      nilValue())
 interp.defPrimitive("load-theme", proc(args: seq[Value]): Value =
   args.arity(1, 1)
   let name = args[0].asString
@@ -913,7 +1077,7 @@ window.onButtonPress = proc(key: Button) =
              KeyLeftShift, KeyRightShift, KeyLeftSuper, KeyRightSuper,
              KeyCapsLock, KeyNumLock, KeyScrollLock, KeyPause, KeyMenu, KeyPrintScreen,
              KeyInsert} or key < Key0: return
-  if key == KeyEscape and mode notin ["help", "dash"]: return  # Escape only closes an overlay
+  if key == KeyEscape and mode notin ["help", "dash", "blist"]: return  # Escape only closes an overlay
   if window.imeCompositionString.len > 0:
     if key == KeyG and ctrl():
       window.closeIme()
@@ -961,7 +1125,7 @@ window.onRune = proc(rune: Rune) =
   if scalar > 0x10FFFF: return
   echo = ""
   try:
-    if mode in ["review", "help", "dash"]:
+    if mode in overlays:
       dispatch($Rune(scalar))
       return
     if prefix.len > 0:
@@ -979,7 +1143,7 @@ window.onRune = proc(rune: Rune) =
 
 window.onImeChange = proc() =
   dirty = true
-  if mode in ["review", "help", "dash"]:
+  if mode in overlays:
     if window.imeCompositionString.len > 0: window.closeIme()
     return
   if window.imeCompositionString.len > 0:
@@ -999,7 +1163,7 @@ proc overlayMessage(base: string): string =
 proc redraw() =
   if not running or window.closed or window.minimized or window.size.x == 0 or window.size.y == 0: return
   let displayed = if mode == "review": reviewBuf elif mode == "help": helpBuf
-    elif mode == "dash": dashBuf else: b
+    elif mode == "dash": dashBuf elif mode == "blist": blistBuf else: b
   renderer.resize(window, displayed)
   let skkShown = skkOn()
   # The candidate page lives in echo; a command that cleared echo brings it back.
@@ -1008,6 +1172,8 @@ proc redraw() =
     elif mode == "review": reviewMessage() & (if echo != reviewMessage(): "  " & echo else: "")
     elif mode == "help": overlayMessage(helpMessage)
     elif mode == "dash": overlayMessage(dashMessage)
+    elif mode == "blist":
+      if pendingKill != nil: killQuestion(pendingKill) else: overlayMessage(blistMessage)
     elif echo.len == 0 and skkShown: inputMethod.page() else: echo
   # Prompts float in a popup; isearch stays on the bottom line so its match is visible.
   let popup = inMini() and mode != "search"
@@ -1023,8 +1189,9 @@ proc redraw() =
     if mode == "search": mini.text.runeLen else: 0,
     if skkShown: inputMethod.preedit() else: "",
     if mode == "review": "[Review]" elif mode == "help": "[Help]" elif mode == "dash": "[Dash]"
-    else: inputMethod.tag(), reviewColors,
-    prompt, popup, faces.toOpenArray(0, shown - 1), if displayed == b: lang.name else: "Text")
+    elif mode == "blist": "[Buffers]" else: inputMethod.tag(), reviewColors,
+    prompt, popup, faces.toOpenArray(0, shown - 1), if displayed == b: lang.name else: "Text",
+    if displayed == b or mode == "review": reg.displayName(b) else: displayed.path)
 
 window.onResize = redraw
 if paramCount() == 0: beginDash()  # first screen: recent files over an empty *scratch*

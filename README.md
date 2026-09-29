@@ -7,16 +7,17 @@ GPU atlas. macOS compiles but is untested; `agent-command` can use
 
 ```powershell
 nimble build -d:release
-.\darger.exe [file]
+.\darger.exe [file...]
 nim r tests/tbuffer.nim
 ```
 
 ```sh
 nimble build -d:release       # or: nimble install -d && nim c -d:release --outdir:. src/darger.nim
-./darger [file]
+./darger [file...]
 nim r tests/tbuffer.nim
 nim r tests/tfileio.nim   # POSIX save behaviour
 nim r tests/trecent.nim
+nim r tests/tbuffers.nim
 nim r tests/tsyntax.nim
 ```
 
@@ -158,11 +159,38 @@ C-y uses the clipboard when the 60-entry kill ring is empty. Undo keeps 200
 snapshots and groups runs of non-whitespace self-inserts. Snapshot undo and
 flattened edits favor small files.
 
+## Buffers
+
+Every file opens in its own buffer; the other buffers keep their text, point, undo,
+scroll position and language. Every command-line argument is opened and the first
+is shown (one that fails to load is reported in the echo area and skipped), next
+to the initial `*scratch*`. Visiting a file that is already open (C-x C-f,
+`find-file`, the dashboard, C-c ,) switches to its buffer and keeps its edits.
+
+- C-x b (`switch-to-buffer`) prompts for a buffer name; Enter alone switches to the
+  most recently used other buffer (shown as the default), and an unknown name
+  creates an empty buffer with that name. `(switch-to-buffer "name")` does the same
+  from Lisp.
+- C-x k (`kill-buffer`) prompts for a name (default: the current buffer) and asks
+  `Buffer NAME modified; kill anyway? (y or n)` for a modified one. Killing the
+  current buffer shows the previous one; killing the last leaves a fresh `*scratch*`.
+- C-x right / C-x left (`next-buffer` / `previous-buffer`) cycle in opening order.
+- C-x C-b (`list-buffers`) lists the buffers, most recently used first, as
+  ` CRM Name  Path` rows (`.` marks the current buffer, `*` a modified one). C-n /
+  C-p / n / p move, Enter switches, k kills the buffer on the line (asking y/n
+  inline when it is modified), q, C-g or Escape close the list.
+
+Names follow Emacs: a file's name is its basename; buffers sharing one get their
+parent directory appended (`darger.nim<src>`, `darger.nim<tests>`, deepening to
+`<a/src>` when needed), path-less buffers are `*scratch*`, `*scratch*<2>`, ... or
+the name typed at C-x b. The mode line and window title show this name. C-x C-s
+saves only the current buffer; C-x C-c asks before exiting when any buffer is
+modified. The kill ring is shared: it follows you to the buffer you switch to.
+
 ## Init file
 
 `~/.darger.el` is evaluated at startup after the default bindings; C-c , opens it
-(`(find-file "~/.darger.el")`, which asks first when another buffer is modified and
-does nothing when it is already shown). Besides `global-set-key`, `setq`, `message`,
+(`(find-file "~/.darger.el")`, which switches to its buffer when it is already open). Besides `global-set-key`, `setq`, `message`,
 `insert` and `command`, it can use `(load-theme "catppuccin")`, `(find-file "path")`
 (`~` expands), `skk-mode`, `zoom-in` / `zoom-out` / `zoom-reset`, and
 `(hydra "PREFIX" "hint")`, which makes a one-key prefix sticky: after a bound

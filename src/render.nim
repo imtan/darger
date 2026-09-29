@@ -323,7 +323,8 @@ proc popupBox(r: Renderer, window: Window, label: seq[Rune], text: string, curso
 proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
            miniCursor = -1, matchStart = -1, matchLen = 0,
            inputSegment = "", modeTag = "", lineColors: seq[int8] = @[],
-           prompt = "", popup = false, faces: openArray[seq[Face]] = [], modeName = "Text") =
+           prompt = "", popup = false, faces: openArray[seq[Face]] = [], modeName = "Text",
+           bufName = "") =
   let cursorCell = b.cellCol(b.cursor)
   let nativeIme = window.imeCompositionString.len > 0
   let composition = (if nativeIme: window.imeCompositionString else: inputSegment).toRunes
@@ -357,7 +358,7 @@ proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
       faces = if line < faces.len: faces[line] else: @[])
     offset += b.lines[line].len + 1
   r.band(r.rows, theme.modeLine)
-  let name = if b.path.len == 0: "*scratch*" else: extractFilename(b.path)
+  let name = if bufName.len > 0: bufName elif b.path.len == 0: "*scratch*" else: extractFilename(b.path)
   r.status(window, " -" & (if b.modified: "**" else: "--") & "- " & name &
     "   L" & $(b.cursor.line+1) & " C" & $cursorCell & "  (" & modeName & ") " & modeTag, r.rows,
     tint = theme.modeLineFg)
