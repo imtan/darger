@@ -3,26 +3,46 @@ import windy, boxy, pixie, opengl
 import buffer
 when not defined(windows) and not defined(macosx): import std/osproc
 
-type Renderer* = ref object
-  gpu: Boxy
-  fonts: seq[Font]
-  chosen: Table[int, int]
-  glyphs: HashSet[string]
-  scale: float32
-  lastTitle: string
-  cellW*, cellH*, rows*, cols*, top*, left*: int
+type
+  Renderer* = ref object
+    gpu: Boxy
+    fonts: seq[Font]
+    chosen: Table[int, int]
+    glyphs: HashSet[string]
+    scale: float32
+    zoom*: float32
+    lastTitle: string
+    pad, areaW: int
+    cellW*, cellH*, rows*, cols*, top*, left*: int
+  Theme* = object
+    bg*, fg*, cursor*, region*, modeLine*, modeLineFg*, search*, searchFg*, border*,
+      label*, popup*: Color
+    # Syntax faces, not drawn yet.
+    comment*, str*, keyword*, fnname*, variable*, typ*, constant*, builtin*: Color
+    review*: array[5, Color]  # bg, removed, added, removed-refine, added-refine
 
-let
-  bg = parseHtmlColor("#1e1e2e").color
-  fg = parseHtmlColor("#cdd6f4").color
-  cursorColor = parseHtmlColor("#f5e0dc").color
-  regionColor = parseHtmlColor("#45475a").color
-  modeColor = parseHtmlColor("#313244").color
-  searchColor = parseHtmlColor("#f9e2af").color
-  borderColor = parseHtmlColor("#585b70").color
-  labelColor = parseHtmlColor("#a6adc8").color
-  reviewColors = [bg, parseHtmlColor("#512e3a").color, parseHtmlColor("#294638").color,
-    parseHtmlColor("#784452").color, parseHtmlColor("#3e6950").color]
+proc hex(s: string): Color = parseHtmlColor(s).color
+
+let themes = {
+  "modus-vivendi": Theme(bg: hex"#000000", fg: hex"#ffffff", cursor: hex"#ffffff",
+    region: hex"#5a5a5a", modeLine: hex"#505050", modeLineFg: hex"#ffffff",
+    search: hex"#7a6100", searchFg: hex"#ffffff", border: hex"#646464",
+    label: hex"#989898", popup: hex"#1e1e1e",
+    comment: hex"#989898", str: hex"#79a8ff", keyword: hex"#b6a0ff", fnname: hex"#feacd0",
+    variable: hex"#00d3d0", typ: hex"#6ae4b9", constant: hex"#00bcff", builtin: hex"#f78fe7",
+    review: [hex"#000000", hex"#4f1119", hex"#00381f", hex"#781a1f", hex"#034f2f"]),
+  "catppuccin": Theme(bg: hex"#1e1e2e", fg: hex"#cdd6f4", cursor: hex"#f5e0dc",
+    region: hex"#45475a", modeLine: hex"#313244", modeLineFg: hex"#cdd6f4",
+    search: hex"#f9e2af", searchFg: hex"#1e1e2e", border: hex"#585b70",
+    label: hex"#a6adc8", popup: hex"#313244",
+    comment: hex"#6c7086", str: hex"#a6e3a1", keyword: hex"#cba6f7", fnname: hex"#89b4fa",
+    variable: hex"#cdd6f4", typ: hex"#f9e2af", constant: hex"#fab387", builtin: hex"#f38ba8",
+    review: [hex"#1e1e2e", hex"#512e3a", hex"#294638", hex"#784452", hex"#3e6950"])}.toTable
+var theme* = themes["modus-vivendi"]
+
+proc setTheme*(name: string): bool =
+  result = name in themes
+  if result: theme = themes[name]
 
 when not defined(windows) and not defined(macosx):
   proc fcMatch(pattern: string): string =
@@ -32,16 +52,26 @@ when not defined(windows) and not defined(macosx):
       if c == 0 and fileExists(o.strip): result = o.strip
     except CatchableError: discard
 
+proc iosevka(dir: string): seq[string] =
+  for weight in ["ExtraLight", "Light", "Regular"]:
+    result.add dir / ("IosevkaNerdFontMono-" & weight & ".ttf")
+
 proc newRenderer*(): Renderer =
-  result = Renderer()
+  result = Renderer(zoom: 1)
   var paths: seq[string]
   let primary = getEnv("DARGER_FONT")
   if primary.len > 0: paths.add primary
   when defined(windows):
+    paths.add iosevka(getEnv("LOCALAPPDATA") / "Microsoft/Windows/Fonts")
+    paths.add iosevka("C:/Windows/Fonts")
     paths.add @[getEnv("LOCALAPPDATA") / "Microsoft/Windows/Fonts/HackGenConsoleNF-Regular.ttf",
       "C:/Windows/Fonts/CascadiaMono.ttf", "C:/Windows/Fonts/consola.ttf",
       "C:/Windows/Fonts/cour.ttf"]
   else:
+    when defined(macosx): paths.add iosevka(getHomeDir() / "Library/Fonts")
+    else:
+      paths.add iosevka("/usr/share/fonts/TTF")
+      paths.add iosevka(getHomeDir() / ".local/share/fonts")
     paths.add @["/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
       "/usr/share/fonts/dejavu/DejaVuSansMono.ttf",
       "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
@@ -130,7 +160,8 @@ proc uiScale(window: Window): float32 =
       if g > 0: result = g
 
 proc resize*(r: Renderer, window: Window, b: Buffer) =
-  let scale = window.uiScale
+  let ui = window.uiScale
+  let scale = ui * r.zoom
   if r.scale != scale:
     for key in r.glyphs: r.gpu.removeImage(key)
     r.glyphs.clear()
@@ -140,8 +171,13 @@ proc resize*(r: Renderer, window: Window, b: Buffer) =
     r.cellW = max(1, int(ceil(primary.typeface.getAdvance(Rune(77)) * primary.scale)))
     r.cellH = max(1, int(ceil(primary.typeface.lineHeight * primary.scale)))
     b.goal = -1
-  r.rows = max(1, window.size.y.int div r.cellH - 2)
-  r.cols = max(1, window.size.x.int div r.cellW)
+  # Like Emacs' internal-border-width, the border ignores text zoom; small windows shrink it.
+  let w = window.size.x.int
+  let h = window.size.y.int
+  r.pad = max(0, min(int(round(32 * ui)), min((w - r.cellW) div 2, (h - 3 * r.cellH) div 2)))
+  r.areaW = max(0, w - 2 * r.pad)
+  r.rows = max(1, (h - 2 * r.pad) div r.cellH - 2)
+  r.cols = max(1, r.areaW div r.cellW)
 
 proc glyph(r: Renderer, rune: Rune, x, y: int, tint: Color) =
   if rune in [Rune(9), Rune(32)]: return
@@ -178,11 +214,16 @@ proc glyph(r: Renderer, rune: Rune, x, y: int, tint: Color) =
       img.strokePath(path, color(1, 1, 1, 1), strokeWidth = 1)
     r.gpu.addImage(key, img)
     r.glyphs.incl key
-  r.gpu.drawImage(key, vec2(x.float32, y.float32), tint)
+  r.gpu.drawImage(key, vec2((x + r.pad).float32, (y + r.pad).float32), tint)
 
 proc fill(r: Renderer, cell, row, count: int, c: Color) =
-  r.gpu.drawRect(rect((cell * r.cellW).float32, (row * r.cellH).float32,
+  r.gpu.drawRect(rect((r.pad + cell * r.cellW).float32, (r.pad + row * r.cellH).float32,
     (count * r.cellW).float32, r.cellH.float32), c)
+
+proc band(r: Renderer, row: int, c: Color) =
+  ## A full-width row of the text area, including the part right of the last cell.
+  r.gpu.drawRect(rect(r.pad.float32, (r.pad + row * r.cellH).float32,
+    r.areaW.float32, r.cellH.float32), c)
 
 proc cursorSpan(line: seq[Rune], col: int): tuple[cell, width: int] =
   result.cell = cellCol(line, col)
@@ -207,7 +248,7 @@ proc displayLine(line, composition: seq[Rune], cursor: int): seq[Rune] =
 proc drawLine(r: Renderer, line: seq[Rune], row, scroll: int, cursor = -1,
               selectionStart = -1, selectionEnd = -1, matchStart = -1, matchEnd = -1,
               composition: seq[Rune] = @[], imeCursor = 0,
-              x0 = 0, width = -1, tint = fg) =
+              x0 = 0, width = -1, tint = theme.fg) =
   let visible = if width < 0: r.cols else: width
   let rs = displayLine(line, composition, cursor)
   let caret = if composition.len > 0 and cursor >= 0: cursor + imeCursor else: cursor
@@ -230,39 +271,41 @@ proc drawLine(r: Renderer, line: seq[Rune], row, scroll: int, cursor = -1,
         else: at >= scroll and at + size <= scroll + visible
       if shown:
         if pass == 0:
-          if selected or composing: r.fill(x0+at-scroll, row, size, regionColor)
-          if matched: r.fill(x0+at-scroll, row, size, searchColor)
+          if selected or composing: r.fill(x0+at-scroll, row, size, theme.region)
+          if matched: r.fill(x0+at-scroll, row, size, theme.search)
         else:
-          r.glyph(rune, (x0+at-scroll)*r.cellW, row*r.cellH, if matched or underCursor: bg else: tint)
+          r.glyph(rune, (x0+at-scroll)*r.cellW, row*r.cellH,
+            if underCursor: theme.bg elif matched: theme.searchFg else: tint)
       cell += width
-    if pass == 0 and caret >= 0: r.fill(x0+span.cell-scroll, row, span.width, cursorColor)
+    if pass == 0 and caret >= 0: r.fill(x0+span.cell-scroll, row, span.width, theme.cursor)
 
 proc status(r: Renderer, window: Window, text: string, row: int, cursor = -1,
-            composition: seq[Rune] = @[], imeCursor = 0, x0 = 0, width = -1) =
+            composition: seq[Rune] = @[], imeCursor = 0, x0 = 0, width = -1, tint = theme.fg) =
   let visible = if width < 0: r.cols else: width
   var scroll = 0
   if cursor >= 0:
     let span = cursorSpan(displayLine(text.toRunes, composition, cursor), cursor + imeCursor)
     scroll = max(0, span.cell + span.width - visible)
     when defined(windows) or defined(macosx):
-      window.imePos = ivec2(((x0+span.cell-scroll)*r.cellW).int32, ((row+1)*r.cellH).int32)
+      window.imePos = ivec2((r.pad + (x0+span.cell-scroll)*r.cellW).int32,
+        (r.pad + (row+1)*r.cellH).int32)
   r.drawLine(text.toRunes, row, scroll, cursor, composition = composition, imeCursor = imeCursor,
-    x0 = x0, width = width)
+    x0 = x0, width = width, tint = tint)
 
 proc popupBox(r: Renderer, window: Window, label: seq[Rune], text: string, cursor: int,
               composition: seq[Rune], imeCursor: int) =
-  # Floating minibuffer: label row at y0, input row below, in a borderColor frame
+  # Floating minibuffer: label row at y0, input row below, in a theme.border frame
   # covering whole rows y0-1 .. y0+2.
   let w = min(max(clamp(r.cols - 6, 24, 80), cellCol(label, label.len)), r.cols - 2)
   let x0 = (r.cols - w) div 2
   let y0 = 2
-  let fx = ((x0 - 1) * r.cellW).float32
-  let fy = ((y0 - 1) * r.cellH).float32
+  let fx = (r.pad + (x0 - 1) * r.cellW).float32
+  let fy = (r.pad + (y0 - 1) * r.cellH).float32
   let fw = ((w + 2) * r.cellW).float32
   let fh = (4 * r.cellH).float32
-  r.gpu.drawRect(rect(fx - 2, fy - 2, fw + 4, fh + 4), borderColor)
-  r.gpu.drawRect(rect(fx, fy, fw, fh), modeColor)
-  r.drawLine(label, y0, 0, x0 = x0, width = w, tint = labelColor)
+  r.gpu.drawRect(rect(fx - 2, fy - 2, fw + 4, fh + 4), theme.border)
+  r.gpu.drawRect(rect(fx, fy, fw, fh), theme.popup)
+  r.drawLine(label, y0, 0, x0 = x0, width = w, tint = theme.label)
   r.status(window, text, y0 + 1, cursor, composition, imeCursor, x0 = x0, width = w)
 
 proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
@@ -282,16 +325,16 @@ proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
   if span.cell + span.width > r.left + r.cols: r.left = max(0, span.cell + span.width - r.cols)
   when defined(windows) or defined(macosx):
     if miniCursor < 0:
-      window.imePos = ivec2(((span.cell-r.left)*r.cellW).int32,
-        ((b.cursor.line-r.top+1)*r.cellH).int32)
+      window.imePos = ivec2((r.pad + (span.cell-r.left)*r.cellW).int32,
+        (r.pad + (b.cursor.line-r.top+1)*r.cellH).int32)
   r.gpu.beginFrame(window.size)
-  r.gpu.drawRect(rect(0, 0, window.size.x.float32, window.size.y.float32), bg)
+  r.gpu.drawRect(rect(0, 0, window.size.x.float32, window.size.y.float32), theme.bg)
   let selection = b.region
   var offset = b.offset((min(r.top, b.lines.high), 0))
   for line in r.top..<min(b.lines.len, r.top + r.rows):
     let row = line - r.top
     if line < lineColors.len and lineColors[line] in 1'i8..4'i8:
-      r.fill(0, row, r.cols + 1, reviewColors[lineColors[line]])
+      r.band(row, theme.review[lineColors[line]])
     let cursor = if miniCursor < 0 and line == b.cursor.line: b.cursor.col else: -1
     r.drawLine(b.lines[line], row, r.left, cursor,
       if b.regionActive: selection.a-offset else: -1,
@@ -300,10 +343,11 @@ proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
       if matchStart >= 0: matchStart+matchLen-offset else: -1,
       if cursor >= 0: textComposition else: @[], imeCursor)
     offset += b.lines[line].len + 1
-  r.fill(0, r.rows, r.cols + 1, modeColor)
+  r.band(r.rows, theme.modeLine)
   let name = if b.path.len == 0: "*scratch*" else: extractFilename(b.path)
   r.status(window, " -" & (if b.modified: "**" else: "--") & "- " & name &
-    "   L" & $(b.cursor.line+1) & " C" & $cursorCell & "  (Text) " & modeTag, r.rows)
+    "   L" & $(b.cursor.line+1) & " C" & $cursorCell & "  (Text) " & modeTag, r.rows,
+    tint = theme.modeLineFg)
   let miniComp = if miniCursor >= 0: composition else: @[]
   let miniIme = if miniCursor >= 0: imeCursor else: 0
   let label = prompt.strip(leading = false).toRunes
