@@ -128,6 +128,9 @@ fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK
 | Pages / recenter | C-v / M-v, PageDown / PageUp; C-l cycles center/top/bottom |
 | Go to line | M-g g / M-g M-g |
 | Jump to a matching line (consult-line) | M-g l |
+| Language server: completion / hover | C-M-i (also automatic) / C-c h |
+| Language server: definition / back / references | M-. / M-, / M-? |
+| Language server: format the buffer | C-c = |
 | Insert / delete | Enter / C-m / C-j, Tab / C-i, Backspace / C-h, C-d / Delete |
 | Open line / transpose | C-o / C-t |
 | Kill line / word / backward word | C-k / M-d / M-Backspace |
@@ -191,7 +194,7 @@ modified. The kill ring is shared: it follows you to the buffer you switch to.
 
 ## Completion
 
-The Find file / Write file (C-x C-f, C-x C-w), M-x, C-x b, C-x k and M-g l prompts
+The Find file / Write file (C-x C-f, C-x C-w), M-x, C-x b, C-x k, M-g l, M-g f and M-? prompts
 list candidates under the input, vertico-style: up to 10 rows (fewer in a short
 window, so some text stays visible), the selected one highlighted, and `N/M` (selected / matching) at the right of the prompt. Matching is
 orderless-style: the input is split on spaces and every term must occur somewhere
@@ -216,6 +219,71 @@ start with the first term come first, otherwise the source order is kept.
   centred and highlighted; Enter stays there, C-g returns to where it started.
   Its list opens at the bottom of the window, above the mode line, so the
   previewed line stays visible above it.
+
+## Language servers
+
+A file whose language has a server gets diagnostics from it over LSP. The server is
+started the first time a buffer of that language is shown (one per language, rooted at
+the nearest directory above the file holding `.git`, else the file's directory) and
+stopped on exit. darger sends the whole text 150 ms after the last edit, and on save.
+
+| Language | Server (the first one installed is used) |
+| --- | --- |
+| Nim | `nimlangserver` |
+| Python | `pyright-langserver --stdio`, `pylsp` |
+| Ruby | `solargraph stdio`, `ruby-lsp` |
+| GDScript | `tcp://127.0.0.1:6005` (the Godot editor's server) |
+| JS/TS | `typescript-language-server --stdio` |
+| C/C++ | `clangd` |
+| Rust | `rust-analyzer` |
+| Go | `gopls` |
+| Shell | `bash-language-server start` |
+| JSON | `vscode-json-language-server --stdio` |
+| YAML | `yaml-language-server --stdio` |
+| Markdown | `marksman server` |
+
+When none is found the echo area says so once, e.g. `No language server for C/C++
+(clangd not found)`. Override a language's command (split on spaces; `tcp://host:port`
+connects instead of spawning) in `~/.darger.el`:
+
+```elisp
+(lsp-server "C/C++" "clangd --log=error")
+(lsp-server "Python" "")   ; no server for Python
+```
+
+- Diagnostics underline their range (error red, warning yellow, info blue, hint grey);
+  the mode line shows ` E:n W:m` after the language name. Resting the cursor 500 ms on
+  one shows `error: message` in the echo area when it is empty.
+- M-g f (`consult-flymake`) lists them as `line:col  E|W|I|H  message` at the bottom of
+  the window, sorted by line; moving the selection previews the spot, Enter stays
+  there, C-g returns.
+- M-x `lsp-restart` restarts the current buffer's server; M-x `lsp-log` echoes the path
+  of its log, `darger-lsp-<language>-<pid>.log` in the temp directory (the server's
+  stderr and messages, restarted past 4 MB and removed on exit).
+- Completion (company-style): a popup under the cursor lists the server's candidates,
+  each with a kind letter (f function, v variable, m method, c class/struct, k keyword,
+  t type, s snippet, o other) and its detail. It opens by itself once you have typed
+  two identifier characters and paused 300 ms, or right after one of the server's
+  trigger characters (such as `.`); C-M-i (`completion-at-point`) asks at once.
+  C-n / C-p (or the arrows) select, Enter / TAB insert (snippet placeholders are
+  reduced to their text, and the item's extra edits, such as clangd's `#include`, go in
+  too), C-g / Escape close, and typing narrows the list (asking the server again after
+  a 300 ms pause when it said the list was cut short); any other key closes it and runs
+  as usual. `(setq lsp-auto-complete nil)` in `~/.darger.el`
+  keeps only C-M-i.
+- C-c h (`lsp-hover`) shows the server's description of the symbol at point in a box
+  under the cursor (up to 12 rows; C-n / C-p / C-v / M-v scroll a longer one); any
+  other key closes it.
+- M-. (`lsp-definition`) jumps to the definition, opening its file when needed, and
+  M-, (`lsp-back`) returns; the last 50 origins are kept. M-x `lsp-type-definition` and
+  `lsp-implementation` jump the same way. M-? (`lsp-references`) lists the references as
+  `path:line: text` at the bottom of the window, grouped by file; moving the selection
+  previews each one, Enter stays there (M-, comes back), C-g returns.
+- C-c = (`lsp-format-buffer`) formats the buffer with the server (4-space indents);
+  C-/ undoes the whole format in one step.
+- A request the server leaves unanswered for 10 s is dropped with
+  `LSP: <method> timed out`; the editor does not block waiting for an answer, and
+  text a busy server has not read yet is queued (on Windows, written 4 KB at a time).
 
 ## Init file
 

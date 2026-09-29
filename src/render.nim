@@ -16,11 +16,17 @@ type
     cellW*, cellH*, rows*, cols*, top*, left*: int
     candTop: int  # first candidate row shown in the popup
   Anchor* = enum atTop, atBottom
+  CursorBox* = object   ## a completion or hover box hanging from a buffer position
+    lines*, tags*, details*: seq[string]  # tags / details: one per line, or none
+    selected*, top*: int  # selected -1 = none; top: the first line shown
+    line*, cell*: int     # the buffer line and cell the box hangs from
+    maxRows*: int
   Theme* = object
     bg*, fg*, cursor*, region*, modeLine*, modeLineFg*, search*, searchFg*, border*,
       label*, popup*: Color
     comment*, str*, keyword*, fnname*, variable*, typ*, constant*, builtin*: Color
     review*: array[5, Color]  # bg, removed, added, removed-refine, added-refine
+    err*, warn*, info*, hint*: Color  # diagnostic underlines
 
 proc hex(s: string): Color = parseHtmlColor(s).color
 
@@ -31,14 +37,16 @@ let themes = {
     label: hex"#989898", popup: hex"#1e1e1e",
     comment: hex"#989898", str: hex"#79a8ff", keyword: hex"#b6a0ff", fnname: hex"#feacd0",
     variable: hex"#00d3d0", typ: hex"#6ae4b9", constant: hex"#00bcff", builtin: hex"#f78fe7",
-    review: [hex"#000000", hex"#4f1119", hex"#00381f", hex"#781a1f", hex"#034f2f"]),
+    review: [hex"#000000", hex"#4f1119", hex"#00381f", hex"#781a1f", hex"#034f2f"],
+    err: hex"#ff5f59", warn: hex"#d0bc00", info: hex"#2fafff", hint: hex"#989898"),
   "catppuccin": Theme(bg: hex"#1e1e2e", fg: hex"#cdd6f4", cursor: hex"#f5e0dc",
     region: hex"#45475a", modeLine: hex"#313244", modeLineFg: hex"#cdd6f4",
     search: hex"#f9e2af", searchFg: hex"#1e1e2e", border: hex"#585b70",
     label: hex"#a6adc8", popup: hex"#313244",
     comment: hex"#6c7086", str: hex"#a6e3a1", keyword: hex"#cba6f7", fnname: hex"#89b4fa",
     variable: hex"#b4befe", typ: hex"#f9e2af", constant: hex"#fab387", builtin: hex"#f38ba8",
-    review: [hex"#1e1e2e", hex"#512e3a", hex"#294638", hex"#784452", hex"#3e6950"])}.toTable
+    review: [hex"#1e1e2e", hex"#512e3a", hex"#294638", hex"#784452", hex"#3e6950"],
+    err: hex"#f38ba8", warn: hex"#f9e2af", info: hex"#89b4fa", hint: hex"#6c7086")}.toTable
 var theme* = themes["modus-vivendi"]
 
 proc setTheme*(name: string): bool =
@@ -261,7 +269,8 @@ proc faceColor(f: Face, tint: Color): Color =
 proc drawLine(r: Renderer, line: seq[Rune], row, scroll: int, cursor = -1,
               selectionStart = -1, selectionEnd = -1, matchStart = -1, matchEnd = -1,
               composition: seq[Rune] = @[], imeCursor = 0,
-              x0 = 0, width = -1, tint = theme.fg, faces: seq[Face] = @[]) =
+              x0 = 0, width = -1, tint = theme.fg, faces: seq[Face] = @[],
+              marks: seq[int8] = @[]) =
   let visible = if width < 0: r.cols else: width
   let rs = displayLine(line, composition, cursor)
   let caret = if composition.len > 0 and cursor >= 0: cursor + imeCursor else: cursor
@@ -290,6 +299,11 @@ proc drawLine(r: Renderer, line: seq[Rune], row, scroll: int, cursor = -1,
           let face = if composing or original >= faces.len: fPlain else: faces[original]
           r.glyph(rune, (x0+at-scroll)*r.cellW, row*r.cellH,
             if underCursor: theme.bg elif matched: theme.searchFg else: faceColor(face, tint))
+          let mark = if composing or original >= marks.len: 0'i8 else: marks[original]
+          if mark in 1'i8..4'i8:  # a diagnostic: 2 px underline at the bottom of the cell
+            r.gpu.drawRect(rect((r.pad + (x0+at-scroll)*r.cellW).float32,
+              (r.pad + (row+1)*r.cellH - 2).float32, (size*r.cellW).float32, 2),
+              [theme.err, theme.warn, theme.info, theme.hint][mark - 1])
       cell += width
     if pass == 0 and caret >= 0: r.fill(x0+span.cell-scroll, row, span.width, theme.cursor)
 
@@ -367,12 +381,64 @@ proc popupBox(r: Renderer, window: Window, label: seq[Rune], text: string, curso
     if n == selected: r.fill(x0, y0 + 2 + i, w, theme.region)
     r.drawLine(fitCells(candidates[n], w), y0 + 2 + i, 0, x0 = x0, width = w)
 
+proc boxPlace(r: Renderer, n, maxRows, row: int): (bool, int) =
+  ## Whether a cursor box of n lines hanging from text row `row` goes under it (else
+  ## above), and how many rows it shows.
+  let want = min(n, maxRows)
+  let under = r.rows - row - 1 >= min(3, want)
+  (under, max(0, min(want, if under: r.rows - row - 1 else: row)))
+
+proc boxRows*(r: Renderer, n, maxRows, row: int): int =
+  ## The rows cursorBox shows of n lines hanging from text row `row`, for scrolling it.
+  r.boxPlace(n, maxRows, row)[1]
+
+proc cursorBox(r: Renderer, lines: seq[string], selected: int, cell, row: int, maxRows = 8,
+               top = 0, tags: seq[string] = @[], details: seq[string] = @[]) =
+  ## Lines in a frame just below text row `row` (above it when fewer than 3 rows remain
+  ## below), text from `cell`, at most 60 cells wide: a tag column in theme.label, then
+  ## the line, then its detail right-aligned. It never covers the mode line.
+  if lines.len == 0: return
+  let (under, shown) = r.boxPlace(lines.len, maxRows, row)
+  if shown <= 0: return
+  let y0 = if under: row + 1 else: row - shown
+  let tagW = if tags.len > 0: 2 else: 0
+  var labelW, detailW = 0
+  for s in lines: labelW = max(labelW, cellCol(s.toRunes, s.runeLen))
+  for s in details: detailW = max(detailW, cellCol(s.toRunes, s.runeLen))
+  let w = min(min(60, r.cols - 2), tagW + labelW + (if detailW > 0: 2 + detailW else: 0))
+  if w <= tagW: return
+  let x0 = clamp(cell - 1, 0, max(0, r.cols - w - 2))  # the frame's column; text at x0 + 1
+  let first = clamp(top, 0, lines.len - shown)
+  let fx = (r.pad + x0 * r.cellW).float32
+  let fy = (r.pad + y0 * r.cellH).float32
+  let fw = ((w + 2) * r.cellW).float32
+  let fh = (shown * r.cellH).float32
+  r.gpu.drawRect(rect(fx, fy, fw, fh), theme.popup)
+  let avail = w - tagW
+  for i in 0..<shown:
+    let n = first + i
+    let y = y0 + i
+    if n == selected: r.fill(x0 + 1, y, w, theme.region)
+    if tagW > 0 and n < tags.len:
+      r.drawLine(tags[n].toRunes, y, 0, x0 = x0 + 1, width = 1, tint = theme.label)
+    let label = fitCells(lines[n], avail)
+    r.drawLine(label, y, 0, x0 = x0 + 1 + tagW, width = avail)
+    if n < details.len and details[n].len > 0:
+      let room = avail - cellCol(label, label.len) - 2
+      if room >= 3:
+        let d = fitCells(details[n], room)
+        let dw = cellCol(d, d.len)
+        r.drawLine(d, y, 0, x0 = x0 + 1 + w - dw, width = dw, tint = theme.label)
+  for edge in [rect(fx, fy, fw, 1), rect(fx, fy + fh - 1, fw, 1), rect(fx, fy, 1, fh),
+               rect(fx + fw - 1, fy, 1, fh)]:
+    r.gpu.drawRect(edge, theme.border)  # 1 px, inside the rows so the mode line stays clear
+
 proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
            miniCursor = -1, matchStart = -1, matchLen = 0,
            inputSegment = "", modeTag = "", lineColors: seq[int8] = @[],
            prompt = "", popup = false, faces: openArray[seq[Face]] = [], modeName = "Text",
            bufName = "", candidates: openArray[string] = [], selected = -1, listed = false,
-           anchor = atTop) =
+           anchor = atTop, marks: openArray[seq[int8]] = [], box = CursorBox()) =
   let cursorCell = b.cellCol(b.cursor)
   let nativeIme = window.imeCompositionString.len > 0
   let composition = (if nativeIme: window.imeCompositionString else: inputSegment).toRunes
@@ -403,8 +469,12 @@ proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
       if matchStart >= 0: matchStart-offset else: -1,
       if matchStart >= 0: matchStart+matchLen-offset else: -1,
       if cursor >= 0: textComposition else: @[], imeCursor,
-      faces = if line < faces.len: faces[line] else: @[])
+      faces = if line < faces.len: faces[line] else: @[],
+      marks = if line < marks.len: marks[line] else: @[])
     offset += b.lines[line].len + 1
+  if box.lines.len > 0 and box.line - r.top in 0..<r.rows:
+    r.cursorBox(box.lines, box.selected, box.cell - r.left, box.line - r.top, box.maxRows,
+      box.top, box.tags, box.details)
   r.band(r.rows, theme.modeLine)
   let name = if bufName.len > 0: bufName elif b.path.len == 0: "*scratch*" else: extractFilename(b.path)
   r.status(window, " -" & (if b.modified: "**" else: "--") & "- " & name &

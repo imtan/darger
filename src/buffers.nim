@@ -10,6 +10,10 @@ type
     lang*: Lang         # Lang() = not detected yet
     langPath*: string   # the path lang was detected for
     name*: string       # a path-less buffer's name typed at C-x b
+    docUri*, docLang*, docPath*: string  # LSP: the document open in docLang's server, "" = none
+    docVersion*: int    # the buf.version last sent to it
+    seen*: int          # the newest buf.version noticed, and when (didChange debounce)
+    seenAt*: float
   Registry* = object
     slots*: seq[Slot]   # creation order
     mru: seq[Buffer]    # most recently used first
