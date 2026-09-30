@@ -136,7 +136,7 @@ proc detectLang() =
   shownBuf = nil
 
 var
-  window = newWindow("darger", ivec2(1000, 720), vsync = true)
+  window = newWindow("darger", ivec2(1000, 720), style = Undecorated, vsync = true)
 window.makeContextCurrent()
 window.runeInputEnabled = true
 var renderer: Renderer
@@ -1784,8 +1784,30 @@ if fileExists(initPath):
 
 var dirty = true  # set by every input callback; the loop only redraws when it is set
 
+var
+  grab = ivec2(-1, -1)  # where in the window the left button went down; x < 0: nothing to drag
+  grabSize: IVec2       # the window size then
+  grabCorner: bool      # it went down in the bottom right corner: the drag resizes
+
+window.onMouseMove = proc() =
+  # No title bar or frame, so dragging moves the window and its corner resizes it.
+  # ponytail: the mouse does nothing else, so the whole window is the handle; keep
+  # only the border once clicks place the cursor
+  if grab.x < 0 or not window.buttonDown[MouseLeft] or window.maximized: return
+  let delta = window.mousePos - grab
+  if grabCorner:
+    window.size = ivec2(max(200'i32, grabSize.x + delta.x), max(120'i32, grabSize.y + delta.y))
+  else: window.pos = window.pos + delta
+
 window.onButtonPress = proc(key: Button) =
   dirty = true
+  if key == MouseLeft:
+    grab = window.mousePos
+    grabSize = window.size
+    grabCorner = grab.x > grabSize.x - 32 and grab.y > grabSize.y - 32
+  elif key == DoubleClick:
+    window.maximized = not window.maximized
+    grab.x = -1  # the window jumped under the mouse; this click must not drag it
   if key in {KeyLeftControl, KeyRightControl, KeyLeftAlt, KeyRightAlt,
              KeyLeftShift, KeyRightShift, KeyLeftSuper, KeyRightSuper,
              KeyCapsLock, KeyNumLock, KeyScrollLock, KeyPause, KeyMenu, KeyPrintScreen,

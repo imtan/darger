@@ -32,6 +32,12 @@ list them): Arch `libx11 libxext libxcursor libglvnd mesa xorg-xwayland`, Debian
 windy 0.5.0's X11 backend from `patches/windy` via `patchFile` on Linux only (see
 `patches/windy/README.md`); windy stays pinned to 0.5.0.
 
+The window has no title bar or frame. Dragging anywhere with the left button moves
+it, dragging its bottom right corner (32 px) resizes it, and a double click toggles
+maximized, which covers the whole screen including the taskbar. The mouse does
+nothing else. C-x C-c quits. On Windows the build is a GUI program (`--app:gui` in
+`config.nims`), so no console opens behind it and messages on stderr are not shown.
+
 Without a file, the editor opens `*scratch*` with a dashboard shown over it: up to
 12 recent files labelled 1-9 and a-c (HOME shown as `~`, long paths cut from the
 left). C-n / C-p / arrows move between entries, Enter or an entry's label opens it
