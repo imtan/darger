@@ -85,6 +85,21 @@ C-c a                    agent-command に指示を送る
                          差分: y:採用 k:見送り a:全採用
                          n / p:次 / 前の差分 q:終了 C-g:破棄
 
+C-c c                    プロジェクト単位の agent-chat（複数ターン会話）
+                         空入力で Enter: 既存の会話を表示、C-g: 実行中止
+                         *agent ディレクトリ名* は C-x b でも開ける
+                         別バッファを見ている間の返信はエコー欄で通知
+                         バッファを消すと会話も破棄。保存確認なし
+M-x agent-chat-new       現在のルートの会話を空にして新規セッションへ
+                         その会話の実行中はリセット不可
+会話のルート             ファイルの最寄りの .git、なければそのディレクトリ
+                         会話からは同じルート、その他は作業ディレクトリから探索
+設定                     agent-chat-command / agent-chat-resume-command
+                         {id} は UUID に置換。最初の成功後は resume を使用
+                         既定の claude -p は読み取りのみ（Claude Code 側で許可済みの操作は除く）
+                         両設定に --permission-mode acceptEdits で編集を許可
+                         ディスクの変更は再読込されないため保存時の上書きに注意
+
 [その他]
 C-g                      操作を中断
 F1                       このヘルプを表示 / 閉じる

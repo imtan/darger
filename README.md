@@ -5,6 +5,40 @@ the window, OpenGL context, input and clipboard; Pixie rasterizes glyphs into Bo
 GPU atlas. macOS compiles but is untested; `agent-command` can use
 `claude -p --output-format text` unchanged.
 
+C-c a (`agent-prompt`) sends the current file and an instruction through
+`agent-command` for a one-shot edit, then opens a diff review. C-g cancels.
+C-c c (`agent-chat`) instead prompts `Agent chat (<root directory name>): ` for a
+multi-turn conversation in the project's top directory: the nearest ancestor
+holding `.git`, or the file's directory if none exists. From a chat buffer it
+uses that chat's root; from any other path-less buffer it searches from the
+working directory, falling back to that directory.
+
+Each root has an in-memory session and a Markdown transcript named
+`*agent <root directory name>*`, reachable with C-x b. C-c c Enter with no text
+opens the existing transcript without sending anything. Messages go unchanged
+to stdin; replies keep Markdown and code fences. Only one agent can run at a
+time across both commands. C-g records cancellation; failures appear in the
+transcript. A reply does not switch away from another buffer. Killing a
+transcript forgets the conversation and drops any pending reply. Transcripts
+never require saving, and no chat history is saved to disk. `M-x agent-chat-new`
+empties the current root's transcript and resets its session (refused while
+that conversation is running).
+
+The defaults (override them in `~/.darger.el`) are:
+
+```lisp
+(setq agent-chat-command "claude -p --output-format text --session-id {id}")
+(setq agent-chat-resume-command "claude -p --output-format text --resume {id}")
+```
+
+Every `{id}` is replaced with the session's random UUID. The resume command is
+used only after a successful reply; a failed first message retries the first
+command. With these defaults, `claude -p` can read the project, and refuses to
+edit files or run commands unless your Claude Code settings already allow them,
+since nobody can be asked. Adding `--permission-mode acceptEdits` to both
+variables allows edits. **darger does not reload buffers changed on disk: saving a buffer
+already open in the editor can overwrite the agent's edit.**
+
 ```powershell
 nimble build -d:release
 .\darger.exe [file...]

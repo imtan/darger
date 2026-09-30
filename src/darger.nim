@@ -1,6 +1,6 @@
 import std/[os, osproc, tempfiles, strutils, times, unicode, tables, sets, math, json]
 import windy, vmath
-import buffer, buffers, render, skk, lisp, review, manual, recent, syntax, complete, lsp, filer
+import buffer, buffers, render, skk, lisp, review, manual, recent, syntax, complete, lsp, filer, chat
 
 const
   bufferCommands = ["forward", "backward", "next-line", "previous-line", "bol", "eol",
@@ -16,7 +16,7 @@ const
   diredPrompts = ["dmkdir", "drename"]
   pathPrompts = ["find", "write", "dired-path", "dmkdir", "drename"]
   overlays = ["review", "help", "dash", "blist", "dired"]
-  textPrompts = ["dired-path", "dmkdir", "drename", "find", "write", "search", "agent", "switch", "kill", "line", "diag", "refs"]  # SKK works in these
+  textPrompts = ["dired-path", "dmkdir", "drename", "find", "write", "search", "agent", "chat", "switch", "kill", "line", "diag", "refs"]  # SKK works in these
   candModes = ["dired-path", "dmkdir", "drename", "find", "write", "execute", "switch", "kill", "line", "diag", "refs"]  # prompts with a candidate list
   consults = ["line", "diag", "refs"]  # candidate lists that preview a position
   compRows = 8    # the completion box's most rows
@@ -74,6 +74,7 @@ const
 (global-set-key "C-_" 'undo)
 (global-set-key "C-x u" 'undo)
 (global-set-key "C-c a" 'agent-prompt)
+(global-set-key "C-c c" 'agent-chat)
 (global-set-key "f1" 'help)
 (global-set-key "C-x C-j" 'skk-mode)
 (global-set-key "C-backslash" 'skk-mode)
@@ -96,6 +97,8 @@ const
 (global-set-key "f2 0" 'zoom-reset)
 (hydra "f2" "zoom  g:in  l:out  0:reset")
 (setq agent-command "claude -p --output-format text")
+(setq agent-chat-command "claude -p --output-format text --session-id {id}")
+(setq agent-chat-resume-command "claude -p --output-format text --resume {id}")
 (setq lsp-auto-complete t)
 """
 
@@ -124,6 +127,18 @@ else:
     let lockDisplay = XOpenDisplay(nil)
     let numLockMask = if lockDisplay != nil: XkbKeysymToModifiers(lockDisplay, 0xff7f) else: 0  # XK_Num_Lock
 
+type ChatSession = ref object
+  root, id: string
+  buf: Buffer
+  started: bool
+  turn: Turn
+
+var chats: Table[string, ChatSession]
+
+proc chatFor(buf: Buffer): ChatSession =
+  for session in chats.values:
+    if session.buf == buf: return session
+
 var b = newBuffer()  # the current buffer; reg holds every open one
 var reg: Registry
 reg.add b
@@ -135,7 +150,8 @@ var
   faces: seq[seq[Face]]
 
 proc detectLang() =
-  lang = detect(b.path, if b.lines.len > 0: $b.lines[0] else: "")
+  lang = detect(if chatFor(b) != nil: "chat.md" else: b.path,
+    if b.lines.len > 0: $b.lines[0] else: "")
   shownBuf = nil
 
 var
@@ -180,6 +196,8 @@ var
   blistBufs: seq[Buffer]
   pendingKill: Buffer  # awaiting y/n: the "killy" prompt or k in the buffer list
   agentBuf: Buffer
+  agentChat: ChatSession
+  chatRoot: string
   candAll, cands: seq[string]  # the prompt's candidates, and those matching mini.text
   candIndex = -1               # the selected one in cands, -1 = none
   candText: string             # the mini.text cands were computed for
@@ -385,11 +403,13 @@ proc visit(path: string) =
 
 proc anyModified(): bool =
   for s in reg.slots:
-    if s.buf.modified: return true
+    if s.buf.modified and chatFor(s.buf) == nil: return true
 
 proc killBuffer(buf: Buffer) =
   ## Killing the current buffer shows the previous one; the last one leaves a fresh *scratch*.
   closeDoc(buf)
+  let session = chatFor(buf)
+  if session != nil: chats.del(session.root)
   reg.remove buf
   if reg.len == 0: reg.add newBuffer()
   if buf == b: switchTo(reg.current)
@@ -755,26 +775,20 @@ proc cleanAgentFiles() =
   except OSError as e: echo = "Agent cleanup: " & e.msg
   agentDir = ""
 
-proc startAgent(instruction: string) =
+proc launchAgent(command, input: string, workingDir = "") =
   if agentProcess != nil: raise newException(ValueError, "Agent already running")
-  let command = interp.env.values["agent-command"].asString
-  if strutils.strip(command).len == 0: raise newException(ValueError, "agent-command is empty")
   agentDir = createTempDir("darger-agent-", "")
   try:
     when defined(windows):
       agentJob = createJobObject(nil, nil)
       if agentJob == 0: raiseOSError(osLastError())
-    # ponytail: full-file round trips are unsuitable for huge files; add region-only input if needed.
-    writeFile(agentDir / "prompt.txt",
-      "You are editing a text file. Apply the instruction to the file and output ONLY the complete new file content. No explanations, no code fences.\n" &
-      "File path: " & (if b.path.len > 0: b.path else: "(unnamed)") & "\n" &
-      "Instruction: " & instruction & "\n--- FILE START ---\n" & b.text & "\n--- FILE END ---\n")
+    writeFile(agentDir / "prompt.txt", input)
     when defined(windows):
       let redirected = command & " < \"" & agentDir / "prompt.txt" & "\" > \"" &
         agentDir / "out.txt" & "\" 2> \"" & agentDir / "err.txt" & "\""
       # Gate the CLI until cmd.exe belongs to the job, so no child escapes cancellation.
       agentProcess = startProcess("cmd /d /s /c \"set /p dargerAgentReady= >nul & " & redirected & "\"",
-        options = {poEvalCommand, poUsePath, poDaemon})
+        workingDir = workingDir, options = {poEvalCommand, poUsePath, poDaemon})
       let handle = openProcess(PROCESS_SET_QUOTA or PROCESS_TERMINATE, 0, DWORD(agentProcess.processID))
       if handle == 0: raiseOSError(osLastError())
       let assigned = assignProcessToJobObject(agentJob, handle)
@@ -791,7 +805,7 @@ proc startAgent(instruction: string) =
       let shell = if agentGroup: "exec " & quoteShell(setsid) & " /bin/sh -c " & quoteShell(redirected)
                   else: redirected
       # ponytail: without setsid (e.g. macOS), cancellation only stops the shell; install setsid for group cleanup.
-      agentProcess = startProcess("/bin/sh", args = ["-c", shell], options = {poUsePath})
+      agentProcess = startProcess("/bin/sh", workingDir = workingDir, args = ["-c", shell], options = {poUsePath})
     agentCancelled = false
     agentBuf = b
     echo = "Agent running..."
@@ -807,6 +821,68 @@ proc startAgent(instruction: string) =
         agentJob = 0
     cleanAgentFiles()
     raise
+
+proc startAgent(instruction: string) =
+  if agentProcess != nil: raise newException(ValueError, "Agent already running")
+  let command = interp.env.values["agent-command"].asString
+  if strutils.strip(command).len == 0: raise newException(ValueError, "agent-command is empty")
+  # ponytail: full-file round trips are unsuitable for huge files; add region-only input if needed.
+  launchAgent(command,
+    "You are editing a text file. Apply the instruction to the file and output ONLY the complete new file content. No explanations, no code fences.\n" &
+    "File path: " & (if b.path.len > 0: b.path else: "(unnamed)") & "\n" &
+    "Instruction: " & instruction & "\n--- FILE START ---\n" & b.text & "\n--- FILE END ---\n")
+
+proc currentChatRoot(): string =
+  let session = chatFor(b)
+  if session != nil: session.root
+  elif b.path.len > 0: rootOf(b.path)
+  else: rootFromDir(getCurrentDir())
+
+proc setChatText(session: ChatSession, text: string) =
+  session.buf.splice(0, session.buf.text.runeLen, text)
+  session.buf.modified = false
+  session.buf.regionActive = false
+  session.buf.markSet = false
+  session.buf.cursor = (min(session.turn.agentLine, session.buf.lines.high), 0)
+  session.buf.finish()
+
+proc sendChat(message: string) =
+  var session = chats.getOrDefault(chatRoot)
+  if message.len == 0:
+    if session != nil: switchTo(session.buf)
+    return
+  if agentProcess != nil: raise newException(ValueError, "Agent already running")
+  let variable = if session != nil and session.started: "agent-chat-resume-command" else: "agent-chat-command"
+  let command = interp.env.values[variable].asString
+  if strutils.strip(command).len == 0: raise newException(ValueError, variable & " is empty")
+  if session == nil:
+    session = ChatSession(root: chatRoot, id: sessionId(), buf: newBuffer())
+  launchAgent(expandId(command, session.id), message, session.root)
+  agentChat = session
+  chats[chatRoot] = session
+  reg.add(session.buf, "*agent " & extractFilename(chatRoot) & "*")
+  session.turn = appendTurn(session.buf.text, session.root, message)
+  session.setChatText(session.turn.text)
+  switchTo(session.buf)
+
+proc finishChat(code: int) =
+  let session = agentChat
+  if session.buf notin reg:
+    echo = "Agent: transcript was killed; reply dropped"
+    return
+  var reply: string
+  if agentCancelled: reply = "(cancelled)"
+  elif code != 0:
+    let errors = readFile(agentDir / "err.txt")
+    reply = "(failed: " & (if validateUtf8(errors) == -1: failureLine(errors, code)
+                          else: "exit code " & $code) & ")"
+  else:
+    reply = readFile(agentDir / "out.txt")
+    if validateUtf8(reply) != -1: reply = "(failed: reply is not valid UTF-8)"
+    else: session.started = true
+  # ponytail: rebuild the sent transcript; track a moving span if in-flight transcript editing is needed.
+  session.setChatText(replaceReply(session.turn, reply))
+  echo = if b == session.buf: "" else: "Agent replied (C-c c Enter to read)"
 
 proc cancelAgent() =
   if agentProcess == nil or agentCancelled: return
@@ -845,7 +921,8 @@ proc pollAgent(): bool =
     discard closeHandle(agentJob)
     agentJob = 0
   try:
-    if agentCancelled: echo = "Agent cancelled"
+    if agentChat != nil: finishChat(code)
+    elif agentCancelled: echo = "Agent cancelled"
     elif code != 0:
       let errors = readFile(agentDir / "err.txt").splitLines()
       echo = if errors.len > 0 and errors[0].len > 0: errors[0] else: "Agent exited with code " & $code
@@ -857,7 +934,9 @@ proc pollAgent(): bool =
       switchTo(agentBuf)  # review the buffer the instruction was about
       beginReview(text)
   except CatchableError as e: echo = e.msg
-  finally: cleanAgentFiles()
+  finally:
+    agentChat = nil
+    cleanAgentFiles()
 
 proc quitEditor() =
   abandonLine()
@@ -919,6 +998,22 @@ interp.defPrimitive("agent-prompt", proc(args: seq[Value]): Value =
   args.arity(0, 0)
   beginMini("agent", "Agent: ")
   nilValue())
+interp.defPrimitive("agent-chat", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  chatRoot = currentChatRoot()
+  beginMini("chat", "Agent chat (" & extractFilename(chatRoot) & "): ")
+  nilValue())
+interp.defPrimitive("agent-chat-new", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  let session = chats.getOrDefault(currentChatRoot())
+  if session != nil:
+    if agentChat == session and agentProcess != nil:
+      raise newException(ValueError, "Agent already running")
+    session.id = sessionId()
+    session.started = false
+    session.turn = Turn()
+    session.setChatText("")
+  nilValue())
 interp.defPrimitive("help", proc(args: seq[Value]): Value =
   args.arity(0, 0)
   if mode == "help": finishHelp()
@@ -970,6 +1065,7 @@ proc confirmMini() =
   if kind == "search" and value.len > 0: lastSearch = value
   case kind
   of "agent": startAgent(value)
+  of "chat": sendChat(value)
   of "eval", "execute":
     try:
       if kind == "eval":
@@ -1001,7 +1097,7 @@ proc confirmMini() =
   of "kill":
     let target = if value.len == 0: b else: reg.byName(value)
     if target == nil: echo = "No such buffer: " & value
-    elif target.modified:
+    elif target.modified and chatFor(target) == nil:
       pendingKill = target
       beginMini("killy", killQuestion(target))
     else: killBuffer(target)
@@ -1601,7 +1697,7 @@ proc dispatchBlist(c: string) =
     finishBlist()
     switchTo(buf)
   elif full == "k" and buf != nil:
-    if buf.modified: pendingKill = buf
+    if buf.modified and chatFor(buf) == nil: pendingKill = buf
     else: blistKill(buf)
   elif name in ["next-line", "previous-line"] or full in ["C-n", "C-p", "down", "up", "n", "p"]:
     let delta = if name == "previous-line" or full in ["C-p", "up", "p"]: -1 else: 1
@@ -2052,7 +2148,8 @@ proc redraw() =
   let skkShown = skkOn()
   # The candidate page lives in echo; a command that cleared echo brings it back.
   let message = if agentProcess != nil:
-      (if agentCancelled: "Agent cancelling..." else: "Agent running...")
+      (if agentCancelled: "Agent cancelling..." else: "Agent running...") &
+        (if echo.endsWith("Agent already running"): "  " & echo else: "")
     elif mode == "review": reviewMessage() & (if echo != reviewMessage(): "  " & echo else: "")
     elif mode == "help": overlayMessage(helpMessage)
     elif mode == "dash": overlayMessage(dashMessage)
