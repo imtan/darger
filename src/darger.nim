@@ -1,6 +1,6 @@
 import std/[os, osproc, tempfiles, strutils, times, unicode, tables, sets, math, json]
 import windy, vmath
-import buffer, buffers, render, skk, lisp, review, manual, recent, syntax, complete, lsp
+import buffer, buffers, render, skk, lisp, review, manual, recent, syntax, complete, lsp, filer
 
 const
   bufferCommands = ["forward", "backward", "next-line", "previous-line", "bol", "eol",
@@ -12,9 +12,12 @@ const
   helpMessage = "Help  q:close  F1:toggle"
   dashMessage = "Dashboard  Enter:open  q:scratch  F1:manual"
   blistMessage = "Buffers  Enter:switch  k:kill  q:close"
-  overlays = ["review", "help", "dash", "blist"]
-  textPrompts = ["find", "write", "search", "agent", "switch", "kill", "line", "diag", "refs"]  # SKK works in these
-  candModes = ["find", "write", "execute", "switch", "kill", "line", "diag", "refs"]  # prompts with a candidate list
+  diredMessage = "Dired  n/p:move  Enter/f:open  ^:parent  g:refresh  +:mkdir  R:rename  D:trash  q:close"
+  diredPrompts = ["dmkdir", "drename"]
+  pathPrompts = ["find", "write", "dired-path", "dmkdir", "drename"]
+  overlays = ["review", "help", "dash", "blist", "dired"]
+  textPrompts = ["dired-path", "dmkdir", "drename", "find", "write", "search", "agent", "switch", "kill", "line", "diag", "refs"]  # SKK works in these
+  candModes = ["dired-path", "dmkdir", "drename", "find", "write", "execute", "switch", "kill", "line", "diag", "refs"]  # prompts with a candidate list
   consults = ["line", "diag", "refs"]  # candidate lists that preview a position
   compRows = 8    # the completion box's most rows
   hoverRows = 12  # the hover box's
@@ -168,7 +171,10 @@ var
   reviewBuf: Buffer
   reviewColors: seq[int8]
   currentHunk, savedTop, savedLeft: int
-  helpBuf, dashBuf, blistBuf: Buffer
+  helpBuf, dashBuf, blistBuf, diredBuf: Buffer
+  diredEntries: seq[Entry]
+  diredFaces: seq[seq[Face]]
+  diredSource, pendingTrash: string
   overlayTop, overlayLeft: int
   dashFiles: seq[string]
   blistBufs: seq[Buffer]
@@ -340,7 +346,7 @@ proc restEcho(): bool =
 
 proc switchTo(buf: Buffer) =
   ## Makes buf current: parks b's scroll and language in its slot and restores buf's.
-  let overlay = mode in ["help", "dash", "blist"]  # b's scroll is parked in overlayTop/Left
+  let overlay = mode in ["help", "dash", "blist", "dired", "dmkdir", "drename"]  # b's scroll is parked in overlayTop/Left
   if buf notin reg: reg.add buf
   if buf == b:  # its slot holds the scroll from when it was last left
     reg.touch b
@@ -363,8 +369,13 @@ proc switchTo(buf: Buffer) =
   shownBuf = nil
   reg.touch b
 
+proc beginDired(path: string, selected = "")
+
 proc visit(path: string) =
   ## Like Emacs, visiting a file that is already open switches to it with its edits.
+  if dirExists(path):
+    beginDired(path)
+    return
   var buf = reg.byPath(path)
   if buf == nil:
     buf = loadBuffer(path)
@@ -385,13 +396,21 @@ proc killBuffer(buf: Buffer) =
 
 if paramCount() >= 1:
   var opened: seq[Buffer]
+  var firstPath: string
   for i in 1..paramCount():
     try:
-      visit(paramStr(i))
-      opened.add b
+      let path = paramStr(i)
+      if dirExists(path): discard readDirectory(path)
+      else:
+        visit(path)
+        opened.add b
+      if firstPath.len == 0: firstPath = path
     except CatchableError as e: echo = e.msg
   for i in countdown(opened.high, 1): reg.touch opened[i]
   if opened.len > 0: switchTo(opened[0])
+  if firstPath.len > 0 and dirExists(firstPath):
+    try: beginDired(firstPath)
+    except CatchableError as e: echo = e.msg
 
 proc ctrl(): bool = window.buttonDown[KeyLeftControl] or window.buttonDown[KeyRightControl]
 proc alt(): bool = window.buttonDown[KeyLeftAlt] or window.buttonDown[KeyRightAlt]
@@ -496,7 +515,7 @@ proc refreshCandidates(force = false) =
   if not force and mini.text == candText: return
   candText = mini.text
   var query = mini.text
-  if mode in ["find", "write"]:
+  if mode in pathPrompts:
     let (dir, tail) = splitInput(mini.text)
     let key = dir & (if tail.startsWith("."): "\0." else: "")
     if force or key != candDir:
@@ -635,10 +654,45 @@ proc finishBlist() =
   blistBufs = @[]
   pendingKill = nil
 
+proc beginDired(path: string, selected = "") =
+  let dir = normalizedPath(absolutePath(expandTilde(path)))
+  let entries = readDirectory(dir)  # leave the current listing intact on any error
+  var lines = @[dir.replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t")]
+  for entry in entries: lines.add formatRow(entry)
+  if entries.len == 0: lines.add ""  # keep point off the header even in an empty directory
+  let buf = newBuffer(lines.join("\n"))
+  buf.path = dir
+  buf.cursor = (1, 0)
+  var colors = newSeq[seq[Face]](lines.len)
+  for i, entry in entries:
+    if entry.name == selected: buf.cursor.line = i + 1
+    if entry.isDir:
+      colors[i + 1] = newSeq[Face](buf.lines[i + 1].len)
+      for col in nameCol..<colors[i + 1].len: colors[i + 1][col] = fFnname
+  if mode != "dired": beginOverlay("dired")
+  diredBuf = buf
+  diredEntries = entries
+  diredFaces = colors
+  renderer.top = 0
+  renderer.left = 0
+  pendingTrash = ""
+
+proc finishDired() =
+  finishOverlay()
+  diredBuf = nil
+  diredEntries = @[]
+  diredFaces = @[]
+  pendingTrash = ""
+
+proc diredName(): string =
+  let index = diredBuf.cursor.line - 1
+  if index in 0..diredEntries.high: diredEntries[index].name else: ""
+
 proc closeOverlay() =
   if mode == "help": finishHelp()
   elif mode == "dash": finishDash()
   elif mode == "blist": finishBlist()
+  elif mode == "dired" or mode in diredPrompts: finishDired()
 
 proc reviewMessage(): string =
   "Review hunk " & $(currentHunk + 1) & "/" & $reviewState.hunks.len &
@@ -882,6 +936,9 @@ proc wrote() =
 proc findPrompt() =
   beginMini("find", "Find file: ", (if b.path.len > 0: parentDir(b.path) else: getCurrentDir()) & DirSep)
 
+proc diredPrompt() =
+  beginMini("dired-path", "Dired: ", (if b.path.len > 0: parentDir(b.path) else: getCurrentDir()) & DirSep)
+
 proc switchPrompt() =
   let other = reg.other
   beginMini("switch", "Switch to buffer" &
@@ -909,7 +966,7 @@ proc writeTo(path: string) =
 proc confirmMini() =
   let kind = mode
   let value = when defined(windows): mini.text
-              else: (if kind in ["find", "write"]: expandTilde(mini.text) else: mini.text)
+              else: (if kind in pathPrompts: expandTilde(mini.text) else: mini.text)
   if kind == "search" and value.len > 0: lastSearch = value
   case kind
   of "agent": startAgent(value)
@@ -924,6 +981,16 @@ proc confirmMini() =
   of "find":
     if value.len == 0: return
     visit(value)
+  of "dired-path":
+    if value.len == 0: return
+    beginDired(value)
+  of "dmkdir", "drename":
+    mode = "dired"
+    if value.len == 0: return
+    let path = absolutePath(expandTilde(value), diredBuf.path)
+    if kind == "dmkdir": makeDirectory(path)
+    else: renameEntry(diredSource, path)
+    beginDired(parentDir(path), extractFilename(path))
   of "switch":
     let target = if value.len == 0: reg.other else: reg.byName(value)
     if target != nil: switchTo(target)
@@ -1008,7 +1075,7 @@ proc editMini(c: string): bool =
 
 proc candidateValue(): string =
   ## The input the selected candidate stands for: file names keep the typed directory.
-  if mode notin ["find", "write"]: return cands[candIndex]
+  if mode notin pathPrompts: return cands[candIndex]
   mini.text[0 ..< mini.text.len - splitInput(mini.text).tail.len] & cands[candIndex]
 
 proc moveCandidate(delta: int, wrap: bool) =
@@ -1030,6 +1097,10 @@ proc candidateKey(c: string): bool =
     setMini(candidateValue())  # a directory is listed next, like vertico-insert
     refreshCandidates()
   of "enter", "C-m", "C-j":
+    # Dired takes the typed directory itself, and a new name is never a candidate.
+    if mode in diredPrompts or (mode == "dired-path" and dirExists(expandTilde(mini.text))):
+      confirmMini()
+      return
     if candIndex >= 0 and mode notin consults:
       let value = candidateValue()
       setMini(value)
@@ -1405,7 +1476,7 @@ proc lspFormat() =
 
 const
   zoomCommands = ["zoom-in", "zoom-out", "zoom-reset"]
-  builtinChords = ["C-x C-s", "C-x C-f", "C-x C-w", "C-x C-c", "M-g g", "M-g M-g"]
+  builtinChords = ["C-x C-s", "C-x C-f", "C-x C-w", "C-x C-c", "C-x d", "M-g g", "M-g M-g"]
 
 proc symName(fn: Value): string = (if fn != nil and fn.kind == vSymbol: fn.str else: "")
 
@@ -1488,6 +1559,9 @@ proc dispatchDash(c: string) =
   elif full == "C-x C-f":
     finishDash()
     findPrompt()
+  elif full == "C-x d":
+    finishDash()
+    diredPrompt()
   elif full in ["enter", "C-m", "C-j"]: openEntry(dashBuf.cursor.line - dashFirst)
   elif name in ["next-line", "previous-line"] or full in ["C-n", "C-p", "down", "up"]:
     let delta = if name == "previous-line" or full in ["C-p", "up"]: -1 else: 1
@@ -1534,7 +1608,62 @@ proc dispatchBlist(c: string) =
     blistBuf.cursor = (clamp(row + delta, 1, max(1, blistBufs.len)), 0)
   else: echo = full & " is undefined"
 
+proc dispatchDired(c: string) =
+  if c in ["q", "C-g", "escape"]:
+    finishDired()
+    return
+  if pendingTrash.len > 0:
+    if c notin ["y", "n"]:
+      echo = "Please answer y or n"
+      return
+    let path = pendingTrash
+    let row = diredBuf.cursor.line
+    pendingTrash = ""
+    if c == "y":
+      trashEntry(path)
+      beginDired(diredBuf.path)
+      diredBuf.cursor = (clamp(row, 1, max(1, diredEntries.len)), 0)  # the entry that moved up
+    return
+  let full = overlayKey(c)
+  if full.len == 0: return
+  let name = diredName()
+  let path = diredBuf.path / name
+  let command = keymap.getOrDefault(full).symName
+  if full in ["enter", "C-m", "C-j", "f"] and name.len > 0:
+    let info = getFileInfo(path)  # vanished entries must not open an empty new file
+    if info.kind == pcDir: beginDired(path)
+    else:
+      visit(path)
+      finishDired()
+  elif full == "^":
+    let parent = parentDir(diredBuf.path)
+    if parent.len > 0 and parent != diredBuf.path:
+      beginDired(parent, extractFilename(diredBuf.path))
+  elif full == "g": beginDired(diredBuf.path, name)
+  elif full == "+": beginMini("dmkdir", "Create directory: ", diredBuf.path & DirSep)
+  elif full == "R" and name.len > 0:
+    diredSource = path
+    beginMini("drename", "Rename to: ", path)
+  elif full == "D" and name.len > 0: pendingTrash = path
+  elif full in ["n", "C-n", "down", "p", "C-p", "up"] or command in ["next-line", "previous-line"]:
+    let delta = if full in ["p", "C-p", "up"] or command == "previous-line": -1 else: 1
+    diredBuf.cursor = (clamp(diredBuf.cursor.line + delta, 1, max(1, diredEntries.len)), 0)
+  elif full in ["C-v", "M-v", "pagedown", "pageup"]:
+    page(diredBuf, full)
+    diredBuf.cursor = (max(1, diredBuf.cursor.line), 0)
+  elif command in ["bob", "eob"] or full in ["M-<", "M->"]:
+    let row = if command == "eob" or full == "M->": max(1, diredEntries.len) else: 1
+    diredBuf.cursor = (row, 0)
+
 proc dispatch(c: string) =
+  if mode in diredPrompts and c in ["C-g", "escape"]:
+    mode = "dired"
+    prefix = ""
+    echo = ""
+    return
+  if mode == "dired":
+    dispatchDired(c)
+    return
   if mode == "blist":
     dispatchBlist(c)
     return
@@ -1649,6 +1778,7 @@ proc dispatch(c: string) =
       b.save()
       wrote()
   of "C-x C-f": findPrompt()
+  of "C-x d": diredPrompt()
   of "C-x C-w": beginMini("write", "Write file: ", b.path)
   of "C-x C-c": quitEditor()
   of "C-s", "C-r":
@@ -1668,6 +1798,15 @@ for (name, factor) in [("zoom-in", 1.1'f32), ("zoom-out", 1 / 1.1'f32), ("zoom-r
       args.arity(0, 0)
       zoom(f)
       nilValue())
+interp.defPrimitive("dired", proc(args: seq[Value]): Value =
+  args.arity(0, 1)
+  if mode in ["", "eval", "execute", "dired"]:
+    try:
+      beginDired(if args.len > 0: args[0].asString
+        elif b.path.len > 0: parentDir(b.path) else: getCurrentDir())
+    except CatchableError as e: echo = e.msg
+  else: echo = "dired is unavailable here"
+  nilValue())
 interp.defPrimitive("dashboard", proc(args: seq[Value]): Value =
   args.arity(0, 0)
   if mode == "dash": finishDash()
@@ -1813,7 +1952,7 @@ window.onButtonPress = proc(key: Button) =
              KeyCapsLock, KeyNumLock, KeyScrollLock, KeyPause, KeyMenu, KeyPrintScreen,
              KeyInsert} or key < Key0: return
   # Escape only closes an overlay or a popup
-  if key == KeyEscape and mode notin ["help", "dash", "blist"] and not compActive and not hoverActive: return
+  if key == KeyEscape and mode notin ["help", "dash", "blist", "dired", "dmkdir", "drename"] and not compActive and not hoverActive: return
   if window.imeCompositionString.len > 0:
     if key == KeyG and ctrl():
       window.closeIme()
@@ -1907,7 +2046,8 @@ proc overlayMessage(base: string): string =
 proc redraw() =
   if not running or window.closed or window.minimized or window.size.x == 0 or window.size.y == 0: return
   let displayed = if mode == "review": reviewBuf elif mode == "help": helpBuf
-    elif mode == "dash": dashBuf elif mode == "blist": blistBuf else: b
+    elif mode == "dash": dashBuf elif mode == "blist": blistBuf
+    elif mode == "dired" or mode in diredPrompts: diredBuf else: b
   renderer.resize(window, displayed)
   let skkShown = skkOn()
   # The candidate page lives in echo; a command that cleared echo brings it back.
@@ -1918,6 +2058,10 @@ proc redraw() =
     elif mode == "dash": overlayMessage(dashMessage)
     elif mode == "blist":
       if pendingKill != nil: killQuestion(pendingKill) else: overlayMessage(blistMessage)
+    elif mode == "dired":
+      if pendingTrash.len > 0: "Trash " & diredName() & "? (y or n)"
+      elif echo.len > 0: echo
+      else: diredMessage
     elif echo.len == 0 and skkShown: inputMethod.page() else: echo
   # Prompts float in a popup; isearch stays on the bottom line so its match is visible.
   let popup = inMini() and mode != "search"
@@ -1925,8 +2069,9 @@ proc redraw() =
     faces = lang.highlight(b.lines)
     shownBuf = b
     shownVersion = b.version
-  # Overlays (help, dashboard, review) are drawn plain.
-  let shown = if displayed == b: faces.len else: 0
+  # Dired only colors directory names; other overlays are plain.
+  let displayFaces = if displayed == diredBuf: diredFaces else: faces
+  let shown = if displayed == b: faces.len elif displayed == diredBuf: diredFaces.len else: 0
   let listed = inMini() and mode in candModes
   updateMarks()
   let box = cursorPopup()
@@ -1941,8 +2086,8 @@ proc redraw() =
     if skkShown: inputMethod.preedit() else: "",
     if mode == "review": "[Review]" elif mode == "help": "[Help]" elif mode == "dash": "[Dash]"
     elif mode == "blist": "[Buffers]" else: inputMethod.tag(), reviewColors,
-    prompt, popup, faces.toOpenArray(0, shown - 1),
-    if displayed == b: lang.name & diagCounts() else: "Text",
+    prompt, popup, displayFaces.toOpenArray(0, shown - 1),
+    if displayed == b: lang.name & diagCounts() elif displayed == diredBuf: "Dired" else: "Text",
     if displayed == b or mode == "review": reg.displayName(b) else: displayed.path,
     cands.toOpenArray(0, if listed: cands.high else: -1), candIndex, listed,
     if mode in consults: atBottom else: atTop, marks.toOpenArray(0, if displayed == b: marks.high else: -1),

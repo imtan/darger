@@ -180,6 +180,31 @@ C-y uses the clipboard when the 60-entry kill ring is empty. Undo keeps 200
 snapshots and groups runs of non-whitespace self-inserts. Snapshot undo and
 flattened edits favor small files.
 
+## Filer (Dired)
+
+C-x d prompts for a directory, starting in the current file's directory (or the
+working directory for scratch). `M-x dired` opens that directory directly;
+`(dired "path")` and directory command-line arguments also open the filer. In the
+C-x d prompt Enter opens the directory typed so far, so C-x d Enter lists the
+current one; Tab completes. In C-x C-f, Enter on a directory candidate keeps
+descending as before, and only a directory with nothing to pick opens the filer.
+
+The read-only overlay includes hidden files, with directories first and names
+sorted case-insensitively. Rows show type (`d`, `l`, `-`), size, modification time
+and name; directory names have a trailing `/` and are highlighted.
+
+- n / C-n / down and p / C-p / up move between entries; C-v / M-v page,
+  M-< / M-> jump to the first / last entry.
+- Enter / f opens a file or enters a directory; ^ goes to the parent and selects
+  the directory just left. g refreshes, retaining the selected name.
+- + creates a directory (including parents); R renames or moves an entry,
+  refusing an existing destination. Both use path-completing prompts.
+- D asks `Trash NAME? (y or n)`; y uses the Windows Recycle Bin or Linux
+  `gio trash`. Errors are shown in the echo area; there is no permanent-delete
+  fallback. Trash is unsupported on other platforms.
+- q / C-g / Escape closes the filer. C-g / Escape cancels a create/rename prompt
+  and returns to the listing.
+
 ## Buffers
 
 Every file opens in its own buffer; the other buffers keep their text, point, undo,
