@@ -105,6 +105,16 @@ approximate: block comments, multi-line strings, Markdown fences and Org
 buffer is re-highlighted after each change (a few ms for 3000 lines); the help,
 dashboard and review overlays stay plain.
 
+Like `show-paren-mode`, the bracket after point, or else the closing bracket before
+it, is highlighted together with its partner: `()`, `[]`, `{}` and `（）「」『』【】`.
+Brackets in strings and comments only pair with each other. Each kind is counted on
+its own, so a mismatched `( [ ) ]` still pairs, and the search stops 5000 lines away.
+
+File buffers and `*scratch*` show line numbers in a gutter on the left: right-aligned,
+at least 3 digits wide, dim (the theme's `lineNo`) with the cursor's line bright
+(`lineNoNow`), then 2 empty cells. The overlays (help, dashboard, buffer list, filer,
+review) have none.
+
 CJK and the supported emoji ranges occupy two cells; combining marks, variation
 selectors, joiners and skin-tone modifiers occupy zero cells. U+2600..27BF stays
 one cell like Emacs. Emoji use monochrome outlines without shaping: ZWJ sequences,

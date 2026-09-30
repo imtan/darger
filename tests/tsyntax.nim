@@ -170,4 +170,17 @@ let elapsed = cpuTime() - start
 doAssert bigFaces.len == 3000
 doAssert elapsed < 0.5, "highlighting 3000 lines took " & $elapsed & " s"
 echo "3000 lines in ", formatFloat(elapsed * 1000, ffDecimal, 1), " ms"
+# show-paren: brackets in strings and comments do not pair with code.
+block:
+  let lines = toLines("f(a, \")\", [b])  # (\ng{x\n)")
+  let faces = detect("a.nim", "").highlight(lines)
+  doAssert matchParen(lines, faces, 0, 1) == @[(line: 0, col: 1), (line: 0, col: 13)]
+  doAssert matchParen(lines, faces, 0, 14) == @[(line: 0, col: 13), (line: 0, col: 1)]
+  doAssert matchParen(lines, faces, 0, 10) == @[(line: 0, col: 10), (line: 0, col: 12)]
+  doAssert matchParen(lines, faces, 0, 18).len == 0  # "(" in a comment
+  doAssert matchParen(lines, faces, 1, 1).len == 0   # "{" never closed
+  doAssert matchParen(lines, faces, 0, 2).len == 0   # after an opening bracket
+  let wide = toLines("（「あ\n」\n）")
+  doAssert matchParen(wide, [], 2, 1) == @[(line: 2, col: 0), (line: 0, col: 0)]
+  doAssert matchParen(wide, [], 0, 1) == @[(line: 0, col: 1), (line: 1, col: 0)]
 echo "All syntax checks passed"

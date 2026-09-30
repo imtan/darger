@@ -1924,7 +1924,7 @@ proc redraw() =
     if displayed == b or mode == "review": reg.displayName(b) else: displayed.path,
     cands.toOpenArray(0, if listed: cands.high else: -1), candIndex, listed,
     if mode in consults: atBottom else: atTop, marks.toOpenArray(0, if displayed == b: marks.high else: -1),
-    if displayed == b: box else: CursorBox())
+    if displayed == b: box else: CursorBox(), lineNumbers = displayed == b)
 
 window.onResize = redraw
 if paramCount() == 0: beginDash()  # first screen: recent files over an empty *scratch*

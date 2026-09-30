@@ -23,7 +23,7 @@ type
     maxRows*: int
   Theme* = object
     bg*, fg*, cursor*, region*, modeLine*, modeLineFg*, search*, searchFg*, border*,
-      label*, popup*: Color
+      label*, popup*, paren*, lineNo*, lineNoNow*: Color
     comment*, str*, keyword*, fnname*, variable*, typ*, constant*, builtin*: Color
     review*: array[5, Color]  # bg, removed, added, removed-refine, added-refine
     err*, warn*, info*, hint*: Color  # diagnostic underlines
@@ -34,7 +34,8 @@ let themes = {
   "modus-vivendi": Theme(bg: hex"#000000", fg: hex"#ffffff", cursor: hex"#ffffff",
     region: hex"#5a5a5a", modeLine: hex"#505050", modeLineFg: hex"#ffffff",
     search: hex"#7a6100", searchFg: hex"#ffffff", border: hex"#646464",
-    label: hex"#989898", popup: hex"#1e1e1e",
+    label: hex"#989898", popup: hex"#1e1e1e", paren: hex"#2f7f9f",
+    lineNo: hex"#535353", lineNoNow: hex"#ffffff",
     comment: hex"#989898", str: hex"#79a8ff", keyword: hex"#b6a0ff", fnname: hex"#feacd0",
     variable: hex"#00d3d0", typ: hex"#6ae4b9", constant: hex"#00bcff", builtin: hex"#f78fe7",
     review: [hex"#000000", hex"#4f1119", hex"#00381f", hex"#781a1f", hex"#034f2f"],
@@ -42,7 +43,8 @@ let themes = {
   "catppuccin": Theme(bg: hex"#1e1e2e", fg: hex"#cdd6f4", cursor: hex"#f5e0dc",
     region: hex"#45475a", modeLine: hex"#313244", modeLineFg: hex"#cdd6f4",
     search: hex"#f9e2af", searchFg: hex"#1e1e2e", border: hex"#585b70",
-    label: hex"#a6adc8", popup: hex"#313244",
+    label: hex"#a6adc8", popup: hex"#313244", paren: hex"#585b70",
+    lineNo: hex"#45475a", lineNoNow: hex"#b4befe",
     comment: hex"#6c7086", str: hex"#a6e3a1", keyword: hex"#cba6f7", fnname: hex"#89b4fa",
     variable: hex"#b4befe", typ: hex"#f9e2af", constant: hex"#fab387", builtin: hex"#f38ba8",
     review: [hex"#1e1e2e", hex"#512e3a", hex"#294638", hex"#784452", hex"#3e6950"],
@@ -270,7 +272,7 @@ proc drawLine(r: Renderer, line: seq[Rune], row, scroll: int, cursor = -1,
               selectionStart = -1, selectionEnd = -1, matchStart = -1, matchEnd = -1,
               composition: seq[Rune] = @[], imeCursor = 0,
               x0 = 0, width = -1, tint = theme.fg, faces: seq[Face] = @[],
-              marks: seq[int8] = @[]) =
+              marks: seq[int8] = @[], paren = [-1, -1]) =
   let visible = if width < 0: r.cols else: width
   let rs = displayLine(line, composition, cursor)
   let caret = if composition.len > 0 and cursor >= 0: cursor + imeCursor else: cursor
@@ -295,6 +297,7 @@ proc drawLine(r: Renderer, line: seq[Rune], row, scroll: int, cursor = -1,
         if pass == 0:
           if selected or composing: r.fill(x0+at-scroll, row, size, theme.region)
           if matched: r.fill(x0+at-scroll, row, size, theme.search)
+          if not composing and original in paren: r.fill(x0+at-scroll, row, size, theme.paren)
         else:
           let face = if composing or original >= faces.len: fPlain else: faces[original]
           r.glyph(rune, (x0+at-scroll)*r.cellW, row*r.cellH,
@@ -438,7 +441,12 @@ proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
            inputSegment = "", modeTag = "", lineColors: seq[int8] = @[],
            prompt = "", popup = false, faces: openArray[seq[Face]] = [], modeName = "Text",
            bufName = "", candidates: openArray[string] = [], selected = -1, listed = false,
-           anchor = atTop, marks: openArray[seq[int8]] = [], box = CursorBox()) =
+           anchor = atTop, marks: openArray[seq[int8]] = [], box = CursorBox(),
+           lineNumbers = false) =
+  # The gutter: right-aligned numbers, at least 3 digits wide so it rarely shifts, and
+  # 2 empty cells before the text.
+  let gutter = if lineNumbers: max(3, len($b.lines.len)) + 2 else: 0
+  let cols = max(1, r.cols - gutter)
   let cursorCell = b.cellCol(b.cursor)
   let nativeIme = window.imeCompositionString.len > 0
   let composition = (if nativeIme: window.imeCompositionString else: inputSegment).toRunes
@@ -449,20 +457,27 @@ proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
   if b.cursor.line < r.top or b.cursor.line >= r.top + r.rows:
     r.top = max(0, b.cursor.line - r.rows div 2)
   if span.cell < r.left: r.left = span.cell
-  if span.cell + span.width > r.left + r.cols: r.left = max(0, span.cell + span.width - r.cols)
+  if span.cell + span.width > r.left + cols: r.left = max(0, span.cell + span.width - cols)
   when defined(windows) or defined(macosx):
     if miniCursor < 0:
-      window.imePos = ivec2((r.pad + (span.cell-r.left)*r.cellW).int32,
+      window.imePos = ivec2((r.pad + (gutter+span.cell-r.left)*r.cellW).int32,
         (r.pad + (b.cursor.line-r.top+1)*r.cellH).int32)
   r.gpu.beginFrame(window.size)
   r.gpu.drawRect(rect(0, 0, window.size.x.float32, window.size.y.float32), theme.bg)
   let selection = b.region
+  let pair = if miniCursor < 0: matchParen(b.lines, faces, b.cursor.line, b.cursor.col) else: @[]
   var offset = b.offset((min(r.top, b.lines.high), 0))
   for line in r.top..<min(b.lines.len, r.top + r.rows):
     let row = line - r.top
     if line < lineColors.len and lineColors[line] in 1'i8..4'i8:
       r.band(row, theme.review[lineColors[line]])
     let cursor = if miniCursor < 0 and line == b.cursor.line: b.cursor.col else: -1
+    var paren = [-1, -1]
+    for i, p in pair:
+      if p.line == line: paren[i] = p.col
+    if gutter > 0:
+      r.drawLine(align($(line + 1), gutter - 2).toRunes, row, 0, width = gutter - 2,
+        tint = if line == b.cursor.line: theme.lineNoNow else: theme.lineNo)
     r.drawLine(b.lines[line], row, r.left, cursor,
       if b.regionActive: selection.a-offset else: -1,
       if b.regionActive: selection.z-offset else: -1,
@@ -470,10 +485,11 @@ proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
       if matchStart >= 0: matchStart+matchLen-offset else: -1,
       if cursor >= 0: textComposition else: @[], imeCursor,
       faces = if line < faces.len: faces[line] else: @[],
-      marks = if line < marks.len: marks[line] else: @[])
+      marks = if line < marks.len: marks[line] else: @[], paren = paren,
+      x0 = gutter, width = if gutter > 0: cols else: -1)
     offset += b.lines[line].len + 1
   if box.lines.len > 0 and box.line - r.top in 0..<r.rows:
-    r.cursorBox(box.lines, box.selected, box.cell - r.left, box.line - r.top, box.maxRows,
+    r.cursorBox(box.lines, box.selected, gutter + box.cell - r.left, box.line - r.top, box.maxRows,
       box.top, box.tags, box.details)
   r.band(r.rows, theme.modeLine)
   let name = if bufName.len > 0: bufName elif b.path.len == 0: "*scratch*" else: extractFilename(b.path)

@@ -577,3 +577,39 @@ proc highlight*(lang: Lang, lines: seq[seq[Rune]]): seq[seq[Face]] =
   of spCode: code(lang, lines, result)
   of spMarkdown: markdownLines(lines, result)
   of spOrg: orgLines(lines, result)
+
+const brackets = "()[]{}（）「」『』【】".toRunes  # opening at even indexes, its closing next
+
+proc matchParen*(lines: seq[seq[Rune]], faces: openArray[seq[Face]],
+                 line, col: int): seq[tuple[line, col: int]] =
+  ## Like show-paren-mode: the opening bracket at (line, col), else the closing one
+  ## just before it, followed by its partner. Empty without a bracket or a partner.
+  template quoted(l, c: int): bool =
+    l < faces.len and c < faces[l].len and faces[l][c] in {fString, fComment}
+  if line notin 0..lines.high: return
+  var c = col
+  var k = if c in 0..lines[line].high: brackets.find(lines[line][c]) else: -1
+  if k < 0 or k mod 2 == 1:
+    c = col - 1
+    k = if c in 0..lines[line].high: brackets.find(lines[line][c]) else: -1
+    if k < 0 or k mod 2 == 0: return
+  let dir = if k mod 2 == 0: 1 else: -1
+  let inQuote = quoted(line, c)
+  var depth = 0
+  var l = line
+  var i = c
+  # ponytail: counts one bracket kind like vim's %, so "( [ ) ]" still pairs, and rescans
+  # up to 5000 lines per redraw; use a stack / cache on b.version if either one hurts
+  while l in 0..lines.high and abs(l - line) <= 5000:
+    while i in 0..lines[l].high:
+      let r = lines[l][i]
+      # brackets inside strings and comments only pair with each other
+      if (r == brackets[k] or r == brackets[k + dir]) and quoted(l, i) == inQuote:
+        depth += (if r == brackets[k]: 1 else: -1)
+        if depth == 0:
+          result.add (line, c)
+          result.add (l, i)
+          return
+      i += dir
+    l += dir
+    if l in 0..lines.high: i = if dir > 0: 0 else: lines[l].high
