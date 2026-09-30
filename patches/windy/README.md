@@ -9,6 +9,7 @@ property reads, TARGETS-negotiated/validated/INCR clipboard reads, Latin-1
 STRING replies, and a flush after XDestroyWindow.
 Each file's header lists its exact deltas. `config.nims` swaps them in with
 `patchFile` on Linux only; Windows and macOS use stock windy.
+windy is MIT licensed; its notice is kept in `LICENSE` in this directory.
 
 On any windy version bump, re-diff against the new upstream files, drop what
 upstream fixed, and re-apply the rest (or remove the patchFile lines).
