@@ -90,12 +90,20 @@ C-c c                    プロジェクト単位の agent-chat（複数ター�
                          *agent ディレクトリ名* は C-x b でも開ける
                          別バッファを見ている間の返信はエコー欄で通知
                          バッファを消すと会話も破棄。保存確認なし
+                         回答とツール名・要約を逐次表示。実行中の末尾は ...
+                         最終行にカーソルがあれば追従、上へ移動すると停止
+                         取消・失敗でも途中の出力を残す。Undo 履歴は増えない
+                         改行まで届いた出力だけを表示。通常のテキスト出力も対応
+実行状況                 Agent running 1:23 と最新のツール活動をエコー欄に表示
+                         C-c a も経過時間を表示。取消中は Agent cancelling...
 M-x agent-chat-new       現在のルートの会話を空にして新規セッションへ
                          その会話の実行中はリセット不可
 会話のルート             ファイルの最寄りの .git、なければそのディレクトリ
                          会話からは同じルート、その他は作業ディレクトリから探索
 設定                     agent-chat-command / agent-chat-resume-command
                          {id} は UUID に置換。最初の成功後は resume を使用
+                         既定は claude -p --output-format stream-json --verbose
+                         初回は --session-id {id}、継続は --resume {id}
                          既定の claude -p は読み取りのみ（Claude Code 側で許可済みの操作は除く）
                          両設定に --permission-mode acceptEdits で編集を許可
                          ディスクの変更は再読込されないため保存時の上書きに注意

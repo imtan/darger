@@ -97,8 +97,8 @@ const
 (global-set-key "f2 0" 'zoom-reset)
 (hydra "f2" "zoom  g:in  l:out  0:reset")
 (setq agent-command "claude -p --output-format text")
-(setq agent-chat-command "claude -p --output-format text --session-id {id}")
-(setq agent-chat-resume-command "claude -p --output-format text --resume {id}")
+(setq agent-chat-command "claude -p --output-format stream-json --verbose --session-id {id}")
+(setq agent-chat-resume-command "claude -p --output-format stream-json --verbose --resume {id}")
 (setq lsp-auto-complete t)
 """
 
@@ -183,6 +183,9 @@ var
   agentProcess: Process
   agentDir: string
   agentCancelled = false
+  agentStartedAt: float
+  agentReadSize: int64
+  agentOutput: ChatOutput
   reviewState: Review
   reviewBuf: Buffer
   reviewColors: seq[int8]
@@ -807,8 +810,11 @@ proc launchAgent(command, input: string, workingDir = "") =
       # ponytail: without setsid (e.g. macOS), cancellation only stops the shell; install setsid for group cleanup.
       agentProcess = startProcess("/bin/sh", workingDir = workingDir, args = ["-c", shell], options = {poUsePath})
     agentCancelled = false
+    agentStartedAt = epochTime()
+    agentReadSize = -1
+    agentOutput = ChatOutput()
     agentBuf = b
-    echo = "Agent running..."
+    echo = "Agent running 0:00"
   except CatchableError:
     if agentProcess != nil:
       agentProcess.kill()
@@ -838,13 +844,18 @@ proc currentChatRoot(): string =
   elif b.path.len > 0: rootOf(b.path)
   else: rootFromDir(getCurrentDir())
 
-proc setChatText(session: ChatSession, text: string) =
-  session.buf.splice(0, session.buf.text.runeLen, text)
+proc setChatText(session: ChatSession, text: string): bool {.discardable.} =
+  if session.buf.text == text: return false
+  let point = session.buf.cursor
+  let follow = b == session.buf and point.line == session.buf.lines.high
+  session.buf.splice(0, session.buf.text.runeLen, text)  # no undo snapshot for live output
   session.buf.modified = false
   session.buf.regionActive = false
   session.buf.markSet = false
-  session.buf.cursor = (min(session.turn.agentLine, session.buf.lines.high), 0)
+  let line = if follow: session.buf.lines.high else: min(point.line, session.buf.lines.high)
+  session.buf.cursor = (line, min(point.col, session.buf.lines[line].len))
   session.buf.finish()
+  true
 
 proc sendChat(message: string) =
   var session = chats.getOrDefault(chatRoot)
@@ -864,25 +875,46 @@ proc sendChat(message: string) =
   session.turn = appendTurn(session.buf.text, session.root, message)
   session.setChatText(session.turn.text)
   switchTo(session.buf)
+  session.buf.cursor = (session.buf.lines.high, 0)
 
-proc finishChat(code: int) =
+proc updateChat(code = -1): bool =
   let session = agentChat
   if session.buf notin reg:
-    echo = "Agent: transcript was killed; reply dropped"
+    if code != -1: echo = "Agent: transcript was killed; reply dropped"
     return
-  var reply: string
-  if agentCancelled: reply = "(cancelled)"
-  elif code != 0:
+  let path = agentDir / "out.txt"
+  if fileExists(path) and getFileSize(path) > agentReadSize:
+    let output = readFile(path)
+    agentReadSize = output.len.int64
+    let activity = agentOutput.activity
+    try:
+      # ponytail: reparse the grown file; use incremental parsing if long runs make this costly.
+      agentOutput = renderOutput(output)
+    except ValueError as e:
+      if not agentOutput.isError:
+        if agentOutput.reply.len > 0: agentOutput.reply.add "\n\n"
+        agentOutput.reply.add "(failed: " & e.msg & ")"
+      agentOutput.isError = true
+    result = activity != agentOutput.activity
+  elif code == -1: return false
+  var reply = strutils.strip(agentOutput.reply.replace("\r\n", "\n"), leading = false)
+  var ending: string
+  if code == -1: ending = "..."
+  elif agentCancelled: ending = "(cancelled)"
+  elif code != 0 and not agentOutput.isError:  # else the stream already said why
     let errors = readFile(agentDir / "err.txt")
-    reply = "(failed: " & (if validateUtf8(errors) == -1: failureLine(errors, code)
-                          else: "exit code " & $code) & ")"
-  else:
-    reply = readFile(agentDir / "out.txt")
-    if validateUtf8(reply) != -1: reply = "(failed: reply is not valid UTF-8)"
-    else: session.started = true
+    ending = "(failed: " & (if validateUtf8(errors) == -1: failureLine(errors, code)
+                           else: "exit code " & $code) & ")"
+  elif not agentOutput.isError: session.started = true
+  # claude refuses a --session-id it has seen, even from a run that failed or was cancelled
+  if code != -1 and not session.started: session.id = sessionId()
+  if ending.len > 0:
+    if reply.len > 0: reply.add "\n\n"
+    reply.add ending
   # ponytail: rebuild the sent transcript; track a moving span if in-flight transcript editing is needed.
-  session.setChatText(replaceReply(session.turn, reply))
-  echo = if b == session.buf: "" else: "Agent replied (C-c c Enter to read)"
+  if session.setChatText(replaceReply(session.turn, reply)): result = true
+  if code != -1:
+    echo = if b == session.buf: "" else: "Agent replied (C-c c Enter to read)"
 
 proc cancelAgent() =
   if agentProcess == nil or agentCancelled: return
@@ -913,7 +945,8 @@ proc cleanAgentOutput(text: string): string =
 proc pollAgent(): bool =
   if agentProcess == nil: return false
   let code = agentProcess.peekExitCode()
-  if code == -1: return false
+  if code == -1:
+    return if agentChat != nil: updateChat() else: false
   result = true
   agentProcess.close()
   agentProcess = nil
@@ -921,7 +954,7 @@ proc pollAgent(): bool =
     discard closeHandle(agentJob)
     agentJob = 0
   try:
-    if agentChat != nil: finishChat(code)
+    if agentChat != nil: discard updateChat(code)
     elif agentCancelled: echo = "Agent cancelled"
     elif code != 0:
       let errors = readFile(agentDir / "err.txt").splitLines()
@@ -2147,8 +2180,11 @@ proc redraw() =
   renderer.resize(window, displayed)
   let skkShown = skkOn()
   # The candidate page lives in echo; a command that cleared echo brings it back.
+  let elapsed = max(0, int(epochTime() - agentStartedAt))
   let message = if agentProcess != nil:
-      (if agentCancelled: "Agent cancelling..." else: "Agent running...") &
+      (if agentCancelled: "Agent cancelling..."
+       else: "Agent running " & $(elapsed div 60) & ":" & align($(elapsed mod 60), 2, '0') &
+         (if agentOutput.activity.len > 0: "  " & agentOutput.activity else: "")) &
         (if echo.endsWith("Agent already running"): "  " & echo else: "")
     elif mode == "review": reviewMessage() & (if echo != reviewMessage(): "  " & echo else: "")
     elif mode == "help": overlayMessage(helpMessage)

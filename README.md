@@ -24,11 +24,20 @@ never require saving, and no chat history is saved to disk. `M-x agent-chat-new`
 empties the current root's transcript and resets its session (refused while
 that conversation is running).
 
+Chat replies appear live, with tool names and short summaries as Markdown quote
+lines and `...` at the end while the process runs. Thinking and tool results are
+hidden. Only complete output lines are displayed; ordinary plain-text agent
+commands also work. A cancellation or failure keeps the output received so far.
+The cursor starts at the bottom and follows new output while it stays on the
+last line; move up to read without following. Updates do not add undo history.
+Both chat and one-shot agents show elapsed time (`Agent running 1:23`) in the
+echo line, with the latest tool activity for chat.
+
 The defaults (override them in `~/.darger.el`) are:
 
 ```lisp
-(setq agent-chat-command "claude -p --output-format text --session-id {id}")
-(setq agent-chat-resume-command "claude -p --output-format text --resume {id}")
+(setq agent-chat-command "claude -p --output-format stream-json --verbose --session-id {id}")
+(setq agent-chat-resume-command "claude -p --output-format stream-json --verbose --resume {id}")
 ```
 
 Every `{id}` is replaced with the session's random UUID. The resume command is
