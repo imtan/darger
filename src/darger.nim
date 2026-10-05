@@ -1,6 +1,7 @@
-import std/[os, osproc, tempfiles, strutils, times, unicode, tables, sets, math, json]
+import std/[os, osproc, tempfiles, strutils, times, unicode, tables, sets, math, json, uri, browsers]
 import windy, vmath
-import buffer, buffers, render, skk, lisp, review, manual, recent, syntax, complete, lsp, filer, chat
+import buffer, buffers, render, skk, lisp, review, manual, recent, syntax, complete, lsp, filer, chat,
+  html, feed, fetch
 
 const
   bufferCommands = ["forward", "backward", "next-line", "previous-line", "bol", "eol",
@@ -13,16 +14,22 @@ const
   dashMessage = "Dashboard  Enter:open  q:scratch  F1:manual"
   blistMessage = "Buffers  Enter:switch  k:kill  q:close"
   diredMessage = "Dired  n/p:move  Enter/f:open  ^:parent  g:refresh  +:mkdir  R:rename  D:trash  q:close"
+  webMessage = "Web  Tab:next link  Enter:follow  l/r:back/forward  g:reload  G:url  &:browser  w:copy  v:source  q:close"
+  rssMessage = "RSS  Enter:read  r/u:read/unread  R:all read  g:refresh  a:add  s:filter  &:browser  w:copy  q:close"
+  webHead = 2  # rows above the page: its URL and a blank line
   diredPrompts = ["dmkdir", "drename"]
+  webPrompts = ["wurl"]                 # prompts shown over the web page
+  rssPrompts = ["rss-add", "rss-filter"]  # prompts shown over the RSS list
   pathPrompts = ["find", "write", "dired-path", "dmkdir", "drename"]
-  overlays = ["review", "help", "dash", "blist", "dired"]
-  textPrompts = ["dired-path", "dmkdir", "drename", "find", "write", "search", "agent", "chat", "switch", "kill", "line", "diag", "refs"]  # SKK works in these
+  overlays = ["review", "help", "dash", "blist", "dired", "web", "rss"]
+  overlayModes = ["help", "dash", "blist", "dired", "dmkdir", "drename", "web", "wurl", "rss", "rss-add", "rss-filter"]  # an overlay or a prompt over one
+  textPrompts = ["dired-path", "dmkdir", "drename", "find", "write", "search", "agent", "chat", "switch", "kill", "line", "diag", "refs", "web-url", "wurl", "rss-add", "rss-filter"]  # SKK works in these
   candModes = ["dired-path", "dmkdir", "drename", "find", "write", "execute", "switch", "kill", "line", "diag", "refs"]  # prompts with a candidate list
   consults = ["line", "diag", "refs"]  # candidate lists that preview a position
   compRows = 8    # the completion box's most rows
   hoverRows = 12  # the hover box's
   argCommands = ["global-set-key", "insert", "command", "agent", "find-file", "load-theme",
-    "hydra", "lsp-server"]  # primitives M-x cannot call without arguments
+    "hydra", "lsp-server", "rss-feed"]  # primitives M-x cannot call without arguments
   dashLabels = "123456789abc"
   dashFirst = 4  # line of the first recent-file entry
   defaultBindings = """
@@ -75,6 +82,8 @@ const
 (global-set-key "C-x u" 'undo)
 (global-set-key "C-c a" 'agent-prompt)
 (global-set-key "C-c c" 'agent-chat)
+(global-set-key "C-c w" 'eww)
+(global-set-key "C-c r" 'rss)
 (global-set-key "f1" 'help)
 (global-set-key "C-x C-j" 'skk-mode)
 (global-set-key "C-backslash" 'skk-mode)
@@ -100,6 +109,8 @@ const
 (setq agent-chat-command "claude -p --output-format stream-json --verbose --session-id {id}")
 (setq agent-chat-resume-command "claude -p --output-format stream-json --verbose --resume {id}")
 (setq lsp-auto-complete t)
+(setq fetch-command "curl -sSL --max-time 30 --max-redirs 10 --compressed -A darger/0.1")
+(setq eww-search-prefix "https://duckduckgo.com/html/?q=")
 """
 
 when defined(windows):
@@ -127,11 +138,13 @@ else:
     let lockDisplay = XOpenDisplay(nil)
     let numLockMask = if lockDisplay != nil: XkbKeysymToModifiers(lockDisplay, 0xff7f) else: 0  # XK_Num_Lock
 
-type ChatSession = ref object
-  root, id: string
-  buf: Buffer
-  started: bool
-  turn: Turn
+type
+  ChatSession = ref object
+    root, id: string
+    buf: Buffer
+    started: bool
+    turn: Turn
+  WebNav = enum wnFollow, wnBack, wnForward, wnReload
 
 var chats: Table[string, ChatSession]
 
@@ -191,9 +204,32 @@ var
   reviewColors: seq[int8]
   currentHunk, savedTop, savedLeft: int
   helpBuf, dashBuf, blistBuf, diredBuf: Buffer
-  diredEntries: seq[Entry]
+  diredEntries: seq[filer.Entry]
   diredFaces: seq[seq[Face]]
   diredSource, pendingTrash: string
+  webBuf, rssBuf: Buffer
+  webPage: Page
+  webFaces, rssFaces: seq[seq[Face]]
+  webHtml, webUrl: string              # the shown document and its URL
+  webIsHtml: bool                      # false: shown as plain text
+  webWidth: int                        # the width webPage was laid out for
+  webHistory, webForward: seq[(string, int)]  # l / r: URL and cursor line
+  webFetch: Fetch                      # the page being loaded, nil = none
+  webNav: WebNav                       # what webFetch is for
+  webNavLine: int                      # the cursor line to restore after back / forward / reload
+  webFromRss: bool                     # the page is an RSS entry: q returns to the list
+  rssSubs: seq[Subscription]
+  rssEntries: seq[feed.Entry]          # every feed's entries, newest first
+  rssShown: seq[int]                   # rssEntries indexes of the listed rows
+  rssRead: seq[string]                 # read entry keys, oldest first, and the same as a set
+  rssReadSet: HashSet[string]
+  rssFetches: seq[Fetch]
+  rssTotal: int                        # feeds in the current refresh
+  rssBefore: HashSet[string]           # keys known before it, to count new entries
+  rssFailed: seq[string]
+  rssStatus, rssFilter: string
+  rssTop, rssWidth: int                # the list's scroll while an entry is shown; its layout width
+  rssLoaded: bool
   overlayTop, overlayLeft: int
   dashFiles: seq[string]
   blistBufs: seq[Buffer]
@@ -367,7 +403,7 @@ proc restEcho(): bool =
 
 proc switchTo(buf: Buffer) =
   ## Makes buf current: parks b's scroll and language in its slot and restores buf's.
-  let overlay = mode in ["help", "dash", "blist", "dired", "dmkdir", "drename"]  # b's scroll is parked in overlayTop/Left
+  let overlay = mode in overlayModes  # b's scroll is parked in overlayTop/Left
   if buf notin reg: reg.add buf
   if buf == b:  # its slot holds the scroll from when it was last left
     reg.touch b
@@ -711,11 +747,292 @@ proc diredName(): string =
   let index = diredBuf.cursor.line - 1
   if index in 0..diredEntries.high: diredEntries[index].name else: ""
 
+# --- Web (eww) and RSS overlays
+
+proc cutCells(s: string, width: int): string =
+  var used = 0
+  for r in s.runes:
+    let w = runeWidth(r)
+    if used + w > width: break
+    result.add r
+    used += w
+
+proc padCells(s: string, width: int): string =
+  result = cutCells(s, width)
+  result.add spaces(width - cells(result))
+
+proc fetchCommand(): seq[string] = splitCommand(interp.env.values["fetch-command"].asString)
+
+proc webLayoutWidth(): int = clamp((if renderer.cols > 0: renderer.cols else: 80) - 1, 20, 100)
+
+proc buildWeb(line = webHead) =
+  ## Lays the document out for the current width; the first rows show its URL.
+  webWidth = webLayoutWidth()
+  webPage = if webIsHtml: layout(webHtml, webUrl, webWidth) else: plainPage(webHtml)
+  var lines = @[webUrl, ""]
+  var faces = @[newSeq[Face](webUrl.runeLen), newSeq[Face]()]
+  for f in faces[0].mitems: f = dimFace
+  lines.add webPage.lines
+  faces.add webPage.faces
+  webBuf = newBuffer(lines.join("\n"))
+  webBuf.path = if webPage.title.len > 0: webPage.title else: webUrl  # the mode line
+  webFaces = faces
+  webBuf.cursor = (clamp(line, 0, webBuf.lines.high), 0)
+
+proc enterWeb() =
+  ## Shows the page: over the editor, or in place of the RSS list it was opened from.
+  if mode in overlayModes:
+    if mode in ["rss"] or mode in rssPrompts: rssTop = renderer.top
+    mode = "web"
+    prefix = ""
+    renderer.top = 0
+    renderer.left = 0
+    window.closeIme()
+  else: beginOverlay("web")
+  recenterCycle = 0
+
+proc finishWeb(toList = true) =
+  if toList and webFromRss and rssBuf != nil:
+    mode = "rss"
+    echo = ""
+    renderer.top = rssTop
+    renderer.left = 0
+  else: finishOverlay()
+  webFromRss = false
+
+proc webTarget(input: string): string =
+  ## A URL as typed, a host-like word with https://, anything else as a search.
+  let s = strutils.strip(input)
+  if s.len == 0: return ""
+  if "://" in s or s.startsWith("file:") or s.startsWith("about:"): return s
+  if ' ' notin s and ('.' in s[0..^2] or s.startsWith("localhost")): return "https://" & s
+  interp.env.values["eww-search-prefix"].asString & encodeUrl(s)
+
+proc loadWeb(url: string, nav: WebNav, line = webHead) =
+  ## Starts loading url; the page replaces the current one when it arrives.
+  if webFetch != nil: webFetch.cancel()
+  webFetch = startFetch(fetchCommand(), url, "web")
+  webNav = nav
+  webNavLine = line
+  echo = "Loading " & url
+
+proc webFollow(url: string) = loadWeb(url, wnFollow)
+
+proc webLinkAt(): int =
+  ## The link under the cursor, else the first one on its line; -1 when none.
+  let line = webBuf.cursor.line - webHead
+  result = -1
+  for i, l in webPage.links:
+    if l.line != line: continue
+    if webBuf.cursor.col in l.startCol..<l.endCol: return i
+    if result < 0: result = i
+
+proc webLinkUrl(): string =
+  ## The link at point, else the page's URL.
+  let i = webLinkAt()
+  if i >= 0: webPage.links[i].url else: webUrl
+
+proc webMoveLink(delta: int) =
+  ## Tab / Shift-Tab: the cursor goes to the next / previous link.
+  let at = (webBuf.cursor.line - webHead, webBuf.cursor.col)
+  var best = -1
+  for i, l in webPage.links:
+    let pos = (l.line, l.startCol)
+    if delta > 0 and pos > at and (best < 0 or pos < (webPage.links[best].line, webPage.links[best].startCol)): best = i
+    if delta < 0 and pos < at and (best < 0 or pos > (webPage.links[best].line, webPage.links[best].startCol)): best = i
+  if best < 0:
+    echo = if delta > 0: "No next link" else: "No previous link"
+    return
+  webBuf.cursor = (webPage.links[best].line + webHead, webPage.links[best].startCol)
+  webBuf.goal = -1
+
+proc webArrived(f: Fetch) =
+  ## The fetched document becomes the page; failures leave the current one.
+  if f.error.len > 0 and (f.body.len == 0 or not f.error.startsWith("HTTP")):
+    if not f.cancelled: echo = "Web: " & f.error
+    return
+  let kind = f.contentType.toLowerAscii
+  var isHtml = true
+  var document: string
+  if looksLikeFeed(f.body, kind): document = feedPage(parseFeed(f.body, f.finalUrl), f.finalUrl)
+  elif kind.len == 0 or kind.startsWith("text/") or "html" in kind or "xml" in kind or
+      "json" in kind or "javascript" in kind:
+    document = decodeDocument(f.body, f.contentType)
+    isHtml = kind.len == 0 or "html" in kind or "xml" in kind
+    if isHtml and kind.len == 0 and "<" notin document[0..<min(document.len, 512)]: isHtml = false
+  else:
+    echo = "Web: not shown (" & kind & "); & opens it in your browser"
+    return
+  let old = if webBuf != nil: (webUrl, webBuf.cursor.line) else: ("", 0)
+  case webNav
+  of wnFollow:
+    if webBuf != nil: webHistory.add old  # from an RSS entry too: l returns to the entry
+    webForward = @[]
+    if webHistory.len > 100: webHistory.delete(0)
+  of wnBack: webForward.add old
+  of wnForward: webHistory.add old
+  of wnReload: discard
+  webHtml = document
+  webUrl = f.finalUrl
+  webIsHtml = isHtml
+  buildWeb(if webNav == wnFollow: webHead else: webNavLine)
+  echo = if f.error.len > 0: "Web: " & f.error else: ""
+  if mode in ["", "web", "rss"]:
+    if mode != "web": enterWeb()
+    renderer.top = 0
+  elif mode notin webPrompts: echo = "Page loaded (C-c w Enter)"  # shown behind a G prompt
+
+proc showEntry(e: feed.Entry) =
+  ## An RSS entry as a page: its body with the title linked to the article.
+  webFromRss = true
+  webHistory = @[]
+  webForward = @[]
+  webHtml = entryPage(e)
+  webUrl = e.link
+  webIsHtml = true
+  buildWeb()
+  enterWeb()
+
+proc markRead(e: feed.Entry, read = true) =
+  let key = e.entryKey
+  if read == (key in rssReadSet): return
+  if read:
+    rssRead.add key
+    rssReadSet.incl key
+  else:
+    rssRead.delete(rssRead.find(key))
+    rssReadSet.excl key
+  saveRead(rssRead)
+
+proc buildRss(selected = "") =
+  ## The entry list: date, feed and title per row, read rows dim; selected (a key) keeps
+  ## its row, else the cursor stays on the same row number.
+  let row = if rssBuf != nil: rssBuf.cursor.line else: 1
+  rssWidth = max(20, (if renderer.cols > 0: renderer.cols else: 80) - 1)
+  rssShown = @[]
+  var unread = 0
+  for i, e in rssEntries:
+    if e.entryKey notin rssReadSet: inc unread
+    if rssFilter.len == 0 or matches(rssFilter, e.feed & " " & e.title): rssShown.add i
+  var header = $rssSubs.len & " feeds  " & $unread & " unread / " & $rssEntries.len & " entries"
+  if rssFilter.len > 0: header.add "  filter: " & rssFilter
+  if rssFetches.len > 0: header.add "  fetching " & $(rssTotal - rssFetches.len) & "/" & $rssTotal
+  elif rssStatus.len > 0: header.add "  " & rssStatus
+  var lines = @[header]
+  var faces = @[newSeq[Face]()]
+  var feedWidth = 0
+  for i in rssShown: feedWidth = max(feedWidth, min(20, cells(rssEntries[i].feed)))
+  var cursor = row
+  for n, i in rssShown:
+    let e = rssEntries[i]
+    if selected.len > 0 and e.entryKey == selected: cursor = n + 1
+    let date = if e.date != times.Time(): e.date.local.format("yyyy-MM-dd HH:mm") else: spaces(16)
+    let title = e.title.replace("\r", " ").replace("\n", " ").replace("\t", " ")
+    let text = cutCells(date & "  " & padCells(e.feed, feedWidth) & "  " & title, rssWidth)
+    lines.add text
+    var f = newSeq[Face](text.runeLen)
+    let read = e.entryKey in rssReadSet
+    for col in 0..<f.len:
+      f[col] = if read: dimFace elif col < 16: fConstant elif col < 18 + feedWidth: fType else: fPlain
+    faces.add f
+  if rssShown.len == 0:
+    lines.add(if rssSubs.len == 0: "No feeds yet: a adds one, or (rss-feed \"url\") in ~/.darger.el"
+      elif rssEntries.len == 0 and rssFetches.len > 0: "Fetching..."
+      elif rssFilter.len > 0: "(no matching entries)" else: "(no entries)")
+  rssBuf = newBuffer(lines.join("\n"))
+  rssBuf.path = "*RSS*"
+  rssFaces = faces
+  rssBuf.cursor = (clamp(cursor, 1, max(1, rssShown.len)), 0)
+
+proc rssEntry(): int =
+  ## The rssEntries index on the cursor row, -1 off the rows.
+  let n = rssBuf.cursor.line - 1
+  if n in 0..rssShown.high: rssShown[n] else: -1
+
+proc rssFetch(url, tag: string) =
+  for f in rssFetches:
+    if f.url == url: return  # already on its way
+  rssFetches.add startFetch(fetchCommand(), url, tag)
+
+proc rssRefresh() =
+  ## Fetches every subscription; the list fills in as each one arrives.
+  if rssSubs.len == 0:
+    echo = "No feeds: a adds one, or (rss-feed \"url\") in ~/.darger.el"
+    return
+  if rssFetches.len == 0:
+    rssFailed = @[]
+    rssBefore = initHashSet[string]()
+    for e in rssEntries: rssBefore.incl e.entryKey
+    rssTotal = 0
+  for s in rssSubs:
+    inc rssTotal
+    rssFetch(s.url, "rss")
+  rssStatus = ""
+
+proc rssFinished() =
+  ## The refresh is complete: say what is new and what failed.
+  var fresh = 0
+  for e in rssEntries:
+    if e.entryKey notin rssBefore: inc fresh
+  rssStatus = (if fresh > 0: $fresh & " new" else: "up to date") &
+    (if rssFailed.len > 0: "  " & $rssFailed.len & " failed: " & rssFailed[0] else: "")
+  if mode != "rss" and mode notin rssPrompts and mode != "web": echo = "RSS: " & rssStatus & " (C-c r)"
+
+proc rssArrived(f: Fetch) =
+  let subUrl = if f.tag.startsWith("rss-alt:"): f.tag[8..^1] else: f.url
+  var failure = ""
+  if f.error.len > 0: failure = f.error
+  elif not looksLikeFeed(f.body, f.contentType):
+    # A site URL: follow its advertised feed once.
+    let links = if "html" in f.contentType.toLowerAscii or f.contentType.len == 0:
+        feedLinks(decodeDocument(f.body, f.contentType), f.finalUrl) else: @[]
+    if links.len > 0 and f.tag == "rss":
+      rssFetch(links[0], "rss-alt:" & f.url)
+      return
+    failure = "not a feed"
+  if failure.len > 0: rssFailed.add hostOf(subUrl) & ": " & failure
+  else:
+    var parsed = parseFeed(f.body, subUrl)
+    for s in rssSubs.mitems:
+      if s.url == subUrl:
+        if s.title.len == 0: s.title = parsed.title
+        if s.title.len == 0: s.title = hostOf(subUrl)
+        for e in parsed.entries.mitems: e.feed = s.title
+    var kept: seq[feed.Entry]
+    for e in rssEntries:
+      if e.feedUrl != subUrl: kept.add e
+    rssEntries = kept & parsed.entries
+    sortEntries(rssEntries)
+  if rssFetches.len == 0: rssFinished()
+  if mode == "rss" or mode in rssPrompts:
+    let i = rssEntry()
+    buildRss(if i >= 0: rssEntries[i].entryKey else: "")
+
+proc beginRss() =
+  beginOverlay("rss")
+  if not rssLoaded:
+    rssLoaded = true
+    rssRead = loadRead()
+    for k in rssRead: rssReadSet.incl k
+    for s in loadSubscriptions():
+      var known = false
+      for have in rssSubs:
+        if have.url == s.url: known = true
+      if not known: rssSubs.add s
+    if rssSubs.len > 0: rssRefresh()
+  buildRss()
+
+proc finishRss() =
+  finishOverlay()
+  rssBuf = nil  # the fetches go on; the list is rebuilt when opened again
+
 proc closeOverlay() =
   if mode == "help": finishHelp()
   elif mode == "dash": finishDash()
   elif mode == "blist": finishBlist()
   elif mode == "dired" or mode in diredPrompts: finishDired()
+  elif mode == "web" or mode in webPrompts: finishWeb(false)
+  elif mode == "rss" or mode in rssPrompts: finishRss()
 
 proc reviewMessage(): string =
   "Review hunk " & $(currentHunk + 1) & "/" & $reviewState.hunks.len &
@@ -1113,6 +1430,37 @@ proc confirmMini() =
   of "dired-path":
     if value.len == 0: return
     beginDired(value)
+  of "web-url", "wurl":
+    if kind == "wurl": mode = "web"
+    let url = webTarget(value)
+    if url.len == 0:
+      if kind == "web-url":
+        if webBuf != nil: enterWeb() else: echo = "No page yet: type a URL or a search"
+      return
+    webFollow(url)
+  of "rss-add":
+    mode = "rss"
+    if value.len == 0: return
+    let url = strutils.strip(value)
+    for s in rssSubs:
+      if s.url == url:
+        echo = "Already subscribed: " & url
+        return
+    addSubscription(url)
+    rssSubs.add Subscription(url: url)
+    if rssFetches.len == 0:
+      rssFailed = @[]
+      rssBefore = initHashSet[string]()
+      for e in rssEntries: rssBefore.incl e.entryKey
+      rssTotal = 0
+    inc rssTotal
+    rssFetch(url, "rss")
+    buildRss()
+  of "rss-filter":
+    mode = "rss"
+    rssFilter = strutils.strip(value)
+    buildRss()
+    rssBuf.cursor = (1, 0)
   of "dmkdir", "drename":
     mode = "dired"
     if value.len == 0: return
@@ -1784,14 +2132,172 @@ proc dispatchDired(c: string) =
     let row = if command == "eob" or full == "M->": max(1, diredEntries.len) else: 1
     diredBuf.cursor = (row, 0)
 
+proc copyText(s: string) =
+  ## Like M-w: onto the kill ring and the clipboard.
+  b.kills.insert(s, 0)
+  b.yankIndex = 0
+  if b.kills.len > 60: b.kills.setLen(60)
+  setClipboardString(s)
+  echo = "Copied " & s
+
+proc overlayMove(buf: Buffer, full, command: string): bool =
+  ## Cursor movement shared by the web page and the RSS list; false when full is none.
+  result = true
+  if full in ["n", "C-n", "down", "p", "C-p", "up"] or command in ["next-line", "previous-line"]:
+    buf.vertical(if full in ["p", "C-p", "up"] or command == "previous-line": -1 else: 1)
+  elif full in ["C-v", "M-v", "pagedown", "pageup", " ", "backspace"]:
+    page(buf, if full in [" ", "C-v", "pagedown"]: "C-v" else: "M-v")
+  elif command in ["bob", "eob"] or full in ["M-<", "M->"]:
+    let line = if command == "eob" or full == "M->": buf.lines.high else: 0
+    buf.cursor = (line, 0)
+    buf.goal = -1
+  elif command in ["forward", "backward", "bol", "eol"]:
+    discard buf.command(command)
+  elif full == "C-l": recenter(buf)
+  else: result = false
+
+proc dispatchWeb(c: string) =
+  if c == "C-g" and webFetch != nil:
+    webFetch.cancel()
+    webFetch = nil
+    echo = "Cancelled"
+    return
+  if c in ["q", "C-g", "escape"]:
+    finishWeb()
+    return
+  let full = overlayKey(c)
+  if full.len == 0: return
+  let command = keymap.getOrDefault(full).symName
+  if full != "C-l": recenterCycle = 0
+  if full in ["enter", "C-m", "C-j", "f"]:
+    let i = webLinkAt()
+    if i < 0: echo = "No link here"
+    else: webFollow(webPage.links[i].url)
+  elif full == "tab" or full == "C-i": webMoveLink(if shift(): -1 else: 1)
+  elif full == "l":
+    if webHistory.len > 0:
+      let (url, line) = webHistory.pop()
+      loadWeb(url, wnBack, line)
+    elif webFromRss: finishWeb()
+    else: echo = "No previous page"
+  elif full == "r":
+    if webForward.len == 0: echo = "No next page"
+    else:
+      let (url, line) = webForward.pop()
+      loadWeb(url, wnForward, line)
+  elif full == "g":
+    if webFromRss and webHistory.len == 0: echo = "An RSS entry; g refreshes in the list"
+    else: loadWeb(webUrl, wnReload, webBuf.cursor.line)
+  elif full == "G": beginMini("wurl", "URL or search: ")
+  elif full == "&":
+    let url = webLinkUrl()
+    if url.len == 0: echo = "No URL"
+    else:
+      openDefaultBrowser(url)
+      echo = "Opened " & url
+  elif full == "w":
+    if webLinkUrl().len == 0: echo = "No URL"
+    else: copyText(webLinkUrl())
+  elif full == "v":
+    finishWeb(false)
+    var buf = reg.byName("*web source*")
+    if buf == nil:
+      buf = newBuffer()
+      reg.add(buf, "*web source*")
+    buf.splice(0, buf.text.runeLen, webHtml)
+    buf.modified = false
+    buf.cursor = (0, 0)
+    buf.finish()
+    switchTo(buf)
+    renderer.top = 0
+  elif full == "f1" or command == "help":
+    finishWeb(false)
+    beginHelp()
+  elif full == "C-x C-c": quitEditor()
+  elif command == "eww": finishWeb()
+  elif not overlayMove(webBuf, full, command): echo = full & " is undefined"
+
+proc dispatchRss(c: string) =
+  if c in ["q", "C-g", "escape"]:
+    finishRss()
+    return
+  let full = overlayKey(c)
+  if full.len == 0: return
+  let command = keymap.getOrDefault(full).symName
+  if full != "C-l": recenterCycle = 0
+  let i = rssEntry()
+  if full in ["enter", "C-m", "C-j", "f"]:
+    if i < 0: echo = "No entry here"
+    else:
+      markRead(rssEntries[i])
+      showEntry(rssEntries[i])
+  elif full in ["&", "b"]:
+    if i < 0 or rssEntries[i].link.len == 0: echo = "No link"
+    else:
+      markRead(rssEntries[i])
+      buildRss(rssEntries[i].entryKey)
+      openDefaultBrowser(rssEntries[i].link)
+      echo = "Opened " & rssEntries[i].link
+  elif full in ["r", "u"]:
+    if i >= 0:
+      markRead(rssEntries[i], full == "r")
+      buildRss(rssEntries[i].entryKey)
+      if full == "r": rssBuf.vertical(1)
+  elif full == "R":
+    for n in rssShown: markRead(rssEntries[n])
+    buildRss(if i >= 0: rssEntries[i].entryKey else: "")
+  elif full == "g":
+    rssRefresh()
+    buildRss(if i >= 0: rssEntries[i].entryKey else: "")
+  elif full == "a": beginMini("rss-add", "Add feed URL: ")
+  elif full == "s": beginMini("rss-filter", "Filter entries: ", rssFilter)
+  elif full == "w":
+    if i < 0 or rssEntries[i].link.len == 0: echo = "No link"
+    else: copyText(rssEntries[i].link)
+  elif full == "f1" or command == "help":
+    finishRss()
+    beginHelp()
+  elif full == "C-x C-c": quitEditor()
+  elif command == "rss": finishRss()
+  elif overlayMove(rssBuf, full, command):
+    rssBuf.cursor = (clamp(rssBuf.cursor.line, 1, max(1, rssShown.len)), 0)
+  else: echo = full & " is undefined"
+
+proc pollFetches(): bool =
+  ## Finished downloads become pages or feed entries; true when something changed.
+  if webFetch != nil and webFetch.poll():
+    let f = webFetch
+    webFetch = nil
+    webArrived(f)
+    result = true
+  var i = 0
+  while i < rssFetches.len:
+    if rssFetches[i].poll():
+      let f = rssFetches[i]
+      rssFetches.delete(i)
+      rssArrived(f)
+      result = true
+    else: inc i
+
 proc dispatch(c: string) =
   if mode in diredPrompts and c in ["C-g", "escape"]:
     mode = "dired"
     prefix = ""
     echo = ""
     return
+  if (mode in webPrompts or mode in rssPrompts) and c in ["C-g", "escape"]:
+    mode = if mode in webPrompts: "web" else: "rss"
+    prefix = ""
+    echo = ""
+    return
   if mode == "dired":
     dispatchDired(c)
+    return
+  if mode == "web":
+    dispatchWeb(c)
+    return
+  if mode == "rss":
+    dispatchRss(c)
     return
   if mode == "blist":
     dispatchBlist(c)
@@ -1936,6 +2442,32 @@ interp.defPrimitive("dired", proc(args: seq[Value]): Value =
     except CatchableError as e: echo = e.msg
   else: echo = "dired is unavailable here"
   nilValue())
+interp.defPrimitive("eww", proc(args: seq[Value]): Value =
+  args.arity(0, 1)
+  if args.len > 0:
+    let url = webTarget(args[0].asString)
+    if url.len == 0: raise newException(LispError, "Expected a URL")
+    try: webFollow(url)
+    except CatchableError as e: raise newException(LispError, e.msg)
+  elif mode == "web": finishWeb()
+  elif mode in ["", "eval", "execute"]:
+    beginMini("web-url", (if webBuf != nil: "URL or search (Enter: last page): " else: "URL or search: "))
+  else: echo = "eww is unavailable here"
+  nilValue())
+interp.defPrimitive("rss", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  if mode == "rss": finishRss()
+  elif mode in ["", "eval", "execute"]: beginRss()
+  else: echo = "rss is unavailable here"
+  nilValue())
+interp.defPrimitive("rss-feed", proc(args: seq[Value]): Value =
+  args.arity(1, 2)
+  let url = strutils.strip(args[0].asString)
+  if url.len == 0 or ' ' in url: raise newException(LispError, "Expected a URL")
+  for s in rssSubs:
+    if s.url == url: return args[0]
+  rssSubs.add Subscription(url: url, title: (if args.len > 1: args[1].asString else: ""))
+  args[0])
 interp.defPrimitive("dashboard", proc(args: seq[Value]): Value =
   args.arity(0, 0)
   if mode == "dash": finishDash()
@@ -2081,7 +2613,7 @@ window.onButtonPress = proc(key: Button) =
              KeyCapsLock, KeyNumLock, KeyScrollLock, KeyPause, KeyMenu, KeyPrintScreen,
              KeyInsert} or key < Key0: return
   # Escape only closes an overlay or a popup
-  if key == KeyEscape and mode notin ["help", "dash", "blist", "dired", "dmkdir", "drename"] and not compActive and not hoverActive: return
+  if key == KeyEscape and mode notin overlayModes and not compActive and not hoverActive: return
   if window.imeCompositionString.len > 0:
     if key == KeyG and ctrl():
       window.closeIme()
@@ -2174,10 +2706,19 @@ proc overlayMessage(base: string): string =
 
 proc redraw() =
   if not running or window.closed or window.minimized or window.size.x == 0 or window.size.y == 0: return
-  let displayed = if mode == "review": reviewBuf elif mode == "help": helpBuf
+  var displayed = if mode == "review": reviewBuf elif mode == "help": helpBuf
     elif mode == "dash": dashBuf elif mode == "blist": blistBuf
-    elif mode == "dired" or mode in diredPrompts: diredBuf else: b
+    elif mode == "dired" or mode in diredPrompts: diredBuf
+    elif mode == "web" or mode in webPrompts: webBuf
+    elif mode == "rss" or mode in rssPrompts: rssBuf else: b
   renderer.resize(window, displayed)
+  # A resized or zoomed window lays the page and the list out again.
+  if displayed == webBuf and webLayoutWidth() != webWidth:
+    buildWeb(webBuf.cursor.line)
+    displayed = webBuf
+  elif displayed == rssBuf and max(20, renderer.cols - 1) != rssWidth:
+    buildRss()
+    displayed = rssBuf
   let skkShown = skkOn()
   # The candidate page lives in echo; a command that cleared echo brings it back.
   let elapsed = max(0, int(epochTime() - agentStartedAt))
@@ -2195,6 +2736,14 @@ proc redraw() =
       if pendingTrash.len > 0: "Trash " & diredName() & "? (y or n)"
       elif echo.len > 0: echo
       else: diredMessage
+    elif mode == "web":
+      if webFetch != nil: "Loading " & webFetch.url & "  " & webFetch.elapsedText & "  C-g:cancel"
+      elif echo.len > 0: echo
+      else: webMessage
+    elif mode == "rss":
+      if echo.len > 0: echo
+      elif rssFetches.len > 0: "RSS  fetching " & $(rssTotal - rssFetches.len) & "/" & $rssTotal & "  q:close"
+      else: rssMessage
     elif echo.len == 0 and skkShown: inputMethod.page() else: echo
   # Prompts float in a popup; isearch stays on the bottom line so its match is visible.
   let popup = inMini() and mode != "search"
@@ -2203,8 +2752,9 @@ proc redraw() =
     shownBuf = b
     shownVersion = b.version
   # Dired only colors directory names; other overlays are plain.
-  let displayFaces = if displayed == diredBuf: diredFaces else: faces
-  let shown = if displayed == b: faces.len elif displayed == diredBuf: diredFaces.len else: 0
+  let displayFaces = if displayed == diredBuf: diredFaces elif displayed == webBuf: webFaces
+    elif displayed == rssBuf: rssFaces else: faces
+  let shown = if displayed == b: faces.len else: displayFaces.len
   let listed = inMini() and mode in candModes
   updateMarks()
   let box = cursorPopup()
@@ -2218,9 +2768,11 @@ proc redraw() =
     highlight.start, highlight.len,
     if skkShown: inputMethod.preedit() else: "",
     if mode == "review": "[Review]" elif mode == "help": "[Help]" elif mode == "dash": "[Dash]"
-    elif mode == "blist": "[Buffers]" else: inputMethod.tag(), reviewColors,
+    elif mode == "blist": "[Buffers]" elif displayed == webBuf: "[Web]"
+    elif displayed == rssBuf: "[RSS]" else: inputMethod.tag(), reviewColors,
     prompt, popup, displayFaces.toOpenArray(0, shown - 1),
-    if displayed == b: lang.name & diagCounts() elif displayed == diredBuf: "Dired" else: "Text",
+    if displayed == b: lang.name & diagCounts() elif displayed == diredBuf: "Dired"
+    elif displayed == webBuf: "Web" elif displayed == rssBuf: "RSS" else: "Text",
     if displayed == b or mode == "review": reg.displayName(b) else: displayed.path,
     cands.toOpenArray(0, if listed: cands.high else: -1), candIndex, listed,
     if mode in consults: atBottom else: atTop, marks.toOpenArray(0, if displayed == b: marks.high else: -1),
@@ -2235,6 +2787,11 @@ while running and not window.closed:
     if pollAgent(): dirty = true
   except CatchableError as e:
     echo = e.msg
+  try:
+    if pollFetches(): dirty = true
+  except CatchableError as e:
+    echo = e.msg
+    dirty = true
   try:
     lspSync()
     if lspPoll(): dirty = true
@@ -2251,6 +2808,8 @@ while running and not window.closed:
   else:
     sleep(8)
 window.close()
+if webFetch != nil: webFetch.cancel()
+for f in rssFetches: f.cancel()
 if agentProcess != nil:
   cancelAgent()
   when not defined(windows):

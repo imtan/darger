@@ -67,6 +67,34 @@ Enter / f                ファイルを開く / ディレクトリに入る
 D                        ごみ箱へ移動（y / n で確認、完全削除しない）
 q / C-g / Escape         一覧を閉じる（作成・改名の入力中は一覧に戻る）
 
+[Web ブラウザ (eww)]
+C-c w / M-x eww          URL か検索語を入力（空で Enter: 前回のページ）
+                         ドットを含む語は https:// を補う。他は eww-search-prefix で検索
+                         取得は fetch-command（既定は curl）でバックグラウンド実行
+Tab / Shift-Tab          次 / 前のリンクへ
+Enter / f                カーソル位置（なければ行の先頭）のリンクを開く
+l / r                    戻る / 進む
+g / G                    再読み込み / 別の URL を入力
+&                        リンク（なければページ）を OS のブラウザで開く
+w / v                    URL をコピー / HTML ソースを *web source* に開く
+n / p / C-v / M-v        行 / ページ移動（SPC / Backspace もページ）
+q / C-g / Escape         閉じる（読み込み中の C-g は中止）。C-c w Enter で再表示
+                         文字コードはヘッダ / meta / XML 宣言から判定（Shift_JIS, EUC-JP 等）
+                         フィードの URL は記事一覧として表示。画像・PDF は表示しない
+
+[RSS リーダー]
+C-c r / M-x rss          購読フィードの記事一覧（新しい順、既読は暗く表示）
+                         購読は ~/.darger-feeds（1 行 1 URL）と (rss-feed "url")
+Enter / f                記事を既読にして本文を表示（q で一覧に戻る）
+& / b                    記事を OS のブラウザで開く
+r / u / R                既読 / 未読 / 表示中の全記事を既読に
+g                        全フィードを再取得（到着順に一覧へ反映）
+a                        フィード URL を追加（~/.darger-feeds に追記）
+s                        フィード名と題名で絞り込み（空で解除）
+w                        記事の URL をコピー
+q / C-g / Escape         一覧を閉じる（取得は続く）
+                         既読は ~/.darger-rss-read に保存。記事本文は保存しない
+
 [バッファ]
 C-x b                    バッファを切り替え（無い名前なら新規）
 C-x k                    バッファを閉じる（変更ありなら確認）
@@ -128,4 +156,6 @@ M-:                      Lisp 式を評価
   (global-set-key "C-c f" 'forward-word)
   (setq agent-command "...")
   (load-theme "catppuccin")    ; 既定は modus-vivendi
+  (rss-feed "https://example.com/feed.xml")
+  (setq fetch-command "curl -sSL --max-time 30 --compressed")
 """

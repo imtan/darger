@@ -63,6 +63,9 @@ nim r tests/trecent.nim
 nim r tests/tbuffers.nim
 nim r tests/tcomplete.nim
 nim r tests/tsyntax.nim
+nim r tests/thtml.nim     # HTML layout for the web viewer
+nim r tests/tfeed.nim     # RSS / Atom parsing
+nim r tests/tfetch.nim    # curl downloads (needs curl; uses file:// URLs)
 ```
 
 Nimble older than 0.24 (e.g. the 0.22.x bundled with Nim 2.2.10) fails with
@@ -162,7 +165,7 @@ its own, so a mismatched `( [ ) ]` still pairs, and the search stops 5000 lines 
 File buffers and `*scratch*` show line numbers in a gutter on the left: right-aligned,
 at least 3 digits wide, dim (the theme's `lineNo`) with the cursor's line bright
 (`lineNoNow`), then 2 empty cells. The overlays (help, dashboard, buffer list, filer,
-review) have none.
+web page, RSS list, review) have none.
 
 CJK and the supported emoji ranges occupy two cells; combining marks, variation
 selectors, joiners and skin-tone modifiers occupy zero cells. U+2600..27BF stays
@@ -206,6 +209,7 @@ fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK
 | Dashboard (recent files) on / off | M-x dashboard |
 | Zoom in / out / reset (sticky) | F2 g / l / 0 |
 | Open the init file `~/.darger.el` | C-c , |
+| Web browser (eww) / RSS reader | C-c w / C-c r |
 
 Search ignores case for all-lowercase queries. Typing extends the current match; a
 search that hits the buffer edge shows `Failing I-search`, and repeating C-s/C-r
@@ -247,6 +251,71 @@ and name; directory names have a trailing `/` and are highlighted.
   fallback. Trash is unsupported on other platforms.
 - q / C-g / Escape closes the filer. C-g / Escape cancels a create/rename prompt
   and returns to the listing.
+
+## Web browser (eww)
+
+C-c w (`eww`) prompts `URL or search: `. A URL is loaded as typed; a word with a dot
+(`example.com`) gets `https://`; anything else is searched with `eww-search-prefix`
+(default DuckDuckGo's HTML version). Enter with an empty prompt reopens the last page.
+`(eww "url")` and `M-x eww` do the same from Lisp; C-c w on a page closes it.
+
+Pages are downloaded with `fetch-command` (default
+`curl -sSL --max-time 30 --max-redirs 10 --compressed -A darger/0.1`; curl is part of
+Windows 10/11, macOS and nearly every Linux) in the background, so the editor stays
+responsive and `Loading url 0:03  C-g:cancel` ticks in the echo line. The body goes to
+a temporary file, not a pipe; downloads stop at 20 MB. There is no cookie jar, JavaScript,
+form submission or image display.
+
+The page is laid out by a built-in tolerant HTML tokenizer (no external libraries):
+paragraphs, headings (coloured like function names), lists (`•`, `1.`), `<pre>` kept
+verbatim, block quotes indented, tables as rows with two spaces between cells, images as
+`[alt]`, `<hr>` as a rule, scripts and styles dropped. Text wraps to the window width
+(at most 100 cells) at spaces and between CJK characters, and is laid out again when the
+window or zoom changes. Links are blue (the string face). The first row shows the URL;
+the mode line shows the `<title>`. The charset comes from the `Content-Type` header, a
+BOM, `<meta charset>` or the XML declaration (Shift_JIS, EUC-JP, ISO-2022-JP, GBK, Big5,
+EUC-KR, Windows-125x ... via the OS converters); invalid bytes become U+FFFD. A feed URL
+(RSS/Atom) is shown as a list of its entries; `text/plain` and JSON appear as is; other
+types (images, PDF) are not shown (`&` opens them outside). An HTTP error page is shown
+with `HTTP 404` in the echo line.
+
+- C-n / C-p / n / p / arrows move by line; C-f / C-b within it; C-v / M-v / SPC /
+  Backspace page; M-< / M-> jump to the top / bottom; C-l recenters.
+- Tab / Shift-Tab move to the next / previous link. Enter / f follows the link under
+  the cursor, or else the first link on the cursor's line.
+- l / r go back / forward (pages are fetched again, the cursor line is kept);
+  g reloads; G prompts for another URL or search.
+- & opens the link at point (else the page) in the system browser; w copies that URL
+  to the kill ring and clipboard; v opens the raw HTML in a `*web source*` buffer.
+- q / Escape / C-g close the page (C-g first cancels a download); F1 opens the manual;
+  C-x C-c quits. The page stays and C-c w Enter brings it back.
+
+## RSS
+
+C-c r (`rss`) opens the reader, an elfeed-style list of every subscription's entries,
+newest first: `date  feed  title`, with read entries dimmed. Subscriptions come from
+`~/.darger-feeds` (one URL per line, optionally followed by a title; `#` comments)
+and from `(rss-feed "url" ["title"])` in `~/.darger.el`. The first opening fetches
+every feed with `fetch-command`, up to all of them at once; the list fills in as they
+arrive and the header shows `fetching 3/7`, then `12 new` or `up to date` and the
+first failure (`host: HTTP 404`, `not a feed`, ...). A site URL whose page advertises
+its feed (`<link rel=alternate type=application/rss+xml>`) is followed once. RSS 2.0,
+Atom and RSS 1.0 (RDF) are parsed with the standard library's tolerant XML parser:
+title, link, guid/id, pubDate/published/updated/dc:date, author/dc:creator, and
+`content:encoded` (else the description/summary) as HTML, including Atom XHTML
+content. Entries are not cached on disk: each session fetches the feeds again.
+
+- n / p / C-n / C-p / arrows move; C-v / M-v / SPC / Backspace page; M-< / M->.
+- Enter / f marks the entry read and shows it with the web viewer: the title links to
+  the article, then feed, date and author, then the body. Links inside work as on any
+  page; q (or l with no history) returns to the list.
+- & / b open the article in the system browser; w copies its URL.
+- r / u mark the entry read / unread (r also moves down); R marks every listed entry
+  read. Read keys (guid, else link) are kept in `~/.darger-rss-read`, the newest 5000.
+- g fetches every feed again. a prompts for a feed URL, appends it to `~/.darger-feeds`
+  and fetches it. s filters the list orderless-style on feed and title (empty resets).
+- q / Escape / C-g close the list (fetches continue; `RSS: 3 new (C-c r)` is echoed
+  when they finish). F1 opens the manual; C-x C-c quits.
 
 ## Buffers
 
@@ -374,7 +443,8 @@ connects instead of spawning) in `~/.darger.el`:
 `~/.darger.el` is evaluated at startup after the default bindings; C-c , opens it
 (`(find-file "~/.darger.el")`, which switches to its buffer when it is already open). Besides `global-set-key`, `setq`, `message`,
 `insert` and `command`, it can use `(load-theme "catppuccin")`, `(find-file "path")`
-(`~` expands), `skk-mode`, `zoom-in` / `zoom-out` / `zoom-reset`, and
+(`~` expands), `skk-mode`, `zoom-in` / `zoom-out` / `zoom-reset`, `(eww "url")`,
+`(rss-feed "url")`, `(setq fetch-command "...")`, `(setq eww-search-prefix "...")`, and
 `(hydra "PREFIX" "hint")`, which makes a one-key prefix sticky: after a bound
 `PREFIX x` command the prefix stays active and the hint shows in the echo area, as
 the default `(hydra "f2" "zoom  g:in  l:out  0:reset")`.
