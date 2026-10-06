@@ -93,6 +93,7 @@ proc newRenderer*(): Renderer =
       "/usr/share/fonts/noto/NotoSansMono-Regular.ttf",
       "/usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf",
       "/usr/share/fonts/Adwaita/AdwaitaMono-Regular.ttf",
+      "/System/Library/Fonts/SFNSMono.ttf",
       "/System/Library/Fonts/Menlo.ttc", "/Library/Fonts/Menlo.ttf"]
   proc load(path: string): Font =
     try:
@@ -102,8 +103,13 @@ proc newRenderer*(): Renderer =
         if faces.len == 0: raise newException(IOError, "Empty font collection")
         result = newFont(faces[0])
       else: result = readFont(path)
+      # Pixie only reads Windows (platform 3) cmap subtables; Apple's Menlo.ttc
+      # has none, so it loads with an empty glyph map. Treat that as a failure.
+      if not result.typeface.hasGlyph(Rune('e')):
+        raise newException(IOError, "No glyph for 'e' (unsupported cmap)")
       result.paint = color(1, 1, 1, 1)
     except CatchableError as e:
+      result = nil
       stderr.writeLine("Skipping font " & path & ": " & e.msg)
   # File names of loaded default fonts, so distro and fc-match duplicates load once.
   var loaded: HashSet[string]
