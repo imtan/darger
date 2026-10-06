@@ -1,7 +1,7 @@
 import std/[os, osproc, tempfiles, strutils, times, unicode, tables, sets, math, json, uri, browsers]
 import windy, vmath
 import buffer, buffers, render, skk, lisp, review, manual, recent, syntax, complete, lsp, filer, chat,
-  html, feed, fetch
+  html, feed, fetch, update
 
 const
   bufferCommands = ["forward", "backward", "next-line", "previous-line", "bol", "eol",
@@ -111,6 +111,8 @@ const
 (setq lsp-auto-complete t)
 (setq fetch-command "curl -sSL --max-time 30 --max-redirs 10 --compressed -A darger/0.1")
 (setq eww-search-prefix "https://duckduckgo.com/html/?q=")
+(setq darger-source-directory "")
+(setq darger-build-command "nimble -y build -d:release")
 """
 
 when defined(windows):
@@ -230,6 +232,7 @@ var
   rssStatus, rssFilter: string
   rssTop, rssWidth: int                # the list's scroll while an entry is shown; its layout width
   rssLoaded: bool
+  updater: Update                      # the self-update in progress, nil = none
   overlayTop, overlayLeft: int
   dashFiles: seq[string]
   blistBufs: seq[Buffer]
@@ -2263,6 +2266,31 @@ proc dispatchRss(c: string) =
     rssBuf.cursor = (clamp(rssBuf.cursor.line, 1, max(1, rssShown.len)), 0)
   else: echo = full & " is undefined"
 
+proc updateLog(u: Update) =
+  ## The steps' output goes to *darger update*, without switching to it.
+  const name = "*darger update*"
+  var buf = reg.byName(name)
+  if buf == nil:
+    buf = newBuffer()
+    reg.add(buf, name)
+  buf.splice(0, buf.text.runeLen, u.log)
+  buf.modified = false
+  buf.regionActive = false
+  buf.markSet = false
+  buf.cursor = (0, 0)
+  buf.finish()
+
+proc pollUpdate(): bool =
+  if updater == nil or not updater.poll(): return false
+  let u = updater
+  updater = nil
+  updateLog(u)
+  echo = if u.error == "cancelled": "darger update cancelled"
+    elif u.error.len > 0: "darger update failed: " & u.error & "  (see *darger update*)"
+    elif u.upToDate: "darger is up to date" & (if u.ahead > 0: " (" & $u.ahead & " local commits ahead)" else: "")
+    else: "darger updated to " & u.revision & " (" & $u.behind & " commits): restart to use it"
+  true
+
 proc pollFetches(): bool =
   ## Finished downloads become pages or feed entries; true when something changed.
   if webFetch != nil and webFetch.poll():
@@ -2310,6 +2338,9 @@ proc dispatch(c: string) =
     return
   if c == "C-g":
     if agentProcess != nil: cancelAgent()
+    if updater != nil and not updater.cancelled:
+      updater.cancel()
+      echo = "darger update cancelled"
     if mode == "review":
       finishReview(true)
       return
@@ -2468,6 +2499,16 @@ interp.defPrimitive("rss-feed", proc(args: seq[Value]): Value =
     if s.url == url: return args[0]
   rssSubs.add Subscription(url: url, title: (if args.len > 1: args[1].asString else: ""))
   args[0])
+interp.defPrimitive("darger-update", proc(args: seq[Value]): Value =
+  ## Checks GitHub for new commits; when there are some, fast-forwards and rebuilds.
+  args.arity(0, 0)
+  if updater != nil: raise newException(LispError, "darger update already running")
+  try:
+    let dir = sourceDirectory(interp.env.values["darger-source-directory"].asString)
+    updater = startUpdate(dir, interp.env.values["darger-build-command"].asString)
+    echo = ""
+  except CatchableError as e: raise newException(LispError, e.msg)
+  nilValue())
 interp.defPrimitive("dashboard", proc(args: seq[Value]): Value =
   args.arity(0, 0)
   if mode == "dash": finishDash()
@@ -2629,7 +2670,7 @@ window.onButtonPress = proc(key: Button) =
   try:
     let c = chord(key)
     if c.len == 0 or c == "insert": return
-    if c == "C-g" and agentProcess != nil:
+    if c == "C-g" and (agentProcess != nil or updater != nil):
       discard popupKey(c)
       dispatch(c)
       return
@@ -2728,6 +2769,9 @@ proc redraw() =
          (if agentOutput.activity.len > 0: "  " & agentOutput.activity else: "")) &
         (if echo.endsWith("Agent already running"): "  " & echo else: "")
     elif mode == "review": reviewMessage() & (if echo != reviewMessage(): "  " & echo else: "")
+    elif updater != nil and mode notin overlayModes:
+      "Updating darger  " & updater.stepText & " " & updater.elapsedText & "  C-g:cancel" &
+        (if echo.len > 0: "  " & echo else: "")
     elif mode == "help": overlayMessage(helpMessage)
     elif mode == "dash": overlayMessage(dashMessage)
     elif mode == "blist":
@@ -2779,6 +2823,7 @@ proc redraw() =
     if displayed == b: box else: CursorBox(), lineNumbers = displayed == b)
 
 window.onResize = redraw
+removeStaleExe()
 if paramCount() == 0: beginDash()  # first screen: recent files over an empty *scratch*
 var lastDraw = 0.0
 while running and not window.closed:
@@ -2789,6 +2834,7 @@ while running and not window.closed:
     echo = e.msg
   try:
     if pollFetches(): dirty = true
+    if pollUpdate(): dirty = true
   except CatchableError as e:
     echo = e.msg
     dirty = true
@@ -2810,6 +2856,7 @@ while running and not window.closed:
 window.close()
 if webFetch != nil: webFetch.cancel()
 for f in rssFetches: f.cancel()
+if updater != nil: updater.cancel()
 if agentProcess != nil:
   cancelAgent()
   when not defined(windows):

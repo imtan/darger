@@ -140,6 +140,14 @@ M-x agent-chat-new       現在のルートの会話を空にして新規セッ�
 C-g                      操作を中断
 F1                       このヘルプを表示 / 閉じる
 M-x dashboard            起動画面（最近のファイル一覧）を表示
+M-x darger-update        GitHub に新しいコミットがあれば取り込んで再ビルド
+                         実行中は Updating darger ... をエコー欄に表示、C-g で中止
+                         結果: up to date / updated to ハッシュ（要再起動）/ failed
+                         各手順の出力は *darger update* バッファ（C-x b）
+                         対象は実行ファイルのあるチェックアウト。ローカルの
+                         未プッシュコミットと衝突する場合は取り込まない
+設定                     darger-source-directory（既定: 実行ファイルの場所）
+                         darger-build-command（既定: nimble -y build -d:release）
 F2 g / l / 0             文字の拡大 / 縮小 / 元に戻す（連打可）
 C-c ,                    設定ファイル ~/.darger.el を開く
 M-x                      コマンド名を入力して実行
@@ -158,4 +166,5 @@ M-:                      Lisp 式を評価
   (load-theme "catppuccin")    ; 既定は modus-vivendi
   (rss-feed "https://example.com/feed.xml")
   (setq fetch-command "curl -sSL --max-time 30 --compressed")
+  (setq darger-build-command "nim c -d:release --outdir:. src/darger.nim")
 """

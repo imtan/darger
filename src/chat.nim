@@ -13,7 +13,13 @@ proc sessionId*(): string =
     if i in [4, 6, 8, 10]: result.add '-'
     result.add toHex(b, 2).toLowerAscii
 
-proc expandId*(command, id: string): string = command.replace("{id}", id)
+proc expandId*(command, id: string): string =
+  ## The result is run by a shell, so id must stay within the characters sessionId()
+  ## produces (hex and dashes); anything else is refused rather than quoted.
+  for ch in id:
+    if ch notin {'0'..'9', 'a'..'f', '-'}:
+      raise newException(ValueError, "Agent session id contains unexpected characters")
+  command.replace("{id}", id)
 
 proc rootFromDir*(path: string): string =
   result = normalizedPath(absolutePath(path))

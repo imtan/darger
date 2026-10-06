@@ -11,6 +11,10 @@ doAssert id[19] in {'8', '9', 'a', 'b'}
 doAssert sessionId() != id
 doAssert expandId("cli {id} --resume {id}", id) == "cli " & id & " --resume " & id
 doAssert expandId("cli", id) == "cli"
+var rejected = false
+try: discard expandId("cli {id}", "abc; rm -rf /")
+except ValueError: rejected = true
+doAssert rejected
 
 let tree = createTempDir("darger-chat-test-", "")
 try:

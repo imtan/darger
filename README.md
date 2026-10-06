@@ -66,7 +66,27 @@ nim r tests/tsyntax.nim
 nim r tests/thtml.nim     # HTML layout for the web viewer
 nim r tests/tfeed.nim     # RSS / Atom parsing
 nim r tests/tfetch.nim    # curl downloads (needs curl; uses file:// URLs)
+nim r tests/tupdate.nim   # self-update against a local bare repository (needs git)
 ```
+
+## Updating darger
+
+`M-x darger-update` checks GitHub for new commits and, when there are any, pulls
+them and rebuilds the editor in the background. It works on the checkout holding the
+running executable (override with `(setq darger-source-directory "~/src/darger")`),
+which must be a git clone with `darger.nimble`. The steps are `git fetch`, a
+comparison with the upstream branch, `git merge --ff-only` and `darger-build-command`
+(default `nimble -y build -d:release`; set it to the `nim c` line above if your nimble
+is too old). The echo line shows `Updating darger  checking GitHub 0:03  C-g:cancel`
+(then `pulling`, `building`); C-g stops the running step. Every step's command and
+output goes to a `*darger update*` buffer (C-x b), without switching to it. The result
+is one of `darger is up to date`, `darger updated to <hash> (N commits): restart to use
+it`, or `darger update failed: ...`. Local commits that GitHub lacks are never merged
+over: with no new upstream commits they count as up to date, otherwise the update
+stops with `local commits diverge from GitHub`. Git never prompts for credentials
+(`GIT_TERMINAL_PROMPT=0`). On Windows the running `darger.exe` is renamed to
+`darger.old.exe` before the build, moved back if the build fails, and deleted at the
+next start. `(darger-update)` in `~/.darger.el` checks at every start.
 
 Nimble older than 0.24 (e.g. the 0.22.x bundled with Nim 2.2.10) fails with
 `cannot open file: opengl`; use the `nim c` line instead.
@@ -207,6 +227,7 @@ fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK
 | SKK Japanese input on / off | C-\ or C-x C-j |
 | Manual (help) on / off | F1 |
 | Dashboard (recent files) on / off | M-x dashboard |
+| Pull and rebuild from GitHub | M-x darger-update |
 | Zoom in / out / reset (sticky) | F2 g / l / 0 |
 | Open the init file `~/.darger.el` | C-c , |
 | Web browser (eww) / RSS reader | C-c w / C-c r |
