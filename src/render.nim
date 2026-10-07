@@ -7,6 +7,7 @@ type
   Renderer* = ref object
     gpu: Boxy
     fonts: seq[Font]
+    fallbacks: string  # set-fallback-fonts / DARGER_FALLBACK_FONTS entries; "" uses the defaults
     chosen: Table[int, int]
     glyphs: HashSet[string]
     scale: float32
@@ -67,6 +68,59 @@ proc iosevka(dir: string): seq[string] =
   for weight in ["ExtraLight", "Light", "Regular"]:
     result.add dir / ("IosevkaNerdFontMono-" & weight & ".ttf")
 
+proc loadFont(path: string): Font =
+  ## Raises IOError or PixieError, with the reason, for a font the editor cannot use.
+  # readTypeface rejects .ttc; readTypefaces parses ttcf directory offsets.
+  if path.toLowerAscii.endsWith(".ttc"):
+    let faces = readTypefaces(path)
+    if faces.len == 0: raise newException(IOError, "Empty font collection")
+    result = newFont(faces[0])
+  else: result = readFont(path)
+  # Pixie only reads Windows (platform 3) cmap subtables; Apple's Menlo.ttc
+  # has none, so it loads with an empty glyph map. Treat that as a failure.
+  if not result.typeface.hasGlyph(Rune('e')):
+    raise newException(IOError, "No glyph for 'e' (unsupported cmap)")
+  result.paint = color(1, 1, 1, 1)
+
+proc tryLoadFont(path: string): Font =
+  ## nil, with a note on stderr, when the font cannot be used.
+  try: result = loadFont(path)
+  except CatchableError as e:
+    result = nil
+    stderr.writeLine("Skipping font " & path & ": " & e.msg)
+
+proc defaultFallbacks(): seq[string] =
+  when defined(windows):
+    result = @["C:/Windows/Fonts/BIZ-UDGothicR.ttc", "C:/Windows/Fonts/YuGothM.ttc",
+      "C:/Windows/Fonts/msgothic.ttc", "C:/Windows/Fonts/malgun.ttf",
+      "C:/Windows/Fonts/seguiemj.ttf", "C:/Windows/Fonts/seguisym.ttf"]
+  else:
+    # No colour emoji: pixie rejects CBDT and sbix.
+    result = @["/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+      "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+      "/usr/share/fonts/google-noto-sans-cjk-fonts/NotoSansCJK-Regular.ttc",
+      "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
+      "/usr/share/fonts/noto/NotoSansSymbols2-Regular.ttf",
+      "/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf",
+      "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc"]
+    when not defined(macosx):
+      # %{file} only: the TTC face index would pick a Korean face; lang=ja matches non-CJK fonts.
+      result.add fcMatch("monospace:charset=3042 6f22")
+      result.add fcMatch("monospace:charset=d55c")
+
+proc loadFallbacks(fonts: var seq[Font], fallbacks: string, loaded: var HashSet[string]) =
+  ## Appends the fonts after the primary: the ';'-separated entries as given, else
+  ## the platform defaults that exist, each file name once. Unusable ones are skipped.
+  let paths = if fallbacks.len > 0: fallbacks.split(';') else: defaultFallbacks()
+  for entry in paths:
+    let path = entry.strip
+    if path.len == 0 or (fallbacks.len == 0 and not fileExists(path)): continue
+    if fallbacks.len == 0 and extractFilename(path) in loaded: continue
+    let font = tryLoadFont(path)
+    if font != nil:
+      fonts.add font
+      loaded.incl extractFilename(path)
+
 proc newRenderer*(): Renderer =
   result = Renderer(zoom: 1)
   var paths: seq[string]
@@ -95,27 +149,11 @@ proc newRenderer*(): Renderer =
       "/usr/share/fonts/Adwaita/AdwaitaMono-Regular.ttf",
       "/System/Library/Fonts/SFNSMono.ttf",
       "/System/Library/Fonts/Menlo.ttc", "/Library/Fonts/Menlo.ttf"]
-  proc load(path: string): Font =
-    try:
-      # readTypeface rejects .ttc; readTypefaces parses ttcf directory offsets.
-      if path.toLowerAscii.endsWith(".ttc"):
-        let faces = readTypefaces(path)
-        if faces.len == 0: raise newException(IOError, "Empty font collection")
-        result = newFont(faces[0])
-      else: result = readFont(path)
-      # Pixie only reads Windows (platform 3) cmap subtables; Apple's Menlo.ttc
-      # has none, so it loads with an empty glyph map. Treat that as a failure.
-      if not result.typeface.hasGlyph(Rune('e')):
-        raise newException(IOError, "No glyph for 'e' (unsupported cmap)")
-      result.paint = color(1, 1, 1, 1)
-    except CatchableError as e:
-      result = nil
-      stderr.writeLine("Skipping font " & path & ": " & e.msg)
   # File names of loaded default fonts, so distro and fc-match duplicates load once.
   var loaded: HashSet[string]
   for path in paths:
     if not fileExists(path) and path != primary: continue
-    let font = load(path)
+    let font = tryLoadFont(path)
     if font != nil:
       result.fonts.add font
       loaded.incl extractFilename(path)
@@ -123,42 +161,43 @@ proc newRenderer*(): Renderer =
   when not defined(windows) and not defined(macosx):
     if result.fonts.len == 0:
       let path = fcMatch("monospace:spacing=mono")
-      let font = if path.len > 0: load(path) else: nil
+      let font = if path.len > 0: tryLoadFont(path) else: nil
       if font != nil:
         result.fonts.add font
         loaded.incl extractFilename(path)
   if result.fonts.len == 0:
     raise newException(IOError, "Set DARGER_FONT to a readable monospace font")
-  let fallbacks = getEnv("DARGER_FALLBACK_FONTS")
-  if fallbacks.len > 0: paths = fallbacks.split(';')
-  else:
-    when defined(windows):
-      paths = @["C:/Windows/Fonts/BIZ-UDGothicR.ttc", "C:/Windows/Fonts/YuGothM.ttc",
-        "C:/Windows/Fonts/msgothic.ttc", "C:/Windows/Fonts/malgun.ttf",
-        "C:/Windows/Fonts/seguiemj.ttf", "C:/Windows/Fonts/seguisym.ttf"]
-    else:
-      # No colour emoji: pixie rejects CBDT and sbix.
-      paths = @["/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/google-noto-sans-cjk-fonts/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/noto/NotoSansSymbols2-Regular.ttf",
-        "/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf",
-        "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc"]
-      when not defined(macosx):
-        # %{file} only: the TTC face index would pick a Korean face; lang=ja matches non-CJK fonts.
-        paths.add fcMatch("monospace:charset=3042 6f22")
-        paths.add fcMatch("monospace:charset=d55c")
-  for entry in paths:
-    let path = entry.strip
-    if path.len == 0 or (fallbacks.len == 0 and not fileExists(path)): continue
-    if fallbacks.len == 0 and extractFilename(path) in loaded: continue
-    let font = load(path)
-    if font != nil:
-      result.fonts.add font
-      loaded.incl extractFilename(path)
+  result.fallbacks = getEnv("DARGER_FALLBACK_FONTS")
+  loadFallbacks(result.fonts, result.fallbacks, loaded)
   loadExtensions()
   result.gpu = newBoxy()
+
+proc swapFonts(r: Renderer, fonts: seq[Font]) =
+  # Glyph choices and cached images are per font index, so both start over.
+  r.fonts = fonts
+  r.chosen.clear()
+  for key in r.glyphs: r.gpu.removeImage(key)
+  r.glyphs.clear()
+  r.scale = 0  # the next resize sizes the new fonts and measures the cell again
+
+proc setFont*(r: Renderer, path: string) =
+  ## Makes path the primary font, keeping the fallbacks; raises with the reason
+  ## (and leaves the fonts alone) when it cannot be used.
+  var fonts = @[loadFont(path)]
+  var loaded = toHashSet([extractFilename(path)])
+  loadFallbacks(fonts, r.fallbacks, loaded)
+  r.swapFonts(fonts)
+
+proc setFallbackFonts*(r: Renderer, fallbacks: string) =
+  ## Replaces the fonts after the primary with the ';'-separated paths; raises on
+  ## the first that cannot be used (and leaves the fonts alone).
+  var fonts = @[r.fonts[0]]
+  for entry in fallbacks.split(';'):
+    let path = entry.strip
+    if path.len > 0: fonts.add loadFont(path)
+  if fonts.len == 1: raise newException(ValueError, "Expected font paths separated by ';'")
+  r.fallbacks = fallbacks
+  r.swapFonts(fonts)
 
 proc envScale(name: string): float32 =
   try:

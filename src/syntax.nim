@@ -161,7 +161,7 @@ let
       add-hook with-eval-after-load interactive condition-case unwind-protect catch throw
       save-excursion quote function""",
     constants: words"t nil",
-    builtins: words"message format concat car cdr cons list apply funcall mapcar load-theme",
+    builtins: words"message format concat car cdr cons list apply funcall mapcar load-theme set-font set-fallback-fonts",
     identExtra: {'-', '*', '?', '!', '<', '>', '=', '/', '+'}, lisp: true, symbolPrefix: ':')
   json = Lang(name: "JSON", special: spCode, lineComment: "//", strings: @[rule("\"")],
     constants: words"true false null", keys: {':'})

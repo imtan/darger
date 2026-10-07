@@ -29,7 +29,7 @@ const
   compRows = 8    # the completion box's most rows
   hoverRows = 12  # the hover box's
   argCommands = ["global-set-key", "insert", "command", "agent", "find-file", "load-theme",
-    "hydra", "lsp-server", "rss-feed"]  # primitives M-x cannot call without arguments
+    "hydra", "lsp-server", "rss-feed", "set-font", "set-fallback-fonts"]  # primitives M-x cannot call without arguments
   dashLabels = "123456789abc"
   dashFirst = 4  # line of the first recent-file entry
   defaultBindings = """
@@ -2609,6 +2609,24 @@ interp.defPrimitive("load-theme", proc(args: seq[Value]): Value =
   args.arity(1, 1)
   let name = args[0].asString
   if not setTheme(name): raise newException(LispError, "No such theme: " & name)
+  args[0])
+interp.defPrimitive("set-font", proc(args: seq[Value]): Value =
+  args.arity(1, 1)
+  let path = expandTilde(args[0].asString)
+  if path.len == 0: raise newException(LispError, "Expected a font file path")
+  try: renderer.setFont(path)
+  except CatchableError as e:
+    raise newException(LispError, "Cannot load font " & path & ": " & e.msg)
+  args[0])
+interp.defPrimitive("set-fallback-fonts", proc(args: seq[Value]): Value =
+  args.arity(1, 1)
+  var paths: seq[string]
+  for entry in args[0].asString.split(';'):
+    if entry.strip.len > 0: paths.add expandTilde(entry.strip)
+  if paths.len == 0: raise newException(LispError, "Expected font file paths separated by ';'")
+  try: renderer.setFallbackFonts(paths.join(";"))
+  except CatchableError as e:
+    raise newException(LispError, "Cannot load fallback fonts: " & e.msg)
   args[0])
 interp.defPrimitive("hydra", proc(args: seq[Value]): Value =
   args.arity(2, 2)

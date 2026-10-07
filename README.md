@@ -144,7 +144,11 @@ Gothic, Yu Gothic, MS Gothic, Malgun Gothic, Segoe UI Emoji and Segoe UI Symbol 
 Windows, and Noto Sans CJK, Noto Sans Symbols 2 and Hiragino elsewhere, plus
 `fc-match` picks for Japanese and Korean on Linux. Colour emoji fonts (CBDT, sbix)
 are unsupported. Unreadable fonts are skipped with a message on stderr. TTC files
-use their first face.
+use their first face. `~/.darger.el` can choose fonts too: `(set-font "path")`
+makes the file the primary font (over `DARGER_FONT` and the defaults), keeping the
+fallbacks, and `(set-fallback-fonts "path;path")` replaces the fallbacks; both
+work at any time (M-: too), and a font that cannot be loaded leaves the current
+fonts in place and reports `Cannot load font …` in the echo area.
 
 Text is 16 pixels times the window DPI scale times the zoom, with aligned fallback
 baselines. `DARGER_SCALE` (e.g. `2`) overrides the DPI scale; on Linux, when windy
@@ -463,7 +467,8 @@ connects instead of spawning) in `~/.darger.el`:
 
 `~/.darger.el` is evaluated at startup after the default bindings; C-c , opens it
 (`(find-file "~/.darger.el")`, which switches to its buffer when it is already open). Besides `global-set-key`, `setq`, `message`,
-`insert` and `command`, it can use `(load-theme "catppuccin")`, `(find-file "path")`
+`insert` and `command`, it can use `(load-theme "catppuccin")`, `(set-font "path")`,
+`(set-fallback-fonts "path;path")`, `(find-file "path")`
 (`~` expands), `skk-mode`, `zoom-in` / `zoom-out` / `zoom-reset`, `(eww "url")`,
 `(rss-feed "url")`, `(setq fetch-command "...")`, `(setq eww-search-prefix "...")`, and
 `(hydra "PREFIX" "hint")`, which makes a one-key prefix sticky: after a bound
