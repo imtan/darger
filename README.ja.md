@@ -67,6 +67,20 @@ nim r tests/tupdate.nim   # ローカルの bare リポジトリに対する自�
 nim r tests/torg.nim      # Org 構造と org-roam ノート
 ```
 
+## macOS の darger.app
+
+`nimble app` はリリースビルドを行い、チェックアウト内に `darger.app` を組み立てて
+`~/Applications` にリンクします。これで Spotlight、Dock、Finder の「このアプリケーションで開く」
+(プレーンテキスト、ソースコード、Markdown、`.org`)、`open -a darger file.org` から darger を
+開けます。バンドルの実行ファイルはチェックアウトの `darger` バイナリを起動するスタブなので、
+`nimble build` や `M-x darger-update` だけでアプリは最新になり、バンドルを作り直す必要は
+ありません。この経路で開いたファイルは引数ではなく Apple Event で届きます。windy の macOS
+バックエンドのパッチ版 (`patches/windy/macos/platform.nim`) がそれを受け取り、エディタが
+開きます (起動中の darger があればそこへ)。こうして起動するとウィンドウがフォーカスも取ります。
+最近の macOS では、他のプログラムから素の `./darger` を起動してもフォーカスは来ません。
+スクリプトからは `open -n -W -a darger --args FILE` で、FILE を開いた新しいインスタンスを
+起動して閉じるまで待てます。
+
 ## darger の更新
 
 `M-x darger-update` は GitHub に新しいコミットがないか確認し、あれば pull してバックグラウンドで
@@ -103,8 +117,8 @@ windy 0.5.0 の X11 バックエンドのパッチ版を `patchFile` で差し�
 最大化を切り替えます。最大化はタスクバーを含む画面全体 (macOS ではメニューバーと Dock の
 脇の領域) を覆います。マウスはそれ以外には何もしません。macOS では windy 0.5.0 が
 ボーダーレスウィンドウの `canBecomeKeyWindow` オーバーライドを誤ったセレクタで登録するため、
-そのウィンドウはキーボードフォーカスを取れません。`src/macwin.nim` が起動時に正しい
-オーバーライドを追加します (windy を上げたら再確認してください)。macOS 自体が C-SPC を
+そのウィンドウはキーボードフォーカスを取れません。上記のパッチ版バックエンドが正しい
+ものを登録します (windy を上げたら再確認してください)。macOS 自体が C-SPC を
 「前の入力ソースを選択」(システム設定 > キーボード > キーボードショートカット > 入力ソース)
 に、C-矢印を Mission Control に取っています。それらを切るか、`~/.darger.el` で `mark` を
 別のキーに割り当ててください。Option は多くのキーで特殊文字を入力するため、macOS では

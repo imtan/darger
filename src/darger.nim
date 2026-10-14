@@ -204,10 +204,20 @@ loadInit()
 proc draw() = redraw(hover, isMaximized())
 window.onResize = draw
 removeStaleExe()
-if paramCount() == 0 and startScreen != nil: startScreen()  # the dashboard over an empty *scratch*
+proc openSystemFiles(): bool =
+  ## Files handed over by Finder, Spotlight or `open -a darger` (macOS); true when any came.
+  when defined(macosx):
+    for path in takeOpenedFiles():
+      result = true
+      if overlayOf(mode) == "dash": closeOverlay()  # the file shows instead of the dashboard
+      try: visit(path)
+      except CatchableError as e: echoLine = e.msg
+# The launch-time files arrive inside windy's finishLaunching, so they are already here.
+if not openSystemFiles() and paramCount() == 0 and startScreen != nil: startScreen()  # the dashboard over an empty *scratch*
 var lastDraw = 0.0
 while running and not window.closed:
   pollEvents()
+  if openSystemFiles(): dirty = true  # from Finder, Spotlight or `open -a darger` while running
   if runTicks(): dirty = true
   # ponytail: redraw after input or every 250 ms; an unconditional per-frame redraw kept ~2 cores busy while idle
   if dirty or epochTime() - lastDraw > 0.25:

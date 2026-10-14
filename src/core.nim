@@ -125,7 +125,6 @@ proc detectLang*() =
 var
   window* = newWindow("darger", ivec2(1000, 720), style = Undecorated, vsync = true)
 window.makeContextCurrent()
-when defined(macosx): window.allowKeyWindow()  # windy 0.5.0 gives borderless windows no keyboard focus
 window.runeInputEnabled = true
 var renderer*: Renderer
 try: renderer = newRenderer()

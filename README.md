@@ -72,6 +72,21 @@ nim r tests/tupdate.nim   # self-update against a local bare repository (needs g
 nim r tests/torg.nim      # Org structure and org-roam notes
 ```
 
+## darger.app on macOS
+
+`nimble app` builds the release binary and assembles `darger.app` in the checkout,
+linked into `~/Applications`, so darger opens from Spotlight, the Dock and Finder's
+"Open With" (plain text, source code, Markdown and `.org` files) and with
+`open -a darger file.org`. The bundle's executable is a stub that runs the `darger`
+binary in the checkout, so `nimble build` and `M-x darger-update` keep the app
+current without rebuilding the bundle. Files opened this way arrive as an Apple
+event, not as arguments; a patched copy of windy's macOS backend
+(`patches/windy/macos/platform.nim`) collects them and the editor visits them, into
+the running darger when there is one. Launched this way the window also takes
+focus, which a bare `./darger` started from another program does not get on
+recent macOS; for a script, `open -n -W -a darger --args FILE` starts a new
+instance with FILE and waits until it closes.
+
 ## Updating darger
 
 `M-x darger-update` checks GitHub for new commits and, when there are any, pulls
@@ -109,7 +124,7 @@ moves the window, dragging its right or bottom edge (6 px) or its bottom right c
 the whole screen including the taskbar (on macOS, the screen beside the menu bar and
 the Dock). The mouse does nothing else. On macOS, windy 0.5.0 registers its borderless
 window's `canBecomeKeyWindow` override under the wrong selector, so such a window never
-takes keyboard focus; `src/macwin.nim` adds the real override at startup (re-check on
+takes keyboard focus; the patched backend above registers the real one (re-check on
 any windy bump). macOS itself takes C-SPC for "Select the previous input source"
 (System Settings > Keyboard > Keyboard Shortcuts > Input Sources) and C-arrows for
 Mission Control; turn those off, or bind `mark` elsewhere in `~/.darger.el`. Option
