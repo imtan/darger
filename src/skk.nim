@@ -7,7 +7,7 @@ import std/[unicode, strutils, tables, sets, algorithm, os, encodings, monotimes
 import fileio
 
 type
-  SkkKey* = enum skSpace, skEnter, skBackspace, skCtrlJ, skCtrlG, skTab
+  SkkKey* = enum skSpace, skEnter, skBackspace, skCtrlJ, skCtrlG, skTab, skNext, skPrev
   KanaMode* = enum Hiragana, Katakana, Latin
   Stage* = enum Direct, Reading, Choosing  ## Reading = ▽, Choosing = ▼
   Dictionary* = Table[string, seq[string]]
@@ -18,6 +18,8 @@ type
     preedit*: string  ## inline segment drawn at the cursor
     echo*: string     ## echo-area text after this key ("" clears)
     tag*: string      ## mode-line tag
+    register*: string ## a reading with no candidates: the editor asks for the word
+                      ## (registerWord) or gives up (cancelRegister)
   Skk* = ref object
     enabled*, loaded*: bool
     mode*: KanaMode
@@ -29,6 +31,7 @@ type
     index*: int  ## current candidate; from 4 on, the first one of a 7-candidate page
     dictionary*, user*: Dictionary
     userPath*: string  ## user dictionary rewritten on every kakutei when set
+    saved: tuple[reading, okuri, okuriPrefix: string, okuriActive: bool]  ## the ▽ a registration came from
 
 const
   tags: array[KanaMode, string] = ["[かな]", "[カナ]", "[SKK]"]
@@ -224,13 +227,28 @@ proc preedit*(s: Skk): string =
       (if s.okuriActive: "*" & toKana(s.okuri, s.mode) else: "") & s.pending
   of Choosing: "▼" & s.candidates[s.index] & toKana(s.okuri, s.mode)
 
+proc pageBase(s: Skk): int =
+  ## The first candidate of the 7-candidate page the selection is on; -1 before the 5th.
+  if s.index < 4: -1 else: 4 + (s.index - 4) div 7 * 7
+
+proc pageItems*(s: Skk): tuple[keys, words: seq[string], selected: int] =
+  ## The page shown from the 5th candidate on: pick keys, words, and which is selected.
+  let base = s.pageBase
+  if s.stage != Choosing or base < 0: return
+  for i in base ..< min(base + 7, s.candidates.len):
+    result.keys.add $"asdfjkl"[i - base]
+    result.words.add s.candidates[i]
+  result.selected = s.index - base
+
 proc page*(s: Skk): string =
-  ## Candidate list for the echo area while past the 4th candidate.
-  if s.stage != Choosing or s.index < 4: return ""
-  for i in s.index ..< min(s.index + 7, s.candidates.len):
-    if i > s.index: result.add ' '
-    result.add "ASDFJKL"[i - s.index] & ":" & s.candidates[i]
-  result.add "  [残り " & $max(0, s.candidates.len - s.index - 7) & "]"
+  ## The page as one echo line: `A:漢字 ▶S:幹事 D:感じ  [残り 3]`.
+  let items = s.pageItems
+  for i, word in items.words:
+    if i > 0: result.add ' '
+    if i == items.selected: result.add "▶"
+    result.add items.keys[i].toUpperAscii & ":" & word
+  if items.words.len > 0:
+    result.add "  [残り " & $max(0, s.candidates.len - s.pageBase - 7) & "]"
 
 proc finish(s: Skk, res: var SkkResult) =
   res.preedit = s.preedit
@@ -243,14 +261,39 @@ proc okuriKey(s: Skk): string =
 proc continues(s: Skk, c: char): bool =
   s.pending.len > 0 and (startsRule(s.pending & c) or doubled(s.pending, c))
 
+proc beginRegister(s: Skk, res: var SkkResult) =
+  ## No (more) candidates: the editor asks for the word to register. The ▽ state is
+  ## kept so cancelRegister can bring it back.
+  s.saved = (s.reading, s.okuri, s.okuriPrefix, s.okuriActive)
+  res.register = s.reading & (if s.okuriKey.len > 0: "*" & toKana(s.okuri, s.mode) else: "")  # shown as DDSKK does
+  s.reset()
+
 proc convert(s: Skk, res: var SkkResult) =
   s.candidates = s.lookup(s.reading, s.okuriKey)
   if s.candidates.len > 0:
     s.stage = Choosing
     s.index = 0
   elif s.dictionary.len == 0 and s.user.len == 0: res.echo = "No dictionary"
-  else: res.echo = "No candidates for " & s.reading & s.okuriKey
-  # ponytail: no dictionary registration; the reading stays in ▽.
+  else: s.beginRegister(res)
+
+proc registerWord*(s: Skk, word: string): string =
+  ## The word typed at the registration prompt goes into the user dictionary and is
+  ## the text to insert (with the okurigana), as DDSKK does after 辞書登録.
+  let key = s.saved.reading & (if s.saved.okuriActive and s.saved.okuri.len > 0: s.saved.okuriPrefix else: "")
+  var entries = @[word]
+  for candidate in s.user.getOrDefault(key):
+    if candidate != word: entries.add candidate
+  s.user[key] = entries
+  try: s.saveUserDictionary()
+  except CatchableError: discard
+  result = word & toKana(s.saved.okuri, s.mode)
+  s.saved = ("", "", "", false)
+
+proc cancelRegister*(s: Skk) =
+  ## Back to ▽ with the reading, as when the registration prompt is abandoned.
+  (s.reading, s.okuri, s.okuriPrefix, s.okuriActive) = s.saved
+  s.saved = ("", "", "", false)
+  s.stage = Reading
 
 proc typeKana(s: Skk, c: char, res: var SkkResult) =
   ## Romaji into the buffer (Direct) or into the ▽ reading / okurigana.
@@ -334,11 +377,12 @@ proc feedRune(s: Skk, r: Rune, next: Rune, res: var SkkResult) =
     if c == 'x':
       if s.index == 0: s.stage = Reading
       elif s.index <= 4: dec s.index
-      else: s.index -= 7
+      else: s.index = max(3, s.pageBase - 7)  # the previous page, or the 4th single candidate
     elif s.index >= 4:
+      let base = s.pageBase
       let pick = "asdfjkl".find(c)
-      if c != '\0' and pick >= 0 and s.index + pick < s.candidates.len:
-        s.index += pick
+      if c != '\0' and pick >= 0 and base + pick < s.candidates.len:
+        s.index = base + pick
         s.commitCandidate(res)
       # ponytail: other keys are ignored while the candidate page is shown.
     else:
@@ -356,7 +400,7 @@ proc feedKey(s: Skk, key: SkkKey, res: var SkkResult) =
     of skCtrlG:
       if s.pending.len > 0: s.pending = "" else: res.consumed = false
     of skCtrlJ: res.text = toKana(flush(s.pending), s.mode)
-    of skSpace, skEnter, skTab:
+    of skSpace, skEnter, skTab, skNext, skPrev:
       res.text = toKana(flush(s.pending), s.mode)
       res.consumed = false
   of Reading:
@@ -369,6 +413,9 @@ proc feedKey(s: Skk, key: SkkKey, res: var SkkResult) =
         res.consumed = false
       else: s.convert(res)
     of skEnter, skCtrlJ: res.text = s.commitReading(s.mode)  # egg-like: no newline
+    of skNext, skPrev:  # cursor movement: kakutei as typed, then the movement
+      res.text = s.commitReading(s.mode)
+      res.consumed = false
     of skBackspace:
       if s.pending.len > 0: s.pending.setLen(s.pending.len - 1)
       elif s.okuri.len > 0: s.okuri.setLen(s.okuri.len - s.okuri.lastRune(s.okuri.high)[1])
@@ -380,10 +427,16 @@ proc feedKey(s: Skk, key: SkkKey, res: var SkkResult) =
     of skTab: discard  # ponytail: no completion
   of Choosing:
     case key
-    of skSpace:
-      let next = if s.index < 4: s.index + 1 else: s.index + 7
+    of skSpace:  # the next candidate, or from the 5th the next page; past the end: register
+      let next = if s.index < 4: s.index + 1 else: s.pageBase + 7
       if next < s.candidates.len: s.index = next
+      else: s.beginRegister(res)
+    of skNext:  # C-n / down: one candidate at a time, pages following
+      if s.index + 1 < s.candidates.len: inc s.index
       else: res.echo = "No more candidates"
+    of skPrev:  # C-p / up: back one; before the first, back to ▽
+      if s.index == 0: s.stage = Reading
+      else: dec s.index
     of skEnter, skCtrlJ: s.commitCandidate(res)
     of skBackspace, skCtrlG: s.stage = Reading  # keeps the reading
     of skTab: discard
@@ -401,13 +454,23 @@ proc feed*(s: Skk, key: SkkKey): SkkResult =
   elif s.enabled: s.feedKey(key, result)
   s.finish(result)
 
-proc toggle*(s: Skk): SkkResult =
-  ## C-x C-j. Turning off commits whatever is in progress.
+proc commit*(s: Skk): SkkResult =
+  ## Kakutei: whatever is in progress goes into the buffer (pending romaji flushed, a
+  ## ▽ reading as typed, the ▼ candidate chosen), as before any other editor command.
   case s.stage
   of Direct: result.text = toKana(flush(s.pending), s.mode)
   of Reading: result.text = s.commitReading(s.mode)
   of Choosing: s.commitCandidate(result)
+  result.consumed = true
+  s.finish(result)
+
+proc composing*(s: Skk): bool =
+  ## Something is in progress: pending romaji, a ▽ reading or a ▼ candidate.
+  s.enabled and s.mode != Latin and (s.stage != Direct or s.pending.len > 0)
+
+proc toggle*(s: Skk): SkkResult =
+  ## C-x C-j. Turning off commits whatever is in progress.
+  result = s.commit()
   s.enabled = not s.enabled
   s.mode = Hiragana
-  result.consumed = true
   s.finish(result)

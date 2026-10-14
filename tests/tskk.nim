@@ -64,15 +64,74 @@ block listMode:
   var r: SkkResult
   for i in 1..5: r = s.feed(skSpace)  # convert + 4 more = 5th candidate
   doAssert s.index == 4 and r.preedit == "▼官寺"
-  doAssert r.echo == "A:官寺 S:寛治 D:莞爾 F:完爾 J:完治 K:換字 L:冠辞  [残り 1]", r.echo
-  doAssert s.feed(skSpace).echo == "A:完児  [残り 0]"
-  doAssert s.feed(skSpace).echo == "No more candidates"
-  doAssert s.press('x').echo.startsWith("A:官寺")
+  doAssert r.echo == "▶A:官寺 S:寛治 D:莞爾 F:完爾 J:完治 K:換字 L:冠辞  [残り 1]", r.echo
+  doAssert s.feed(skSpace).echo == "▶A:完児  [残り 0]"
+  let past = s.feed(skSpace)  # past the last candidate: registration, as in DDSKK
+  doAssert past.register == "かんじ" and s.stage == Direct and past.preedit == ""
+  s.cancelRegister()
+  doAssert s.stage == Reading and s.preedit == "▽かんじ"
+  for i in 1..6: discard s.feed(skSpace)
+  doAssert s.index == 11
+  doAssert s.press('x').echo.startsWith("▶A:官寺")
   doAssert s.press('u').text == "" and s.stage == Choosing
   doAssert s.press('x').preedit == "▼監事" and s.page == ""
   discard s.feed(skSpace)
   let pick = s.press('d')
   doAssert pick.text == "莞爾" and pick.echo == "" and s.stage == Direct
+
+block stepping:  # C-n / C-p (and the arrows) move one candidate at a time
+  let s = engine()
+  discard s.typeText("Kanji")
+  discard s.feed(skSpace)
+  doAssert s.feed(skNext).preedit == "▼幹事"
+  doAssert s.feed(skPrev).preedit == "▼漢字"
+  doAssert s.feed(skPrev).preedit == "▽かんじ" and s.stage == Reading  # before the first: back to ▽
+  discard s.feed(skSpace)
+  for i in 1..4: discard s.feed(skNext)
+  var r = s.feed(skNext)  # the 6th candidate: on the first page, selected marked
+  doAssert s.index == 5 and r.preedit == "▼寛治"
+  doAssert r.echo == "A:官寺 ▶S:寛治 D:莞爾 F:完爾 J:完治 K:換字 L:冠辞  [残り 1]", r.echo
+  doAssert s.pageItems.selected == 1 and s.pageItems.keys == @["a", "s", "d", "f", "j", "k", "l"]
+  doAssert s.press('f').text == "完爾"  # pick keys count from the page start, not the selection
+  let t = engine()  # (s has learnt 完爾, which reorders its candidates)
+  discard t.typeText("Kanji")
+  discard t.feed(skSpace)
+  for i in 1..11: discard t.feed(skNext)
+  doAssert t.index == 11 and t.feed(skNext).echo == "No more candidates" and t.index == 11
+  doAssert t.feed(skPrev).echo.startsWith("A:官寺")  # back onto the first page
+  doAssert t.feed(skEnter).text == "冠辞"
+  # outside ▼ the keys are not consumed: pending romaji is flushed, a ▽ reading committed
+  doAssert s.typeText("n") == "" and s.feed(skNext).text == "ん"
+  discard s.typeText("Kanji")
+  let moved = s.feed(skPrev)
+  doAssert moved.text == "かんじ" and not moved.consumed and s.stage == Direct
+
+block registration:  # a reading without candidates asks for the word
+  let s = engine()
+  discard s.typeText("Nai")
+  let r = s.feed(skSpace)
+  doAssert r.register == "ない" and s.stage == Direct and r.preedit == "" and r.echo == ""
+  doAssert s.registerWord("無い") == "無い" and s.user["ない"] == @["無い"]
+  discard s.typeText("Nai")
+  doAssert s.feed(skSpace).preedit == "▼無い"
+  discard s.feed(skCtrlG); discard s.feed(skCtrlG)
+  discard s.typeText("ToB")  # okuri-ari: converted as soon as the okurigana completes
+  let o = s.press('u')
+  doAssert o.register == "と*ぶ", o.register
+  doAssert s.registerWord("飛") == "飛ぶ" and s.user.hasKey("とb")
+  let empty = newSkk()
+  discard empty.toggle()
+  discard empty.typeText("Kanji")
+  doAssert empty.feed(skSpace).echo == "No dictionary" and empty.stage == Reading
+
+block commit:  # kakutei before another editor command
+  let s = engine()
+  discard s.typeText("Kanji")
+  discard s.feed(skSpace)
+  doAssert s.composing
+  doAssert s.commit().text == "漢字" and s.stage == Direct and s.enabled and not s.composing
+  discard s.typeText("k")
+  doAssert s.composing and s.commit().text == "" and s.pending == ""
 
 block okuri:
   let s = engine()
@@ -159,7 +218,10 @@ block noDictionary:
   doAssert s.typeText("kana") == "かな"
   let t = engine()
   discard t.typeText("Hoge")
-  doAssert t.feed(skSpace).echo == "No candidates for ほげ" and t.preedit == "▽ほげ"
+  let none = t.feed(skSpace)  # no candidates: the editor is asked to register the word
+  doAssert none.register == "ほげ" and none.echo == "" and t.preedit == ""
+  t.cancelRegister()
+  doAssert t.preedit == "▽ほげ"
 
 doAssert parseDictionary(dict)["かな"] == @["仮名", "(concat \"a\\057b\")"]
 doAssert decodeDictionary("かな /仮名/\n") == "かな /仮名/\n"

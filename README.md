@@ -616,14 +616,23 @@ one undo step).
 - ▽: an uppercase letter or `;` starts a reading; a second uppercase letter (or `;`)
   marks the okurigana (`OkuRi` → 送り, converted as soon as the kana is complete).
   SPC converts, Enter / C-j commits the reading without a newline, `q` commits it as
-  katakana, Backspace deletes the last kana, C-g cancels.
-- ▼: SPC / `x` step through candidates 1-4; from the 5th, pages of seven appear in
-  the echo area (`A:… S:… D:… F:… J:… K:… L:…  [残り N]`): pick with `a s d f j k l`,
-  SPC / `x` change page. Enter / C-j commits, Backspace or C-g returns to ▽, and any
-  other kana key commits and continues.
-- Other Ctrl/Alt chords run their normal commands. SKK stays out of an active Windows
-  IME composition. Find-file, write-file, agent, buffer, consult-line and isearch
-  minibuffers use SKK as well; y/n and goto-line prompts bypass it.
+  katakana, Backspace deletes the last kana, C-g cancels. Enter, Backspace and Tab
+  mean the same as C-m, C-h and C-i here.
+- ▼: SPC / `x` step through candidates 1-4, and C-n / C-p (or the arrows) one
+  candidate at a time anywhere; from the 5th the current page of seven hangs from
+  the cursor as a list with its pick keys `a s d f j k l` and the selected one
+  highlighted (in a prompt, as `A:… ▶S:… D:…  [残り N]` on the echo line). SPC / `x`
+  change page, C-p before the first candidate returns to ▽. Enter / C-j commits,
+  Backspace or C-g returns to ▽, and any other kana key commits and continues.
+- A reading with no candidates, or SPC past the last one, opens DDSKK's registration
+  prompt `辞書登録 「よみ」: ` (SKK works in it too): Enter with a word puts it in the
+  user dictionary and inserts it (with the okurigana), Enter alone or C-g returns to
+  ▽ with the reading. Inside another prompt the reading just comes back as ▽ with
+  `No candidates for …`.
+- Any other command (C-a, C-f, M-x, C-x …) first commits what SKK has in progress, as
+  DDSKK does, so ▽ / ▼ never stays behind at the old cursor. SKK stays out of an
+  active Windows IME composition. Find-file, write-file, agent, buffer, consult-line
+  and isearch minibuffers use SKK as well; y/n and goto-line prompts bypass it.
 - The main dictionary is `$env:DARGER_SKK_JISYO`, else the first existing of
   `~/Dropbox/.emacs.d/skk-get-jisyo/SKK-JISYO.L`, `~/.emacs.d/skk-get-jisyo/SKK-JISYO.L`,
   `~/.skk/SKK-JISYO.L` and `/usr/share/skk/SKK-JISYO.L` (EUC-JP when line 1 has a
@@ -633,8 +642,7 @@ one undo step).
 - Each commit from ▼ moves the choice to the front and rewrites `~/.darger-skk-jisyo`
   (UTF-8 SKK format, searched first, keys sorted rather than by recency). Emacs'
   `~/.skk-jisyo` is never touched.
-- Not implemented: zenkaku latin (`L`), abbrev (`/`), Tab completion, dictionary
-  registration (a miss says `No candidates for …` and stays in ▽), `l`-prefixed
+- Not implemented: zenkaku latin (`L`), abbrev (`/`), Tab completion, `l`-prefixed
   small kana (use `x`), okuri `[…]` blocks and `(concat …)` evaluation.
 
 Windy 0.5.0 forwards repeated Windows WM_KEYDOWN events to `onButtonPress`, so

@@ -121,14 +121,24 @@ window.onButtonPress = proc(key: Button) =
       dispatch(c)
       return
     if filterKey(c): return
-    if prefix.len == 0 and c in ["enter", "backspace", "tab", "C-j", "C-g"] and skkOn():
-      let key = case c
-        of "enter": skEnter
-        of "backspace": skBackspace
-        of "tab": skTab
-        of "C-j": skCtrlJ
-        else: skCtrlG
-      if applySkk(inputMethod.feed(key)): return
+    if prefix.len == 0 and skkOn():
+      var key: SkkKey
+      var named = true
+      case c
+      of "enter", "C-m": key = skEnter
+      of "backspace", "C-h": key = skBackspace
+      of "tab", "C-i": key = skTab
+      of "C-j": key = skCtrlJ
+      of "C-g": key = skCtrlG
+      of "C-n", "down": key = skNext  # in ▼: the next / previous candidate
+      of "C-p", "up": key = skPrev
+      else: named = false
+      if named:
+        if applySkk(inputMethod.feed(key)): return
+      elif inputMethod.composing:
+        # Any other command (C-a, M-x, C-x ...) first commits what SKK has in progress,
+        # as DDSKK does, instead of leaving ▽ / ▼ behind at the old cursor.
+        discard applySkk(inputMethod.commit())
     dispatch(c)
   except CatchableError as e: echoLine = e.msg
 

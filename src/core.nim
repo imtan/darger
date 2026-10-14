@@ -804,6 +804,13 @@ proc applySkk*(res: SkkResult, t = target()): bool =
   elif inMini(): refreshCandidates()
   if res.consumed: echoLine = res.echo
   recenterCycle = 0
+  if res.register.len > 0:
+    # A reading without candidates: DDSKK's 辞書登録 prompt, where SKK works too.
+    # Prompts do not nest, so inside one the reading just comes back as ▽.
+    if inMini() or mode.len > 0:
+      inputMethod.cancelRegister()
+      echoLine = "No candidates for " & res.register
+    else: beginMini("skk-register", "辞書登録 「" & res.register & "」: ")
   res.consumed
 
 proc toggleSkk*(t = target()) =
@@ -1253,6 +1260,13 @@ definePrompt(Prompt(kind: "killy", onCancel: proc() = (pendingKill = nil),
   onAccept: proc(value: string): bool =
     result = yesNo(value, proc() = killBuffer(pendingKill))
     if result: pendingKill = nil))
+definePrompt(Prompt(kind: "skk-register", text: true, onAccept: proc(value: string): bool =
+  if value.len == 0: inputMethod.cancelRegister()  # Enter alone: back to ▽, as in DDSKK
+  else:
+    b.insert(inputMethod.registerWord(value), true)
+    echoLine = "Registered " & value
+  true,
+  onCancel: proc() = inputMethod.cancelRegister()))
 definePrompt(Prompt(kind: "goto", onAccept: proc(value: string): bool =
   let line = parseInt(value)
   if line < 1: raise newException(ValueError, "Line number must be positive")
@@ -1282,7 +1296,7 @@ proc redraw*(hover = thNone, maximized = false) =
     if message.len > 0: break
   if message.len == 0:
     message = if active != nil and active.message != nil: active.message()
-      elif echoLine.len == 0 and skkShown: inputMethod.page() else: echoLine
+      elif echoLine.len == 0 and skkShown and inMini(): inputMethod.page() else: echoLine
   # Prompts float in a popup; isearch stays on the bottom line so its match is visible.
   let popup = inMini() and mode != "search"
   if shownBuf != b or shownVersion != b.version:
@@ -1293,7 +1307,13 @@ proc redraw*(hover = thNone, maximized = false) =
   let listed = inMini() and hasCandidates(mode)
   settleFolds()
   let shownMarks = if marksHook != nil: marksHook() else: @[]
-  let box = if boxHook != nil: boxHook() else: CursorBox()
+  # From the 5th candidate SKK's page hangs from the cursor like a completion popup
+  # (in a prompt, where no box fits, it is the echo line above).
+  let skkPage = if skkShown and not inMini(): inputMethod.pageItems else: (keys: @[], words: @[], selected: 0)
+  let box = if skkPage.words.len > 0:
+      CursorBox(lines: skkPage.words, tags: skkPage.keys, selected: skkPage.selected,
+        line: b.cursor.line, cell: b.cellCol(b.cursor), maxRows: 7)
+    elif boxHook != nil: boxHook() else: CursorBox()
   # isearch marks its match; consult-line marks the previewed line.
   let highlight = if mode == "search": (start: matchStart, len: mini.text.runeLen)
     elif isConsult(mode) and candIndex >= 0:

@@ -585,13 +585,21 @@ C-\ または C-x C-j (`skk-mode`) は内蔵の DDSKK 風 SKK を切り替えま
   カタカナ切替、`l` でラテンへ、C-j でひらがなに戻る。
 - ▽: 大文字か `;` で読みを始める。2 つ目の大文字 (または `;`) が送り仮名を示す (`OkuRi` → 送り。
   かなが完成し次第変換)。SPC で変換、Enter / C-j で改行なしに読みを確定、`q` でカタカナとして
-  確定、Backspace で最後のかなを削除、C-g でキャンセル。
-- ▼: SPC / `x` で候補 1-4 を順に進む。5 つ目からは 7 件ずつのページがエコー領域に出る
-  (`A:… S:… D:… F:… J:… K:… L:…  [残り N]`)。`a s d f j k l` で選び、SPC / `x` でページを
-  変える。Enter / C-j で確定、Backspace か C-g で ▽ に戻り、他のかなキーは確定して続ける。
-- 他の Ctrl/Alt コードは通常のコマンドを実行する。SKK はアクティブな Windows IME の変換中には
-  関与しない。find-file、write-file、agent、バッファ、consult-line、isearch のミニバッファも
-  SKK を使う。y/n と goto-line のプロンプトは通さない。
+  確定、Backspace で最後のかなを削除、C-g でキャンセル。Enter、Backspace、Tab はここでは
+  C-m、C-h、C-i と同じ意味。
+- ▼: SPC / `x` で候補 1-4 を順に進み、C-n / C-p (または矢印) はどこでも 1 候補ずつ進む・戻る。
+  5 つ目からは現在のページ 7 件がカーソルの下に一覧で出て、選択キー `a s d f j k l` が付き、
+  選択中の候補がハイライトされる (プロンプト内ではエコー行に `A:… ▶S:… D:…  [残り N]`)。
+  SPC / `x` でページを変え、先頭候補での C-p は ▽ に戻る。Enter / C-j で確定、Backspace か
+  C-g で ▽ に戻り、他のかなキーは確定して続ける。
+- 候補のない読み、または最後の候補を越えた SPC は、DDSKK の辞書登録プロンプト
+  `辞書登録 「よみ」: ` を開く (中でも SKK が使える)。単語を入れて Enter でユーザー辞書に登録して
+  挿入し (送り仮名付き)、空の Enter か C-g で読みを残して ▽ に戻る。別のプロンプトの中では
+  `No candidates for …` と言って ▽ に戻るだけ。
+- 他のコマンド (C-a、C-f、M-x、C-x …) は、DDSKK と同様にまず SKK の進行中の入力を確定して
+  から実行されるので、▽ / ▼ が元のカーソル位置に取り残されない。SKK はアクティブな Windows
+  IME の変換中には関与しない。find-file、write-file、agent、バッファ、consult-line、isearch の
+  ミニバッファも SKK を使う。y/n と goto-line のプロンプトは通さない。
 - メイン辞書は `$env:DARGER_SKK_JISYO`、なければ `~/Dropbox/.emacs.d/skk-get-jisyo/SKK-JISYO.L`、
   `~/.emacs.d/skk-get-jisyo/SKK-JISYO.L`、`~/.skk/SKK-JISYO.L`、`/usr/share/skk/SKK-JISYO.L` の
   うち最初に存在するもの (1 行目に `coding: euc-jp` クッキーがあれば EUC-JP、なければ UTF-8)。
@@ -599,9 +607,8 @@ C-\ または C-x C-j (`skk-mode`) は内蔵の DDSKK 風 SKK を切り替えま
   変換は `No dictionary` と言う。
 - ▼ からの確定のたびに選択を先頭に動かし、`~/.darger-skk-jisyo` (UTF-8 の SKK 形式。最初に
   検索され、キーは最近順ではなくソート) を書き直す。Emacs の `~/.skk-jisyo` には触れない。
-- 未実装: 全角ラテン (`L`)、abbrev (`/`)、Tab 補完、辞書登録 (見つからなければ
-  `No candidates for …` と言って ▽ に留まる)、`l` 接頭辞の小書き (`x` を使う)、送り `[…]`
-  ブロック、`(concat …)` 評価。
+- 未実装: 全角ラテン (`L`)、abbrev (`/`)、Tab 補完、`l` 接頭辞の小書き (`x` を使う)、
+  送り `[…]` ブロック、`(concat …)` 評価。
 
 Windy 0.5.0 は Windows の WM_KEYDOWN の繰り返しイベントを `onButtonPress` に転送するので、
 押しっぱなしのコマンドキーは OS ネイティブのリピートを使います。`onRune` は印字可能な
