@@ -215,6 +215,10 @@ var
   marksHook*: proc(): seq[seq[int8]] # per-rune marks under b's text (diagnostics)
   boxHook*: proc(): CursorBox        # a box hanging from the cursor (completion, hover)
   modeLineHook*: proc(): string      # appended to the language name in the mode line
+  foldHook*: proc(buf: Buffer): seq[int8]  # per line: 0 shown, 1 hidden, 2 a headline hiding
+                                           # the lines after it (drawn with "..."); empty = none
+  revealHook*: proc(buf: Buffer, line: int)  # show a hidden line: open the folds over it
+  visitHooks*: seq[proc()]           # after visit() loads a file into a new buffer
   defaults*: seq[string]             # Lisp evaluated after the default bindings, before ~/.darger.el
 
 proc defineMode*(m: Mode) = modes[m.name] = m
@@ -241,13 +245,50 @@ proc filterKey*(c: string): bool =
   ## A popup or the like takes the key before dispatch.
   for hook in keyFilters:
     if hook(c): return true
+var moveDirection* = 0  # the last buffer command's direction over hidden lines: 1, -1 or 0
+
 proc beforeRune*() =
+  moveDirection = 0
   for hook in runeHooks: hook()
 proc inserted*(r: Rune) =
   for hook in insertHooks: hook(r)
 proc imeStarted*() =
   for hook in imeHooks: hook()
 
+# ---- Folds: lines an extension hides (Org subtrees); the cursor and scrolling skip them
+proc folds*(buf: Buffer): seq[int8] = (if foldHook != nil: foldHook(buf) else: @[])
+proc hiddenLine*(fold: seq[int8], n: int): bool = n < fold.len and fold[n] == 1
+proc shownLine*(fold: seq[int8], count, n, direction: int): int =
+  ## The nearest shown line from n (n itself when shown) in direction; -1 when none.
+  result = n
+  while result in 0..<count and hiddenLine(fold, result): result += direction
+  if result notin 0..<count: result = -1
+proc stepShown*(fold: seq[int8], count, n, delta: int): int =
+  ## The line delta shown lines away from n, stopping at the first or last shown line.
+  result = max(0, min(n, count - 1))
+  let direction = if delta < 0: -1 else: 1
+  for i in 1..abs(delta):
+    let next = shownLine(fold, count, result + direction, direction)
+    if next < 0: break
+    result = next
+proc shownBetween*(fold: seq[int8], a, z: int): int =
+  ## The shown lines among a..<z.
+  for n in a..<z:
+    if not hiddenLine(fold, n): inc result
+
+proc settleFolds*() =
+  ## The cursor never rests on a hidden line: after a movement it skips the fold in the
+  ## movement's direction, after anything else (search, goto, an edit) the fold opens.
+  let fold = folds(b)
+  if not hiddenLine(fold, b.cursor.line): return
+  if moveDirection != 0:
+    let n = shownLine(fold, b.lines.len, b.cursor.line, moveDirection)
+    if n >= 0:
+      b.cursor.line = n
+      b.cursor.col = if b.last == "move" and b.goal >= 0: runeCol(b.lines[n], b.goal)
+        elif moveDirection > 0: 0 else: b.lines[n].len
+      return
+  if revealHook != nil: revealHook(b, b.cursor.line)
 proc wantsEscape*(): bool =
   for hook in escapeHooks:
     if hook(): return true
@@ -305,11 +346,14 @@ proc visit*(path: string) =
     dirVisitor(path)
     return
   var buf = reg.byPath(path)
-  if buf == nil:
+  let fresh = buf == nil
+  if fresh:
     buf = loadBuffer(path)
     reg.add buf
   switchTo(buf)
   if fileExists(b.path): recordRecent(b.path)  # a new file is recorded on its first save
+  if fresh:
+    for hook in visitHooks: hook()
 
 proc anyModified*(): bool =
   for s in reg.slots:
@@ -587,6 +631,10 @@ proc search*(next = false, direction = 0) =
 
 proc runCommand*(name: string): Value =
   if name notin bufferCommands: raise newException(LispError, "Unknown buffer command: " & name)
+  moveDirection = case name
+    of "next-line", "forward", "forward-word": 1
+    of "previous-line", "backward", "backward-word": -1
+    else: 0
   echoLine = b.command(name, if name == "yank" and b.kills.len == 0: getClipboardString() else: "")
   if b.last in ["kill", "copy"] and b.kills.len > 0: setClipboardString(b.kills[0])
   nilValue()
@@ -758,23 +806,31 @@ proc toggleSkk*(t = target()) =
   if message.len > 0: echoLine = message
 
 proc page*(buf: Buffer, full: string) =
+  ## A page is a screen of shown lines: hidden (folded) lines do not count.
   let direction = if full in ["C-v", "pagedown"]: 1 else: -1
-  if direction > 0 and renderer.top + renderer.rows > buf.lines.high:
+  let fold = folds(buf)
+  let count = buf.lines.len
+  let last = shownLine(fold, count, buf.lines.high, -1)
+  if direction > 0 and shownBetween(fold, renderer.top, last + 1) <= renderer.rows:
     echoLine = "End of buffer"
     return
   if direction < 0 and renderer.top == 0:
     echoLine = "Beginning of buffer"
     return
   let delta = direction * max(1, renderer.rows-2)
-  buf.vertical(delta)
-  renderer.top = clamp(renderer.top + delta, 0, max(0, buf.lines.len-renderer.rows))
+  if buf.goal < 0: buf.goal = buf.cellCol(buf.cursor)
+  buf.cursor.line = stepShown(fold, count, buf.cursor.line, delta)
+  buf.cursor.col = runeCol(buf.lines[buf.cursor.line], buf.goal)
+  buf.last = "move"
+  let maxTop = stepShown(fold, count, last, -(renderer.rows - 1))
+  renderer.top = clamp(stepShown(fold, count, renderer.top, delta), 0, max(0, maxTop))
 
 proc recenter*(buf: Buffer) =
   let row = case recenterCycle
     of 0: renderer.rows div 2
     of 1: 0
     else: renderer.rows - 1
-  renderer.top = max(0, buf.cursor.line - row)
+  renderer.top = stepShown(folds(buf), buf.lines.len, buf.cursor.line, -row)
   recenterCycle = (recenterCycle + 1) mod 3
 
 
@@ -873,6 +929,7 @@ proc copyText*(s: string) =
 
 
 proc dispatch*(c: string) =
+  moveDirection = 0
   if mode in prompts and prompts[mode].over.len > 0 and c in ["C-g", "escape"]:
     mode = prompts[mode].over  # back to the view the prompt floated over
     prefix = ""
@@ -1075,7 +1132,7 @@ proc loadInit*(report = false) =
   for i, src in defaults: discard interp.evalString(src, "<defaults " & $i & ">")
   initStamp = if fileExists(initPath): getLastModificationTime(initPath) else: times.Time()
   if not fileExists(initPath):
-    if report: echoLine = "No " & initPath
+    echoLine = "No " & initPath & " (C-c , creates it)"  # at every start too: a misplaced init file is otherwise silent
     return
   try:
     discard interp.evalFile(initPath)
@@ -1223,6 +1280,7 @@ proc redraw*(hover = thNone, maximized = false) =
     shownVersion = b.version
   let displayFaces = if view == nil: faces elif view.faces != nil: view.faces() else: @[]
   let listed = inMini() and hasCandidates(mode)
+  settleFolds()
   let shownMarks = if marksHook != nil: marksHook() else: @[]
   let box = if boxHook != nil: boxHook() else: CursorBox()
   # isearch marks its match; consult-line marks the previewed line.
@@ -1245,4 +1303,4 @@ proc redraw*(hover = thNone, maximized = false) =
     if isConsult(mode): atBottom else: atTop,
     if displayed == b: shownMarks else: @[],
     if displayed == b: box else: CursorBox(), lineNumbers = displayed == b,
-    hover = hover, maximized = maximized)
+    hover = hover, maximized = maximized, fold = if displayed == b: folds(b) else: @[])

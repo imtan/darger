@@ -107,3 +107,68 @@ doAssert backlinks(nodes, "idb").len == 1
 doAssert scanNodes(dir / "missing").len == 0
 removeDir(dir)
 echo "org tests passed"
+
+# folding
+block:
+  let doc = lines("""#+title: T
+#+startup: folded
+intro
+* A
+a body
+** A1
+a1 body
+*** A1x
+deep
+** A2
+* B
+b body""")
+  doAssert startupState(doc) == "OVERVIEW"
+  doAssert startupState(lines("#+STARTUP: content indent")) == "CONTENTS"
+  doAssert startupState(lines("* no keyword")) == "SHOW ALL"
+  doAssert children(doc, 3) == @[5, 9] and children(doc, 5) == @[7] and children(doc, 10).len == 0
+  doAssert bodyEnd(doc, 3) == 4 and bodyEnd(doc, 9) == 9
+
+  # overview: only the top-level headlines and the text before them show
+  let overview = globalFolds(doc, "OVERVIEW")
+  var map = foldMap(doc, overview)
+  doAssert map == @[0'i8, 0, 0, 2, 1, 1, 1, 1, 1, 1, 2, 1]
+  # contents: every headline shows, every body hides
+  map = foldMap(doc, globalFolds(doc, "CONTENTS"))
+  doAssert map == @[0'i8, 0, 0, 2, 1, 2, 1, 2, 1, 0, 2, 1]
+  doAssert foldMap(doc, globalFolds(doc, "SHOW ALL")) == newSeq[int8](doc.len)
+
+  # TAB on A from overview: FOLDED -> CHILDREN (body and folded children) -> SUBTREE -> FOLDED
+  doAssert foldState(doc, overview, 3) == "FOLDED"
+  var (folds, state) = cycleFold(doc, overview, 3)
+  doAssert state == "CHILDREN"
+  doAssert foldMap(doc, folds) == @[0'i8, 0, 0, 0, 0, 2, 1, 1, 1, 0, 2, 1]
+  (folds, state) = cycleFold(doc, folds, 3)
+  doAssert state == "SUBTREE" and foldMap(doc, folds) == @[0'i8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1]
+  (folds, state) = cycleFold(doc, folds, 3)
+  doAssert state == "FOLDED" and foldMap(doc, folds) == @[0'i8, 0, 0, 2, 1, 1, 1, 1, 1, 1, 2, 1]
+  # a headline without children: FOLDED <-> SUBTREE; one without a body: nothing to fold
+  (folds, state) = cycleFold(doc, @[fold(doc, 10)], 10)
+  doAssert state == "SUBTREE" and folds.len == 0
+  doAssert cycleFold(doc, @[], 9).state == ""
+  # a body-only fold (contents) opens with TAB
+  doAssert cycleFold(doc, globalFolds(doc, "CONTENTS"), 10).state == "SUBTREE"
+
+  # revealing a line deep in a folded subtree opens the path to it, siblings stay folded
+  let shown = revealFolds(doc, overview, 8)
+  map = foldMap(doc, shown)
+  doAssert map == @[0'i8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1]
+  doAssert revealFolds(doc, overview, 2) == overview  # already shown: unchanged
+
+  # edits: inserting a line above moves the folds; editing a headline keeps its fold
+  var edited = doc
+  edited.insert(rs"new intro", 2)
+  let moved = remapFolds(overview, edited, 1)
+  doAssert moved.len == 2 and moved[0].line == 4 and moved[1].line == 11
+  edited = doc
+  edited[3] = rs"* A renamed"
+  let renamed = remapFolds(overview, edited, 0)
+  doAssert renamed.len == 2 and renamed[0].line == 3 and $renamed[0].text == "* A renamed"
+  edited = doc
+  edited.delete(3)  # the folded headline is gone: its fold is dropped, B's moves up
+  let dropped = remapFolds(overview, edited, -1)
+  doAssert dropped.len == 1 and dropped[0].line == 9

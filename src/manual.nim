@@ -142,6 +142,8 @@ C-c C-c                  チェックボックス [ ] / [X] を切り替え
 M-Enter                  同じ階層の見出し・項目を下に追加
 M-left / M-right         見出しの階層を上げる / 下げる
 M-up / M-down            サブツリーを上 / 下の兄弟と入れ替え
+TAB / Shift-TAB          見出しの折りたたみ（FOLDED → CHILDREN → SUBTREE）/ 全体（OVERVIEW → CONTENTS → SHOW ALL）
+                         #+startup: folded のファイルは折りたたんで開く。検索や移動で隠れた行に着くと開く
 C-c C-j                  見出し一覧から移動（C-g で元の位置）
 C-c C-o                  リンクを開く（id: / file: / URL / *見出し）
 C-c .                    今日の日付 <2026-10-07 Wed> を挿入

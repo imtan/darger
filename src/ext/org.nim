@@ -1,6 +1,6 @@
 ## Org mode and org-roam: structure editing on Org buffers and a directory of notes
 ## linked by id. Built on orgmode.nim (parsing) and roam.nim (the notes).
-import std/[os, strutils, unicode, times, tables, browsers]
+import std/[os, strutils, unicode, times, tables, browsers, hashes]
 import ../[core, buffer, lisp, lsp, orgmode, roam]
 
 var
@@ -64,6 +64,78 @@ proc moveSubtree*(down: bool) =
       echoLine = "Cannot move past the first sibling"
       return
     swapBlocks(prev, n - 1, z)
+
+# ---- Folding: per buffer, the folded headlines; core asks which lines they hide
+type FoldState = object
+  folds: seq[Fold]
+  version, lineCount: int  # the buffer state folds were last matched against
+  map: seq[int8]
+  global: string           # the last org-shifttab state, to cycle from
+
+proc hash(buf: Buffer): Hash = hash(cast[int](buf))  # by identity
+var folded: Table[Buffer, FoldState]
+
+proc foldMapOf(buf: Buffer): seq[int8] =
+  if buf notin folded: return
+  let s = addr folded[buf]
+  if s.folds.len == 0: return
+  if s.version != buf.version:
+    # An edit: find the headlines again (moved by the change in line count, or edited).
+    s.folds = remapFolds(s.folds, buf.lines, buf.lines.len - s.lineCount)
+    s.version = buf.version
+    s.lineCount = buf.lines.len
+    s.map = foldMap(buf.lines, s.folds)
+  s.map
+
+proc setFolds(buf: Buffer, folds: seq[Fold]) =
+  folded[buf] = FoldState(folds: folds, version: buf.version, lineCount: buf.lines.len,
+    map: foldMap(buf.lines, folds), global: folded.getOrDefault(buf).global)
+
+proc foldsOf(buf: Buffer): seq[Fold] =
+  discard foldMapOf(buf)  # brings them up to date with the text
+  folded.getOrDefault(buf).folds
+
+proc leaveHidden() =
+  ## After a global fold the cursor may sit in hidden text: it goes to the headline above.
+  let map = foldMapOf(b)
+  if not hiddenLine(map, b.cursor.line): return
+  let n = shownLine(map, b.lines.len, b.cursor.line, -1)
+  if n >= 0: b.cursor = (n, min(b.cursor.col, b.lines[n].len))
+
+proc orgCycle*() =
+  ## TAB on a headline: FOLDED -> CHILDREN -> SUBTREE, as org-cycle.
+  let (folds, state) = cycleFold(b.lines, foldsOf(b), b.cursor.line)
+  if state.len == 0: return
+  setFolds(b, folds)
+  echoLine = state
+
+proc orgGlobalCycle*(state = "", quiet = false) =
+  ## Shift-TAB: OVERVIEW -> CONTENTS -> SHOW ALL, as org-shifttab; `state` picks one.
+  let next = if state.len > 0: state
+    else: (case folded.getOrDefault(b).global
+      of "OVERVIEW": "CONTENTS"
+      of "CONTENTS": "SHOW ALL"
+      else: "OVERVIEW")
+  setFolds(b, globalFolds(b.lines, next))
+  folded[b].global = next
+  leaveHidden()
+  if not quiet: echoLine = next
+
+foldHook = foldMapOf
+revealHook = proc(buf: Buffer, line: int) = setFolds(buf, revealFolds(buf.lines, foldsOf(buf), line))
+killHooks.add proc(buf: Buffer) = folded.del buf
+visitHooks.add proc() =
+  # '#+startup: folded' (or overview / content) opens the file folded, as in Emacs.
+  if lang.name == "Org":
+    let state = startupState(b.lines)
+    if state != "SHOW ALL": orgGlobalCycle(state, quiet = true)  # the echo line keeps its startup message
+keyFilters.add proc(c: string): bool =
+  # TAB on a headline cycles its fold and Shift-TAB the whole file; elsewhere TAB indents.
+  if mode.len > 0 or prefix.len > 0 or lang.name != "Org" or c notin ["tab", "C-i"]: return false
+  if shift(): orgGlobalCycle()
+  elif isHeadline(b.lines[b.cursor.line]): orgCycle()
+  else: return false
+  true
 
 proc roamDir*(): string = expandTilde(interp.env.values["org-roam-directory"].asString)
 
@@ -159,6 +231,16 @@ interp.defPrimitive("org-open-at-point", proc(args: seq[Value]): Value =
 interp.defPrimitive("org-time-stamp", proc(args: seq[Value]): Value =
   args.arity(0, 0)
   b.insert(timestamp(now()))
+  nilValue())
+interp.defPrimitive("org-cycle", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  if orgBuffer():
+    if isHeadline(b.lines[b.cursor.line]): orgCycle()
+    else: echoLine = "Not on a headline"
+  nilValue())
+interp.defPrimitive("org-shifttab", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  if orgBuffer(): orgGlobalCycle()
   nilValue())
 interp.defPrimitive("org-goto", proc(args: seq[Value]): Value =
   ## The headlines as a consult list; Enter jumps, C-g returns.

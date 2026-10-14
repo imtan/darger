@@ -250,6 +250,7 @@ fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK
 | Org: TODO / checkbox / new item | C-c C-t / C-c C-c / M-Enter |
 | Org: promote / demote / move subtree up / down | M-Left / M-Right / M-Up / M-Down |
 | Org: headline list / open link / timestamp | C-c C-j / C-c C-o / C-c . |
+| Org: fold the headline / the whole file | TAB / Shift-TAB |
 | org-roam: find / insert link / backlinks / today | C-c n f / C-c n i / C-c n l / C-c n d |
 
 Search ignores case for all-lowercase queries. Typing extends the current match; a
@@ -489,8 +490,17 @@ its subtree with the sibling above or below. C-c C-j lists the headlines like
 M-g l (the preview follows the selection, C-g returns, M-, comes back after a
 jump), C-c C-o follows the `[[link]]` at point (`id:` opens the note, `file:` and
 plain paths open files, URLs go to the system browser, `*Headline` jumps), and
-C-c . inserts `<2026-10-07 Wed>`. Folding is not implemented: every line stays
-visible.
+C-c . inserts `<2026-10-07 Wed>`.
+
+Folding works as in Emacs: TAB on a headline cycles FOLDED (the subtree hidden, the
+headline ending in `...`), CHILDREN (its text and its child headlines, folded) and
+SUBTREE; Shift-TAB cycles the whole file through OVERVIEW (top-level headlines only),
+CONTENTS (every headline, no text) and SHOW ALL, and `#+startup: folded` (or
+`overview`, `content`) opens the file that way. TAB elsewhere still indents. C-n / C-p,
+C-v / M-v and C-l count only shown lines; a search, M-g g, a link or an edit that lands
+in hidden text opens the folds down to it, keeping the sibling subtrees folded. Edits
+above a fold move it; a folded headline that is deleted simply shows its text again.
+`M-x org-cycle` and `org-shifttab` are the commands.
 
 org-roam notes are Org files under `org-roam-directory` (default `~/org-roam`,
 `(setq org-roam-directory "~/notes")` in `~/.darger.el`) with an ID property drawer
@@ -535,7 +545,8 @@ rather than by calling them, so an extension can be left out by removing its imp
 it changes on disk (checked twice a second), so saving it applies it at once: the
 default bindings are restored first, so a `global-set-key`, `hydra` or `setq` dropped
 from the file goes back to its default, while feeds, LSP servers and `defun`s already
-added stay until restart. The echo line reports `Loaded ~/.darger.el` or the error;
+added stay until restart. The echo line reports `Loaded ~/.darger.el` or the error, and
+`No ~/.darger.el (C-c , creates it)` at every start without one;
 `M-x load-init` reloads it by hand. C-c , opens it
 (`(find-file "~/.darger.el")`, which switches to its buffer when it is already open). Besides `global-set-key`, `setq`, `message`,
 `insert` and `command`, it can use `(load-theme "catppuccin")`, `(set-font "path")`,

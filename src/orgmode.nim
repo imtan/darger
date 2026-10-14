@@ -145,3 +145,131 @@ proc property*(lines: seq[seq[Rune]], key: string): string =
     if s.toUpperAscii == ":END:": return
     let tag = ":" & key.toUpperAscii & ":"
     if s.toUpperAscii.startsWith(tag): return strutils.strip(s[tag.len..^1])
+
+# ---- Folding: which lines a set of folded headlines hides
+
+type
+  FoldKind* = enum fkSubtree, fkBody  ## hide the whole subtree / only the text before the next headline
+  Fold* = object
+    line*: int
+    kind*: FoldKind
+    text*: seq[Rune]  ## the headline when folded, to find it again after edits
+
+proc fold*(lines: seq[seq[Rune]], n: int, kind = fkSubtree): Fold =
+  Fold(line: n, kind: kind, text: lines[n])
+
+proc bodyEnd*(lines: seq[seq[Rune]], n: int): int =
+  ## The last line before the next headline of any level.
+  result = n
+  for i in n+1..lines.high:
+    if isHeadline(lines[i]): break
+    result = i
+
+proc foldEnd*(lines: seq[seq[Rune]], f: Fold): int =
+  if f.kind == fkSubtree: subtreeEnd(lines, f.line) else: bodyEnd(lines, f.line)
+
+proc children*(lines: seq[seq[Rune]], n: int): seq[int] =
+  ## The direct child headlines of the headline at n (a skipped level still counts).
+  var childLevel = 0
+  for i in n+1..subtreeEnd(lines, n):
+    let l = stars(lines[i])
+    if l == 0: continue
+    if childLevel == 0 or l <= childLevel:
+      childLevel = l
+      result.add i
+
+proc foldMap*(lines: seq[seq[Rune]], folds: seq[Fold]): seq[int8] =
+  ## Per line: 0 shown, 1 hidden, 2 a shown headline with hidden lines after it.
+  result = newSeq[int8](lines.len)
+  for f in folds:
+    if f.line notin 0..lines.high or not isHeadline(lines[f.line]): continue
+    let z = foldEnd(lines, f)
+    if z == f.line: continue
+    if result[f.line] == 0: result[f.line] = 2
+    for i in f.line+1..z: result[i] = 1
+
+proc remapFolds*(folds: seq[Fold], lines: seq[seq[Rune]], delta: int): seq[Fold] =
+  ## After an edit that changed the line count by delta, finds every fold's headline
+  ## again: in place, moved by delta, or (with the count unchanged) edited in place.
+  ## A fold whose headline cannot be found is dropped, so its text shows.
+  var seen: seq[int]
+  for f in folds:
+    var g = f
+    if f.line in 0..lines.high and lines[f.line] == f.text: discard
+    elif f.line + delta in 0..lines.high and lines[f.line + delta] == f.text: g.line = f.line + delta
+    elif delta == 0 and f.line in 0..lines.high and isHeadline(lines[f.line]): g.text = lines[f.line]
+    else: continue
+    if g.line in seen: continue
+    seen.add g.line
+    result.add g
+
+proc foldState*(lines: seq[seq[Rune]], folds: seq[Fold], n: int): string =
+  ## What TAB on headline n shows now: FOLDED, CHILDREN (something below is hidden) or SUBTREE.
+  let z = subtreeEnd(lines, n)
+  for f in folds:
+    if f.line == n and f.kind == fkSubtree: return "FOLDED"
+  for f in folds:
+    if f.line in n..z and foldEnd(lines, f) > f.line: return "CHILDREN"
+  "SUBTREE"
+
+proc cycleFold*(lines: seq[seq[Rune]], folds: seq[Fold], n: int): tuple[folds: seq[Fold], state: string] =
+  ## Like org-cycle on headline n: FOLDED -> CHILDREN -> SUBTREE -> FOLDED, where
+  ## CHILDREN shows the entry's text and its child headlines folded. A headline
+  ## without children goes FOLDED -> SUBTREE. State "" means there is nothing to fold.
+  let z = subtreeEnd(lines, n)
+  if z == n: return (folds, "")
+  for f in folds:
+    if f.line notin n..z: result.folds.add f
+  let kids = children(lines, n)
+  case foldState(lines, folds, n)
+  of "FOLDED":
+    if kids.len == 0: result.state = "SUBTREE"
+    else:
+      for c in kids: result.folds.add fold(lines, c)
+      result.state = "CHILDREN"
+  of "CHILDREN": result.state = "SUBTREE"
+  else:
+    result.folds.add fold(lines, n)
+    result.state = "FOLDED"
+
+proc globalFolds*(lines: seq[seq[Rune]], state: string): seq[Fold] =
+  ## Like org-shifttab: OVERVIEW folds every top-level headline, CONTENTS hides the
+  ## text under every headline, "SHOW ALL" folds nothing.
+  case state
+  of "OVERVIEW":
+    var level = 0
+    for n, l in lines:
+      let s = stars(l)
+      if s == 0: continue
+      if level == 0 or s < level:  # the first headline sets the top level; a shallower one takes over
+        level = s
+        result = @[]
+      if s == level: result.add fold(lines, n)
+  of "CONTENTS":
+    for n, l in lines:
+      if isHeadline(l): result.add fold(lines, n, fkBody)
+  else: discard
+
+proc startupState*(lines: seq[seq[Rune]]): string =
+  ## The global state '#+startup:' asks for: OVERVIEW (folded / overview), CONTENTS
+  ## (content / contents), else "SHOW ALL".
+  for word in keyword(lines, "startup").toLowerAscii.split:
+    case word
+    of "folded", "overview": return "OVERVIEW"
+    of "content", "contents": return "CONTENTS"
+    of "showall", "showeverything", "nofold": return "SHOW ALL"
+  "SHOW ALL"
+
+proc openTowards(lines: seq[seq[Rune]], n, line: int, result: var seq[Fold]) =
+  # Opens the subtree at n just enough to show `line`: the other children stay folded.
+  for c in children(lines, n):
+    if line > c and line <= subtreeEnd(lines, c): openTowards(lines, c, line, result)
+    else: result.add fold(lines, c)
+
+proc revealFolds*(lines: seq[seq[Rune]], folds: seq[Fold], line: int): seq[Fold] =
+  ## The folds with `line` shown, like org-show-context: a subtree hiding it opens
+  ## down to it with the sibling subtrees on the way still folded.
+  for f in folds:
+    if line > f.line and line <= foldEnd(lines, f):
+      if f.kind == fkSubtree: openTowards(lines, f.line, line, result)
+    else: result.add f

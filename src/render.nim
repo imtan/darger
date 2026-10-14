@@ -576,7 +576,7 @@ proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
            prompt = "", popup = false, faces: openArray[seq[Face]] = [], modeName = "Text",
            bufName = "", candidates: openArray[string] = [], selected = -1, listed = false,
            anchor = atTop, marks: openArray[seq[int8]] = [], box = CursorBox(),
-           lineNumbers = false, hover = thNone, maximized = false) =
+           lineNumbers = false, hover = thNone, maximized = false, fold: seq[int8] = @[]) =
   # The gutter: right-aligned numbers, at least 3 digits wide so it rarely shifts, and
   # 2 empty cells before the text.
   let gutter = if lineNumbers: max(3, len($b.lines.len)) + 2 else: 0
@@ -588,14 +588,25 @@ proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
   let textComposition = if miniCursor < 0: composition else: @[]
   let span = cursorSpan(displayLine(b.lines[b.cursor.line], textComposition, b.cursor.col),
     b.cursor.col + (if miniCursor < 0: imeCursor else: 0))
-  if b.cursor.line < r.top or b.cursor.line >= r.top + r.rows:
-    r.top = max(0, b.cursor.line - r.rows div 2)
+  # Hidden (folded) lines take no row: rows count shown lines from r.top.
+  proc hidden(n: int): bool = n < fold.len and fold[n] == 1
+  proc rowOf(n: int): int =  # the row line n lands on, counting shown lines from r.top
+    for i in r.top..<n:
+      if not hidden(i): inc result
+  if b.cursor.line < r.top or rowOf(b.cursor.line) >= r.rows:
+    var top = b.cursor.line
+    var back = r.rows div 2
+    while top > 0 and back > 0:
+      dec top
+      if not hidden(top): dec back
+    r.top = top
+  let cursorRow = rowOf(b.cursor.line)
   if span.cell < r.left: r.left = span.cell
   if span.cell + span.width > r.left + cols: r.left = max(0, span.cell + span.width - cols)
   when defined(windows) or defined(macosx):
     if miniCursor < 0:
       window.imePos = ivec2((r.pad + (gutter+span.cell-r.left)*r.cellW).int32,
-        (r.padTop + (b.cursor.line-r.top+1)*r.cellH).int32)
+        (r.padTop + (cursorRow+1)*r.cellH).int32)
   r.gpu.beginFrame(window.size)
   r.gpu.drawRect(rect(0, 0, window.size.x.float32, window.size.y.float32), theme.bg)
   let name = if bufName.len > 0: bufName elif b.path.len == 0: "*scratch*" else: extractFilename(b.path)
@@ -604,8 +615,12 @@ proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
   let selection = b.region
   let pair = if miniCursor < 0: matchParen(b.lines, faces, b.cursor.line, b.cursor.col) else: @[]
   var offset = b.offset((min(r.top, b.lines.high), 0))
-  for line in r.top..<min(b.lines.len, r.top + r.rows):
-    let row = line - r.top
+  var row = 0
+  for line in r.top..<b.lines.len:
+    if row >= r.rows: break
+    if hidden(line):
+      offset += b.lines[line].len + 1
+      continue
     if line < lineColors.len and lineColors[line] in 1'i8..4'i8:
       r.band(row, theme.review[lineColors[line]])
     let cursor = if miniCursor < 0 and line == b.cursor.line: b.cursor.col else: -1
@@ -615,7 +630,9 @@ proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
     if gutter > 0:
       r.drawLine(align($(line + 1), gutter - 2).toRunes, row, 0, width = gutter - 2,
         tint = if line == b.cursor.line: theme.lineNoNow else: theme.lineNo)
-    r.drawLine(b.lines[line], row, r.left, cursor,
+    # A folded headline ends in "..." like Emacs' ellipsis for hidden text.
+    let shownLine = if line < fold.len and fold[line] == 2: b.lines[line] & " ...".toRunes else: b.lines[line]
+    r.drawLine(shownLine, row, r.left, cursor,
       if b.regionActive: selection.a-offset else: -1,
       if b.regionActive: selection.z-offset else: -1,
       if matchStart >= 0: matchStart-offset else: -1,
@@ -625,8 +642,9 @@ proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
       marks = if line < marks.len: marks[line] else: @[], paren = paren,
       x0 = gutter, width = if gutter > 0: cols else: -1)
     offset += b.lines[line].len + 1
-  if box.lines.len > 0 and box.line - r.top in 0..<r.rows:
-    r.cursorBox(box.lines, box.selected, gutter + box.cell - r.left, box.line - r.top, box.maxRows,
+    inc row
+  if box.lines.len > 0 and box.line >= r.top and rowOf(box.line) < r.rows:
+    r.cursorBox(box.lines, box.selected, gutter + box.cell - r.left, rowOf(box.line), box.maxRows,
       box.top, box.tags, box.details)
   r.band(r.rows, theme.modeLine)
   r.status(window, " -" & (if b.modified: "**" else: "--") & "- " & name &
