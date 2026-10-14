@@ -136,6 +136,21 @@ M-x agent-chat-new       現在のルートの会話を空にして新規セッ�
                          両設定に --permission-mode acceptEdits で編集を許可
                          ディスクの変更は再読込されないため保存時の上書きに注意
 
+[Org / org-roam]  （.org ファイルで。ノートは org-roam-directory、既定 ~/org-roam）
+C-c C-t                  見出しの TODO / DONE を切り替え
+C-c C-c                  チェックボックス [ ] / [X] を切り替え
+M-Enter                  同じ階層の見出し・項目を下に追加
+M-left / M-right         見出しの階層を上げる / 下げる
+M-up / M-down            サブツリーを上 / 下の兄弟と入れ替え
+C-c C-j                  見出し一覧から移動（C-g で元の位置）
+C-c C-o                  リンクを開く（id: / file: / URL / *見出し）
+C-c .                    今日の日付 <2026-10-07 Wed> を挿入
+C-c n f                  ノートを題名で検索して開く（無ければ作成。M-Enter で入力どおり）
+C-c n i                  ノートへのリンク [[id:…][題名]] を挿入（無ければ作成）
+C-c n l                  このノートへのバックリンク一覧（C-g で元の位置）
+C-c n d                  今日のデイリーノート daily/日付.org を開く
+M-x org-id-get-create    ファイルに ID を付けてノートにする
+
 [その他]
 C-g                      操作を中断
 F1                       このヘルプを表示 / 閉じる

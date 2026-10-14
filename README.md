@@ -67,6 +67,7 @@ nim r tests/thtml.nim     # HTML layout for the web viewer
 nim r tests/tfeed.nim     # RSS / Atom parsing
 nim r tests/tfetch.nim    # curl downloads (needs curl; uses file:// URLs)
 nim r tests/tupdate.nim   # self-update against a local bare repository (needs git)
+nim r tests/torg.nim      # Org structure and org-roam notes
 ```
 
 ## Updating darger
@@ -86,7 +87,7 @@ over: with no new upstream commits they count as up to date, otherwise the updat
 stops with `local commits diverge from GitHub`. Git never prompts for credentials
 (`GIT_TERMINAL_PROMPT=0`). On Windows the running `darger.exe` is renamed to
 `darger.old.exe` before the build, moved back if the build fails, and deleted at the
-next start. `(darger-update)` in `~/.darger.el` checks at every start.
+next start. `(darger-update)` in `~/.darger.el` checks at every start and reload.
 
 Nimble older than 0.24 (e.g. the 0.22.x bundled with Nim 2.2.10) fails with
 `cannot open file: opengl`; use the `nim c` line instead.
@@ -98,10 +99,21 @@ list them): Arch `libx11 libxext libxcursor libglvnd mesa xorg-xwayland`, Debian
 windy 0.5.0's X11 backend from `patches/windy` via `patchFile` on Linux only (see
 `patches/windy/README.md`); windy stays pinned to 0.5.0.
 
-The window has no title bar or frame. Dragging anywhere with the left button moves
-it, dragging its bottom right corner (32 px) resizes it, and a double click toggles
-maximized, which covers the whole screen including the taskbar. The mouse does
-nothing else. C-x C-c quits. On Windows the build is a GUI program (`--app:gui` in
+The window has no system title bar or frame; darger draws its own title bar, one text
+row high: the buffer name in the middle and minimize, maximize and close buttons (on
+the left on macOS, on the right elsewhere). Dragging anywhere with the left button
+moves the window, dragging its right or bottom edge (6 px) or its bottom right corner
+(32 px) resizes it, and a double click on the title bar toggles maximized, which covers
+the whole screen including the taskbar (on macOS, the screen beside the menu bar and
+the Dock). The mouse does nothing else. On macOS, windy 0.5.0 registers its borderless
+window's `canBecomeKeyWindow` override under the wrong selector, so such a window never
+takes keyboard focus; `src/macwin.nim` adds the real override at startup (re-check on
+any windy bump). macOS itself takes C-SPC for "Select the previous input source"
+(System Settings > Keyboard > Keyboard Shortcuts > Input Sources) and C-arrows for
+Mission Control; turn those off, or bind `mark` elsewhere in `~/.darger.el`. Option
+types special characters on many keys there, so on macOS the command key is Meta
+(`meta-modifier` is `"cmd"`; the system still keeps Cmd-Tab and Cmd-Space);
+`(setq meta-modifier "alt")` in `~/.darger.el` makes Option Meta, as elsewhere. C-x C-c quits. On Windows the build is a GUI program (`--app:gui` in
 `config.nims`), so no console opens behind it and messages on stderr are not shown.
 
 Without a file, the editor opens `*scratch*` with a dashboard shown over it: up to
@@ -235,6 +247,10 @@ fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK
 | Zoom in / out / reset (sticky) | F2 g / l / 0 |
 | Open the init file `~/.darger.el` | C-c , |
 | Web browser (eww) / RSS reader | C-c w / C-c r |
+| Org: TODO / checkbox / new item | C-c C-t / C-c C-c / M-Enter |
+| Org: promote / demote / move subtree up / down | M-Left / M-Right / M-Up / M-Down |
+| Org: headline list / open link / timestamp | C-c C-j / C-c C-o / C-c . |
+| org-roam: find / insert link / backlinks / today | C-c n f / C-c n i / C-c n l / C-c n d |
 
 Search ignores case for all-lowercase queries. Typing extends the current match; a
 search that hits the buffer edge shows `Failing I-search`, and repeating C-s/C-r
@@ -255,8 +271,8 @@ flattened edits favor small files.
 ## Filer (Dired)
 
 C-x d prompts for a directory, starting in the current file's directory (or the
-working directory for scratch). `M-x dired` opens that directory directly;
-`(dired "path")` and directory command-line arguments also open the filer. In the
+working directory for scratch), and so does `M-x dired`; `(dired "path")` and
+directory command-line arguments open the filer directly. In the
 C-x d prompt Enter opens the directory typed so far, so C-x d Enter lists the
 current one; Tab completes. In C-x C-f, Enter on a directory candidate keeps
 descending as before, and only a directory with nothing to pick opens the filer.
@@ -463,9 +479,64 @@ connects instead of spawning) in `~/.darger.el`:
   `LSP: <method> timed out`; the editor does not block waiting for an answer, and
   text a busy server has not read yet is queued (on Windows, written 4 KB at a time).
 
+## Org and org-roam
+
+In an Org buffer (`.org`), C-c C-t cycles the headline at or above point through
+TODO, DONE and none; C-c C-c toggles a list item's `[ ]` / `[X]`; M-Enter adds a
+headline or list item of the same kind below the line (numbers advance, a checkbox
+comes empty); M-Left / M-Right promote and demote the headline; M-Up / M-Down swap
+its subtree with the sibling above or below. C-c C-j lists the headlines like
+M-g l (the preview follows the selection, C-g returns, M-, comes back after a
+jump), C-c C-o follows the `[[link]]` at point (`id:` opens the note, `file:` and
+plain paths open files, URLs go to the system browser, `*Headline` jumps), and
+C-c . inserts `<2026-10-07 Wed>`. Folding is not implemented: every line stays
+visible.
+
+org-roam notes are Org files under `org-roam-directory` (default `~/org-roam`,
+`(setq org-roam-directory "~/notes")` in `~/.darger.el`) with an ID property drawer
+and a `#+title:`; the directory is rescanned at each command, without a database.
+C-c n f prompts for a title: Enter on a listed note opens it, and Enter on a new
+title (or M-Enter to take the typed title while matches are listed) creates
+`<timestamp>-<slug>.org` and opens it. C-c n i inserts `[[id:…][Title]]` at point
+(an active region becomes the title and is replaced). C-c n l lists the notes
+linking to the current one with the linking line, previewed like references.
+C-c n d opens today's `daily/YYYY-MM-DD.org`, creating it. `M-x org-id-get-create`
+gives any Org file an ID, making it a note.
+
+## Architecture
+
+`src/core.nim` is the editor: the buffer registry, the window and renderer, key
+dispatch, prompts, overlays and the Lisp interpreter, plus the API everything else
+plugs into. `src/darger.nim` only owns the window (title bar, mouse, keyboard
+callbacks) and the main loop. Every feature is an extension under `src/ext/`, a
+Nim module that imports `core` and registers itself when imported from
+`darger.nim`: `org` (Org and org-roam), `web` (eww), `rss`, `dired`, `help`,
+`dash`, `blist`, `agent` (one-shot edits, review and chat), `selfupdate` and
+`langserver`. The pure logic each one builds on (parsing, protocols, file work)
+stays in its own module in `src/` with tests.
+
+The API, in `core.nim` under "The extension API": `defineMode` registers a view (a
+`Mode`: the buffer it shows, its faces, mode-line tag, echo-line message, key handler,
+close and relayout procs); `definePrompt` registers a minibuffer prompt (a `Prompt`:
+candidates, whether they preview positions or complete paths, which view it floats
+over, and `onAccept`, which may keep the prompt open); `interp.defPrimitive` adds a
+command for M-x and `global-set-key`; `defaults.add` supplies Lisp evaluated after
+the built-in bindings and before `~/.darger.el`. Hooks: `tickHooks` (polled every
+loop), `messageHooks` (echo-line overrides), `keyFilters`, `runeHooks`,
+`insertHooks`, `imeHooks`, `escapeHooks`, `busyHooks`, `cancelHooks` (C-g),
+`killHooks`, `saveHooks`, `modifiedIgnore`, `exitHooks`, `langHints`, and the
+single providers `dirVisitor`, `marksHook`, `boxHook`, `modeLineHook`,
+`startScreen`. Views reach other features through the keymap (`dispatch(full)`)
+rather than by calling them, so an extension can be left out by removing its import.
+
 ## Init file
 
-`~/.darger.el` is evaluated at startup after the default bindings; C-c , opens it
+`~/.darger.el` is evaluated at startup after the default bindings, and again whenever
+it changes on disk (checked twice a second), so saving it applies it at once: the
+default bindings are restored first, so a `global-set-key`, `hydra` or `setq` dropped
+from the file goes back to its default, while feeds, LSP servers and `defun`s already
+added stay until restart. The echo line reports `Loaded ~/.darger.el` or the error;
+`M-x load-init` reloads it by hand. C-c , opens it
 (`(find-file "~/.darger.el")`, which switches to its buffer when it is already open). Besides `global-set-key`, `setq`, `message`,
 `insert` and `command`, it can use `(load-theme "catppuccin")`, `(set-font "path")`,
 `(set-fallback-fonts "path;path")`, `(find-file "path")`

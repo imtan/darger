@@ -14,6 +14,7 @@ type
     zoom*: float32
     lastTitle: string
     pad, areaW: int
+    bar, padTop: int  # the title bar's height; the text area's top: bar + pad
     cellW*, cellH*, rows*, cols*, top*, left*: int
     candTop: int  # first candidate row shown in the popup
   Anchor* = enum atTop, atBottom
@@ -24,7 +25,7 @@ type
     maxRows*: int
   Theme* = object
     bg*, fg*, cursor*, region*, modeLine*, modeLineFg*, search*, searchFg*, border*,
-      label*, popup*, paren*, lineNo*, lineNoNow*: Color
+      label*, popup*, paren*, lineNo*, lineNoNow*, titleBar*, titleBarFg*: Color
     comment*, str*, keyword*, fnname*, variable*, typ*, constant*, builtin*: Color
     review*: array[5, Color]  # bg, removed, added, removed-refine, added-refine
     err*, warn*, info*, hint*: Color  # diagnostic underlines
@@ -36,7 +37,7 @@ let themes = {
     region: hex"#5a5a5a", modeLine: hex"#505050", modeLineFg: hex"#ffffff",
     search: hex"#7a6100", searchFg: hex"#ffffff", border: hex"#646464",
     label: hex"#989898", popup: hex"#1e1e1e", paren: hex"#2f7f9f",
-    lineNo: hex"#535353", lineNoNow: hex"#ffffff",
+    lineNo: hex"#535353", lineNoNow: hex"#ffffff", titleBar: hex"#1e1e1e", titleBarFg: hex"#989898",
     comment: hex"#989898", str: hex"#79a8ff", keyword: hex"#b6a0ff", fnname: hex"#feacd0",
     variable: hex"#00d3d0", typ: hex"#6ae4b9", constant: hex"#00bcff", builtin: hex"#f78fe7",
     review: [hex"#000000", hex"#4f1119", hex"#00381f", hex"#781a1f", hex"#034f2f"],
@@ -45,7 +46,7 @@ let themes = {
     region: hex"#45475a", modeLine: hex"#313244", modeLineFg: hex"#cdd6f4",
     search: hex"#f9e2af", searchFg: hex"#1e1e2e", border: hex"#585b70",
     label: hex"#a6adc8", popup: hex"#313244", paren: hex"#585b70",
-    lineNo: hex"#45475a", lineNoNow: hex"#b4befe",
+    lineNo: hex"#45475a", lineNoNow: hex"#b4befe", titleBar: hex"#181825", titleBarFg: hex"#a6adc8",
     comment: hex"#6c7086", str: hex"#a6e3a1", keyword: hex"#cba6f7", fnname: hex"#89b4fa",
     variable: hex"#b4befe", typ: hex"#f9e2af", constant: hex"#fab387", builtin: hex"#f38ba8",
     review: [hex"#1e1e2e", hex"#512e3a", hex"#294638", hex"#784452", hex"#3e6950"],
@@ -55,6 +56,28 @@ var theme* = themes["modus-vivendi"]
 proc setTheme*(name: string): bool =
   result = name in themes
   if result: theme = themes[name]
+
+type TitleHit* = enum thNone, thBar, thMinimize, thMaximize, thClose
+const
+  titleButtons* = {thMinimize, thMaximize, thClose}
+  # Like the native bars: traffic lights on the left on macOS, controls on the right elsewhere.
+  titleOrder = when defined(macosx): [thClose, thMinimize, thMaximize]
+               else: [thMinimize, thMaximize, thClose]
+
+proc titleButtonWidth*(cellH: int): int = cellH * 3 div 2
+
+proc titleButtonLeft*(cellH, width, i: int): int =
+  ## The left edge of the i-th title bar button in a window `width` pixels wide.
+  when defined(macosx): i * titleButtonWidth(cellH)
+  else: width - (3 - i) * titleButtonWidth(cellH)
+
+proc titleHit*(cellH, width, x, y: int): TitleHit =
+  ## What the title bar, the top cellH pixels of a window `width` pixels wide, holds at x, y.
+  if y < 0 or y >= cellH or x < 0 or x >= width: return thNone
+  for i, hit in titleOrder:
+    let left = titleButtonLeft(cellH, width, i)
+    if x >= left and x < left + titleButtonWidth(cellH): return hit
+  thBar
 
 when not defined(windows) and not defined(macosx):
   proc fcMatch(pattern: string): string =
@@ -205,7 +228,7 @@ proc envScale(name: string): float32 =
     if v.classify == fcNormal and v > 0 and v < 16: return v.float32
   except ValueError: discard
 
-proc uiScale(window: Window): float32 =
+proc uiScale*(window: Window): float32 =
   let forced = envScale("DARGER_SCALE")
   if forced > 0: return forced
   result = window.contentScale
@@ -230,12 +253,18 @@ proc resize*(r: Renderer, window: Window, b: Buffer) =
   # Like Emacs' internal-border-width, the border ignores text zoom; small windows shrink it.
   let w = window.size.x.int
   let h = window.size.y.int
-  r.pad = max(0, min(int(round(32 * ui)), min((w - r.cellW) div 2, (h - 3 * r.cellH) div 2)))
+  r.bar = r.cellH
+  r.pad = max(0, min(int(round(32 * ui)), min((w - r.cellW) div 2, (h - r.bar - 3 * r.cellH) div 2)))
+  r.padTop = r.bar + r.pad
   r.areaW = max(0, w - 2 * r.pad)
-  r.rows = max(1, (h - 2 * r.pad) div r.cellH - 2)
+  r.rows = max(1, (h - r.bar - 2 * r.pad) div r.cellH - 2)
   r.cols = max(1, r.areaW div r.cellW)
 
+proc titleHit*(r: Renderer, window: Window, pos: IVec2): TitleHit =
+  titleHit(r.bar, window.size.x.int, pos.x.int, pos.y.int)
+
 proc glyph(r: Renderer, rune: Rune, x, y: int, tint: Color) =
+  ## One rune with its top left at window pixel x, y.
   if rune in [Rune(9), Rune(32)]: return
   let code = int(rune)
   # ponytail: no shaping; ZWJ, flag and keycap sequences render as their parts.
@@ -270,15 +299,15 @@ proc glyph(r: Renderer, rune: Rune, x, y: int, tint: Color) =
       img.strokePath(path, color(1, 1, 1, 1), strokeWidth = 1)
     r.gpu.addImage(key, img)
     r.glyphs.incl key
-  r.gpu.drawImage(key, vec2((x + r.pad).float32, (y + r.pad).float32), tint)
+  r.gpu.drawImage(key, vec2(x.float32, y.float32), tint)
 
 proc fill(r: Renderer, cell, row, count: int, c: Color) =
-  r.gpu.drawRect(rect((r.pad + cell * r.cellW).float32, (r.pad + row * r.cellH).float32,
+  r.gpu.drawRect(rect((r.pad + cell * r.cellW).float32, (r.padTop + row * r.cellH).float32,
     (count * r.cellW).float32, r.cellH.float32), c)
 
 proc band(r: Renderer, row: int, c: Color) =
   ## A full-width row of the text area, including the part right of the last cell.
-  r.gpu.drawRect(rect(r.pad.float32, (r.pad + row * r.cellH).float32,
+  r.gpu.drawRect(rect(r.pad.float32, (r.padTop + row * r.cellH).float32,
     r.areaW.float32, r.cellH.float32), c)
 
 proc cursorSpan(line: seq[Rune], col: int): tuple[cell, width: int] =
@@ -345,12 +374,12 @@ proc drawLine(r: Renderer, line: seq[Rune], row, scroll: int, cursor = -1,
           if not composing and original in paren: r.fill(x0+at-scroll, row, size, theme.paren)
         else:
           let face = if composing or original >= faces.len: fPlain else: faces[original]
-          r.glyph(rune, (x0+at-scroll)*r.cellW, row*r.cellH,
+          r.glyph(rune, r.pad + (x0+at-scroll)*r.cellW, r.padTop + row*r.cellH,
             if underCursor: theme.bg elif matched: theme.searchFg else: faceColor(face, tint))
           let mark = if composing or original >= marks.len: 0'i8 else: marks[original]
           if mark in 1'i8..4'i8:  # a diagnostic: 2 px underline at the bottom of the cell
             r.gpu.drawRect(rect((r.pad + (x0+at-scroll)*r.cellW).float32,
-              (r.pad + (row+1)*r.cellH - 2).float32, (size*r.cellW).float32, 2),
+              (r.padTop + (row+1)*r.cellH - 2).float32, (size*r.cellW).float32, 2),
               [theme.err, theme.warn, theme.info, theme.hint][mark - 1])
       cell += width
     if pass == 0 and caret >= 0: r.fill(x0+span.cell-scroll, row, span.width, theme.cursor)
@@ -364,7 +393,7 @@ proc status(r: Renderer, window: Window, text: string, row: int, cursor = -1,
     scroll = max(0, span.cell + span.width - visible)
     when defined(windows) or defined(macosx):
       window.imePos = ivec2((r.pad + (x0+span.cell-scroll)*r.cellW).int32,
-        (r.pad + (row+1)*r.cellH).int32)
+        (r.padTop + (row+1)*r.cellH).int32)
   r.drawLine(text.toRunes, row, scroll, cursor, composition = composition, imeCursor = imeCursor,
     x0 = x0, width = width, tint = tint)
 
@@ -410,7 +439,7 @@ proc popupBox(r: Renderer, window: Window, label: seq[Rune], text: string, curso
   let y0 = box.top + 1
   let shown = r.popupShown(candidates.len)
   let fx = (r.pad + (x0 - 1) * r.cellW).float32
-  let fy = (r.pad + (y0 - 1) * r.cellH).float32
+  let fy = (r.padTop + (y0 - 1) * r.cellH).float32
   let fw = ((w + 2) * r.cellW).float32
   let fh = ((box.bottom - box.top + 1) * r.cellH).float32
   r.gpu.drawRect(rect(fx - 2, fy - 2, fw + 4, fh + 4), theme.border)
@@ -458,7 +487,7 @@ proc cursorBox(r: Renderer, lines: seq[string], selected: int, cell, row: int, m
   let x0 = clamp(cell - 1, 0, max(0, r.cols - w - 2))  # the frame's column; text at x0 + 1
   let first = clamp(top, 0, lines.len - shown)
   let fx = (r.pad + x0 * r.cellW).float32
-  let fy = (r.pad + y0 * r.cellH).float32
+  let fy = (r.padTop + y0 * r.cellH).float32
   let fw = ((w + 2) * r.cellW).float32
   let fh = (shown * r.cellH).float32
   r.gpu.drawRect(rect(fx, fy, fw, fh), theme.popup)
@@ -481,13 +510,73 @@ proc cursorBox(r: Renderer, lines: seq[string], selected: int, cell, row: int, m
                rect(fx + fw - 1, fy, 1, fh)]:
     r.gpu.drawRect(edge, theme.border)  # 1 px, inside the rows so the mode line stays clear
 
+proc icon(r: Renderer, name: string): string =
+  ## The atlas key of a title bar icon: a cellH square stroked by Pixie, so it needs no
+  ## font. It lives with the glyphs and is dropped with them when the scale changes.
+  result = "i:" & name & ":" & $r.bar
+  if result in r.glyphs: return
+  let n = r.bar
+  let img = newImage(n, n)
+  let s = float32(max(6, n div 2))      # the icon's side
+  let o = float32((n - int(s)) div 2)   # its offset in the square
+  let stroke = max(1'f32, round(r.scale))
+  let path = newPath()
+  case name
+  of "min":
+    path.moveTo(o, o + s / 2)
+    path.lineTo(o + s, o + s / 2)
+  of "max": path.rect(o, o, s, s)
+  of "restore":  # the front square low left, the back one peeking out high right
+    path.rect(o, o + s / 4, s * 3 / 4, s * 3 / 4)
+    path.moveTo(o + s / 4, o + s / 4)
+    path.lineTo(o + s / 4, o)
+    path.lineTo(o + s, o)
+    path.lineTo(o + s, o + s * 3 / 4)
+    path.lineTo(o + s * 3 / 4, o + s * 3 / 4)
+  else:
+    path.moveTo(o, o)
+    path.lineTo(o + s, o + s)
+    path.moveTo(o + s, o)
+    path.lineTo(o, o + s)
+  # An odd stroke centred on a pixel edge blurs over two pixels; shift it onto one.
+  let half = if int(stroke) mod 2 == 1: 0.5'f32 else: 0'f32
+  img.strokePath(path, color(1, 1, 1, 1), translate(vec2(half, half)), strokeWidth = stroke)
+  r.gpu.addImage(result, img)
+  r.glyphs.incl result
+
+proc titleBar(r: Renderer, window: Window, title: string, hover: TitleHit, maximized: bool) =
+  ## The top row: the buttons, then the title centred in the space they leave on both sides.
+  let w = window.size.x.int
+  r.gpu.drawRect(rect(0, 0, w.float32, r.bar.float32), theme.titleBar)
+  let bw = titleButtonWidth(r.bar)
+  for i, hit in titleOrder:
+    let left = titleButtonLeft(r.bar, w, i)
+    if hit == hover:
+      r.gpu.drawRect(rect(left.float32, 0, bw.float32, r.bar.float32),
+        if hit == thClose: theme.err else: theme.region)
+    let key = r.icon(case hit
+      of thMinimize: "min"
+      of thMaximize: (if maximized: "restore" else: "max")
+      else: "close")
+    r.gpu.drawImage(key, vec2((left + (bw - r.bar) div 2).float32, 0),
+      if hit != hover: theme.titleBarFg elif hit == thClose: theme.bg else: theme.fg)
+  let room = (w - 6 * bw) div r.cellW
+  if room < 1: return
+  let runes = fitCells(title, room)
+  let x = (w - cellCol(runes, runes.len) * r.cellW) div 2
+  var cell = 0
+  for rune in runes:
+    let width = cellWidth(rune, cell)
+    r.glyph(rune, x + (if width == 0: max(0, cell - 1) else: cell) * r.cellW, 0, theme.titleBarFg)
+    cell += width
+
 proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
            miniCursor = -1, matchStart = -1, matchLen = 0,
            inputSegment = "", modeTag = "", lineColors: seq[int8] = @[],
            prompt = "", popup = false, faces: openArray[seq[Face]] = [], modeName = "Text",
            bufName = "", candidates: openArray[string] = [], selected = -1, listed = false,
            anchor = atTop, marks: openArray[seq[int8]] = [], box = CursorBox(),
-           lineNumbers = false) =
+           lineNumbers = false, hover = thNone, maximized = false) =
   # The gutter: right-aligned numbers, at least 3 digits wide so it rarely shifts, and
   # 2 empty cells before the text.
   let gutter = if lineNumbers: max(3, len($b.lines.len)) + 2 else: 0
@@ -506,9 +595,12 @@ proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
   when defined(windows) or defined(macosx):
     if miniCursor < 0:
       window.imePos = ivec2((r.pad + (gutter+span.cell-r.left)*r.cellW).int32,
-        (r.pad + (b.cursor.line-r.top+1)*r.cellH).int32)
+        (r.padTop + (b.cursor.line-r.top+1)*r.cellH).int32)
   r.gpu.beginFrame(window.size)
   r.gpu.drawRect(rect(0, 0, window.size.x.float32, window.size.y.float32), theme.bg)
+  let name = if bufName.len > 0: bufName elif b.path.len == 0: "*scratch*" else: extractFilename(b.path)
+  let title = "darger — " & name
+  r.titleBar(window, title, hover, maximized)
   let selection = b.region
   let pair = if miniCursor < 0: matchParen(b.lines, faces, b.cursor.line, b.cursor.col) else: @[]
   var offset = b.offset((min(r.top, b.lines.high), 0))
@@ -537,7 +629,6 @@ proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
     r.cursorBox(box.lines, box.selected, gutter + box.cell - r.left, box.line - r.top, box.maxRows,
       box.top, box.tags, box.details)
   r.band(r.rows, theme.modeLine)
-  let name = if bufName.len > 0: bufName elif b.path.len == 0: "*scratch*" else: extractFilename(b.path)
   r.status(window, " -" & (if b.modified: "**" else: "--") & "- " & name &
     "   L" & $(b.cursor.line+1) & " C" & $cursorCell & "  (" & modeName & ") " & modeTag, r.rows,
     tint = theme.modeLineFg)
@@ -559,5 +650,4 @@ proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
     r.status(window, echo, r.rows+1)
   r.gpu.endFrame()
   window.swapBuffers()
-  let title = "darger — " & name
   if r.lastTitle != title: (window.title = title; r.lastTitle = title)
