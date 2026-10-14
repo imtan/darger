@@ -1,5 +1,7 @@
 # darger
 
+日本語版: [README.ja.md](README.ja.md)
+
 A small GPU text editor for Windows 11 and Linux, built with Nim 2.2.10+. Windy owns
 the window, OpenGL context, input and clipboard; Pixie rasterizes glyphs into Boxy's
 GPU atlas. macOS compiles but is untested; `agent-command` can use
