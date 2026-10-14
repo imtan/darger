@@ -152,6 +152,8 @@ C-c n i                  ノートへのリンク [[id:…][題名]] を挿入�
 C-c n l                  このノートへのバックリンク一覧（C-g で元の位置）
 C-c n d                  今日のデイリーノート daily/日付.org を開く
 M-x org-id-get-create    ファイルに ID を付けてノートにする
+C-c j                    日報 (org-journal)。org-journal-dir の今日のファイルに時刻見出しを足す
+C-c t                    capture。入力を org-capture-file の org-capture-headline の下に追記
 
 [その他]
 C-g                      操作を中断

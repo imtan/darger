@@ -268,6 +268,7 @@ fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK
 | Org: promote / demote / move subtree up / down | M-Left / M-Right / M-Up / M-Down |
 | Org: headline list / open link / timestamp | C-c C-j / C-c C-o / C-c . |
 | Org: fold the headline / the whole file | TAB / Shift-TAB |
+| Org: journal entry / capture | C-c j / C-c t |
 | org-roam: find / insert link / backlinks / today | C-c n f / C-c n i / C-c n l / C-c n d |
 
 Search ignores case for all-lowercase queries. Typing extends the current match; a
@@ -519,6 +520,23 @@ in hidden text opens the folds down to it, keeping the sibling subtrees folded. 
 above a fold move it; a folded headline that is deleted simply shows its text again.
 `M-x org-cycle` and `org-shifttab` are the commands.
 
+C-c j (`org-journal-new-entry`) keeps a journal like org-journal: today's file is
+`org-journal-dir` / `org-journal-file-format` (defaults `~/org-journal`,
+`%Y%m%d.org`), created with `org-journal-file-header` and a date headline
+(`org-journal-date-prefix` + `org-journal-date-format`, defaults `* ` and
+`%A, %d %B %Y`), then a time headline (`org-journal-time-prefix` +
+`org-journal-time-format`, defaults `** ` and `%R `) is added at the end with the
+cursor after it. Before `org-extend-today-until` o'clock (default `"0"`) the entry
+still belongs to yesterday. The formats take strftime's `%Y %y %m %d %e %H %M %S %R
+%A %a %B %b %j %%`; under a Japanese locale (`LANG=ja_JP.UTF-8`) `%A` and `%B` give
+`火曜日` and `10月`, as Emacs does. C-c t (`org-capture`) prompts `Capture: ` and
+files the text, through `org-capture-template` (default `* TODO %?\n`; `%?` is the
+text, `%t` / `%u` today's active / inactive timestamp, `%T` / `%U` with the time),
+at the end of the subtree of `org-capture-headline` in `org-capture-file`
+(defaults `""`, meaning the end of the file, and `~/org/inbox.org`), creating the
+headline or the file when missing. An open buffer of that file is edited and
+saved; otherwise the file is written directly, and you stay where you were.
+
 org-roam notes are Org files under `org-roam-directory` (default `~/org-roam`,
 `(setq org-roam-directory "~/notes")` in `~/.darger.el`) with an ID property drawer
 and a `#+title:`; the directory is rescanned at each command, without a database.
@@ -568,7 +586,8 @@ added stay until restart. The echo line reports `Loaded ~/.darger.el` or the err
 (`(find-file "~/.darger.el")`, which switches to its buffer when it is already open). Besides `global-set-key`, `setq`, `message`,
 `insert` and `command`, it can use `(load-theme "catppuccin")`, `(set-font "path")`,
 `(set-fallback-fonts "path;path")`, `(find-file "path")`
-(`~` expands), `skk-mode`, `zoom-in` / `zoom-out` / `zoom-reset`, `(eww "url")`,
+(`~` expands), `save-buffer`, `kill-emacs`, `skk-mode`, `zoom-in` / `zoom-out` /
+`zoom-reset`, `(eww "url")`,
 `(rss-feed "url")`, `(setq fetch-command "...")`, `(setq eww-search-prefix "...")`, and
 `(hydra "PREFIX" "hint")`, which makes a one-key prefix sticky: after a bound
 `PREFIX x` command the prefix stays active and the hint shows in the echo area, as

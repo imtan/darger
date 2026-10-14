@@ -172,3 +172,30 @@ b body""")
   edited.delete(3)  # the folded headline is gone: its fold is dropped, B's moves up
   let dropped = remapFolds(overview, edited, -1)
   doAssert dropped.len == 1 and dropped[0].line == 9
+
+# journal: strftime, English and Japanese
+let tue = dateTime(2026, mOct, 13, 9, 4, 0)
+doAssert strftime("%Y%m%d.org", tue) == "20261013.org"
+doAssert strftime("%A, %d %B %Y", tue) == "Tuesday, 13 October 2026"
+doAssert strftime("%A, %d %B %Y", tue, japanese = true) == "火曜日, 13 10月 2026"
+doAssert strftime("%a %b %e %j %y", tue, japanese = true) == "火 10月 13 286 26"
+doAssert strftime("=%R=\n", tue) == "=09:04=\n"
+doAssert strftime("%H:%M:%S 100%% %q", tue) == "09:04:00 100% %q"
+doAssert strftime("#+title: %Y-%m-%d Journal\n#+startup: folded\n\n", tue) == "#+title: 2026-10-13 Journal\n#+startup: folded\n\n"
+doAssert appendedText("", "* x\n") == "* x\n" and appendedText("a", "b") == "a\nb" and appendedText("a\n", "b") == "a\nb"
+
+# capture: under a headline's subtree, at the end, or under a headline created at the end
+block:
+  let tasks = "#+title: t\n* Inbox\n** TODO old\n* Tasks\n** TODO a\n   note\n* Later\ntext\n"
+  var (text, at) = insertUnder(tasks, "Tasks", "** TODO new\n")
+  doAssert text == "#+title: t\n* Inbox\n** TODO old\n* Tasks\n** TODO a\n   note\n** TODO new\n* Later\ntext\n"
+  doAssert text[at..^1].startsWith("** TODO new")
+  (text, at) = insertUnder(tasks, "", "* TODO end\n")
+  doAssert text == tasks & "* TODO end\n" and at == tasks.len
+  (text, at) = insertUnder("* A\nbody", "Missing", "** TODO x\n")
+  doAssert text == "* A\nbody\n* Missing\n** TODO x\n"
+  (text, at) = insertUnder("* Tasks\n** TODO a", "Tasks", "** TODO b\n")  # no final newline
+  doAssert text == "* Tasks\n** TODO a\n** TODO b\n"
+  doAssert insertUnder("", "Tasks", "** TODO x\n").text == "* Tasks\n** TODO x\n"
+  doAssert fillTemplate("** TODO %? %t\n", "buy milk", tue) == "** TODO buy milk <2026-10-13 Tue>\n"
+  doAssert fillTemplate("%u %U 50%%", "x", tue) == "[2026-10-13 Tue] [2026-10-13 Tue 09:04] 50%"

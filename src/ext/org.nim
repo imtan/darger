@@ -1,7 +1,8 @@
 ## Org mode and org-roam: structure editing on Org buffers and a directory of notes
 ## linked by id. Built on orgmode.nim (parsing) and roam.nim (the notes).
 import std/[os, strutils, unicode, times, tables, browsers, hashes]
-import ../[core, buffer, lisp, lsp, orgmode, roam]
+import ../[core, buffer, buffers, lisp, lsp, orgmode, roam]
+when defined(macosx): import ../macwin
 
 var
   roamList*: seq[RoamNode]         # the nodes a roam prompt lists
@@ -139,6 +140,64 @@ keyFilters.add proc(c: string): bool =
 
 proc roamDir*(): string = expandTilde(interp.env.values["org-roam-directory"].asString)
 
+# ---- org-journal and org-capture
+proc setting(name: string): string = interp.env.values[name].asString
+
+proc japaneseLocale(): bool =
+  ## %A / %B in Japanese, as Emacs' format-time-string gives under a Japanese locale.
+  for v in ["LC_ALL", "LC_TIME", "LANG"]:
+    let s = getEnv(v)
+    if s.len > 0: return s.startsWith("ja")
+  when defined(macosx): systemLocale().startsWith("ja")  # apps launched from the Finder have no LANG
+  else: false
+
+proc journalNewEntry*() =
+  ## C-c j, like org-journal-new-entry: today's file under org-journal-dir (created
+  ## with org-journal-file-header and the date headline), then a time headline at
+  ## the end with the cursor after it. Before org-extend-today-until o'clock the
+  ## entry still belongs to yesterday's file.
+  let ja = japaneseLocale()
+  let t = now()
+  let day = t - hours(parseInt(setting("org-extend-today-until")))
+  let dir = expandTilde(setting("org-journal-dir"))
+  let path = dir / strftime(setting("org-journal-file-format"), day, ja)
+  let dateLine = setting("org-journal-date-prefix") & strftime(setting("org-journal-date-format"), day, ja)
+  if not fileExists(path):
+    createDir(dir)
+    writeFile(path, appendedText(strftime(setting("org-journal-file-header"), day, ja), dateLine & "\n"))
+  visit(path)
+  var text = b.text
+  var hasDate = false
+  for l in b.lines:
+    if $l == dateLine: hasDate = true
+  if not hasDate: text = appendedText(text, dateLine & "\n")
+  text = appendedText(text, setting("org-journal-time-prefix") & strftime(setting("org-journal-time-format"), t, ja))
+  b.snapshot()
+  b.splice(0, b.text.runeLen, text)
+  b.cursor = b.point(b.text.runeLen)
+  b.last = "edit"
+
+proc captureText*(value: string): bool =
+  ## The capture prompt's Enter: the filled template goes under org-capture-headline in
+  ## org-capture-file (through its buffer when it is open, else straight to disk).
+  if value.len == 0: return false
+  let path = expandTilde(setting("org-capture-file"))
+  let entry = fillTemplate(setting("org-capture-template"), value, now())
+  let open = reg.byPath(path)
+  if open != nil:
+    let (text, at) = insertUnder(open.text, setting("org-capture-headline"), entry)
+    open.snapshot()
+    open.splice(0, open.text.runeLen, text)
+    open.cursor = open.point(text[0..<at].runeLen)
+    open.last = "edit"
+    if open.modified: open.save()
+  else:
+    let text = if fileExists(path): readFile(path) else: ""
+    createDir(parentDir(path))
+    writeFile(path, insertUnder(text, setting("org-capture-headline"), entry).text)
+  echoLine = "Captured to " & shortPath(path)
+  true
+
 proc roamNode*(title: string): RoamNode =
   ## The listed node with that title, or a new note file for it.
   let i = roamList.byTitle(title)
@@ -232,6 +291,14 @@ interp.defPrimitive("org-time-stamp", proc(args: seq[Value]): Value =
   args.arity(0, 0)
   b.insert(timestamp(now()))
   nilValue())
+interp.defPrimitive("org-journal-new-entry", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  journalNewEntry()
+  nilValue())
+interp.defPrimitive("org-capture", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  beginMini("capture", "Capture: ")
+  nilValue())
 interp.defPrimitive("org-cycle", proc(args: seq[Value]): Value =
   args.arity(0, 0)
   if orgBuffer():
@@ -322,9 +389,23 @@ definePrompt(Prompt(kind: "outline", text: true, consult: true, candidates: refR
 definePrompt(Prompt(kind: "backlinks", text: true, consult: true, candidates: refRowsNow, onAccept: acceptReference))
 definePrompt(Prompt(kind: "roam-find", text: true, candidates: roamRowsNow, onAccept: acceptRoam))
 definePrompt(Prompt(kind: "roam-insert", text: true, candidates: roamRowsNow, onAccept: acceptRoam))
+definePrompt(Prompt(kind: "capture", text: true, onAccept: captureText))
 
 defaults.add """
 (setq org-roam-directory "~/org-roam")
+(setq org-journal-dir "~/org-journal")
+(setq org-journal-file-format "%Y%m%d.org")
+(setq org-journal-file-header "")
+(setq org-journal-date-prefix "* ")
+(setq org-journal-date-format "%A, %d %B %Y")
+(setq org-journal-time-prefix "** ")
+(setq org-journal-time-format "%R ")
+(setq org-extend-today-until "0")
+(setq org-capture-file "~/org/inbox.org")
+(setq org-capture-headline "")
+(setq org-capture-template "* TODO %?\n")
+(global-set-key "C-c j" 'org-journal-new-entry)
+(global-set-key "C-c t" 'org-capture)
 (global-set-key "C-c C-t" 'org-todo)
 (global-set-key "C-c C-c" 'org-toggle-checkbox)
 (global-set-key "M-enter" 'org-meta-return)

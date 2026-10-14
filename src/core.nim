@@ -670,6 +670,13 @@ proc wrote*() =
   recordRecent(b.path)
   for hook in saveHooks: hook()
 
+proc saveBuffer*() =
+  ## C-x C-s: saves the buffer, asking for a name when it has none.
+  if b.path.len == 0: beginMini("write", "Write file: ", getCurrentDir() & DirSep)
+  else:
+    b.save()
+    wrote()
+
 proc findPrompt*() =
   beginMini("find", "Find file: ", (if b.path.len > 0: parentDir(b.path) else: getCurrentDir()) & DirSep)
 
@@ -1013,11 +1020,7 @@ proc dispatch*(c: string) =
   of "C-v", "pagedown", "M-v", "pageup": page(b, full)
   of "C-l": recenter(b)
   of "M-g g", "M-g M-g": beginMini("goto", "Goto line: ")
-  of "C-x C-s":
-    if b.path.len == 0: beginMini("write", "Write file: ", getCurrentDir() & DirSep)
-    else:
-      b.save()
-      wrote()
+  of "C-x C-s": saveBuffer()
   of "C-x C-f": findPrompt()
   of "C-x C-w": beginMini("write", "Write file: ", b.path)
   of "C-x C-c": quitEditor()
@@ -1148,6 +1151,15 @@ proc pollInit*(): bool =
   loadInit(report = true)
   true
 
+interp.defPrimitive("save-buffer", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  saveBuffer()
+  nilValue())
+for name in ["kill-emacs", "save-buffers-kill-terminal"]:
+  interp.defPrimitive(name, proc(args: seq[Value]): Value =
+    args.arity(0, 0)
+    quitEditor()
+    nilValue())
 interp.defPrimitive("load-init", proc(args: seq[Value]): Value =
   args.arity(0, 0)
   loadInit(report = true)

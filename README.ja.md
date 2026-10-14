@@ -256,6 +256,7 @@ CJK と対応する絵文字範囲は 2 セルを占めます。結合文字、�
 | Org: 昇格 / 降格 / サブツリーを上 / 下へ | M-Left / M-Right / M-Up / M-Down |
 | Org: 見出し一覧 / リンクを開く / タイムスタンプ | C-c C-j / C-c C-o / C-c . |
 | Org: 見出しを折りたたむ / ファイル全体 | TAB / Shift-TAB |
+| Org: 日報エントリ / capture | C-c j / C-c t |
 | org-roam: 検索 / リンク挿入 / バックリンク / 今日 | C-c n f / C-c n i / C-c n l / C-c n d |
 
 検索は、すべて小文字のクエリでは大文字小文字を区別しません。入力すると現在の一致が
@@ -495,6 +496,21 @@ Shift-TAB はファイル全体を OVERVIEW (トップレベルの見出しだ�
 ずらし、折りたたんだ見出しを削除するとその本文は単に見えるようになります。コマンドは
 `M-x org-cycle` と `org-shifttab` です。
 
+C-c j (`org-journal-new-entry`) は org-journal のように日報を付けます。今日のファイルは
+`org-journal-dir` / `org-journal-file-format` (既定 `~/org-journal`、`%Y%m%d.org`) で、
+なければ `org-journal-file-header` と日付見出し (`org-journal-date-prefix` +
+`org-journal-date-format`、既定 `* ` と `%A, %d %B %Y`) を付けて作り、末尾に時刻見出し
+(`org-journal-time-prefix` + `org-journal-time-format`、既定 `** ` と `%R `) を足して、
+カーソルをその後ろに置きます。`org-extend-today-until` 時 (既定 `"0"`) より前は前日の
+ファイルに書きます。書式は strftime の `%Y %y %m %d %e %H %M %S %R %A %a %B %b %j %%` を
+受け付け、日本語ロケール (`LANG=ja_JP.UTF-8`) では Emacs と同じく `%A` が `火曜日`、`%B` が
+`10月` になります。C-c t (`org-capture`) は `Capture: ` と尋ね、入力を `org-capture-template`
+(既定 `* TODO %?\n`。`%?` が入力、`%t` / `%u` が今日のアクティブ / 非アクティブな
+タイムスタンプ、`%T` / `%U` は時刻付き) に通して、`org-capture-file` 内の
+`org-capture-headline` のサブツリー末尾 (既定は `""` でファイル末尾、`~/org/inbox.org`) に
+入れます。見出しやファイルがなければ作ります。そのファイルのバッファが開いていれば編集して
+保存し、なければファイルに直接書き、カーソルは今いる場所から動きません。
+
 org-roam ノートは `org-roam-directory` (デフォルト `~/org-roam`。`~/.darger.el` で
 `(setq org-roam-directory "~/notes")`) の下にある、ID プロパティドロワーと `#+title:` を持つ
 Org ファイルです。ディレクトリはコマンドのたびに、データベースなしで再走査されます。
@@ -541,7 +557,8 @@ import を外せば拡張を取り除けます。
 再読込できます。C-c , で開きます (`(find-file "~/.darger.el")`。既に開いていればそのバッファに
 切り替わります)。`global-set-key`、`setq`、`message`、`insert`、`command` のほかに、
 `(load-theme "catppuccin")`、`(set-font "path")`、`(set-fallback-fonts "path;path")`、
-`(find-file "path")` (`~` は展開)、`skk-mode`、`zoom-in` / `zoom-out` / `zoom-reset`、
+`(find-file "path")` (`~` は展開)、`save-buffer`、`kill-emacs`、`skk-mode`、
+`zoom-in` / `zoom-out` / `zoom-reset`、
 `(eww "url")`、`(rss-feed "url")`、`(setq fetch-command "...")`、
 `(setq eww-search-prefix "...")`、そして `(hydra "PREFIX" "hint")` が使えます。hydra は
 1 キーのプレフィックスを粘着にします。割り当てられた `PREFIX x` コマンドの後もプレフィックスが

@@ -273,3 +273,89 @@ proc revealFolds*(lines: seq[seq[Rune]], folds: seq[Fold], line: int): seq[Fold]
     if line > f.line and line <= foldEnd(lines, f):
       if f.kind == fkSubtree: openTowards(lines, f.line, line, result)
     else: result.add f
+
+# ---- Journal and capture: strftime for org-journal's formats, and where captured text goes
+
+const
+  weekdaysJa = ["日曜日", "月曜日", "火曜日", "水曜日", "木曜日", "金曜日", "土曜日"]
+  weekdaysShortJa = ["日", "月", "火", "水", "木", "金", "土"]
+
+proc strftime*(fmt: string, t: DateTime, japanese = false): string =
+  ## The strftime subset org-journal formats use: %Y %y %m %d %e %H %M %S %R %A %a %B
+  ## %b %j %%. With `japanese`, %A/%a are 火曜日/火 and %B/%b 10月, as Emacs gives
+  ## under a Japanese locale. Anything else stays as typed.
+  var i = 0
+  while i < fmt.len:
+    if fmt[i] != '%' or i + 1 >= fmt.len:
+      result.add fmt[i]
+      inc i
+      continue
+    let c = fmt[i+1]
+    i += 2
+    case c
+    of 'Y': result.add t.format("yyyy")
+    of 'y': result.add t.format("yy")
+    of 'm': result.add t.format("MM")
+    of 'd': result.add t.format("dd")
+    of 'e': result.add align($t.monthday, 2)
+    of 'H': result.add t.format("HH")
+    of 'M': result.add t.format("mm")
+    of 'S': result.add t.format("ss")
+    of 'R': result.add t.format("HH:mm")
+    of 'j': result.add align($(t.yearday + 1), 3, '0')  # yearday counts from 0
+    of 'A': result.add (if japanese: weekdaysJa[ord(t.weekday) + 1 mod 7] else: t.format("dddd"))
+    of 'a': result.add (if japanese: weekdaysShortJa[ord(t.weekday) + 1 mod 7] else: t.format("ddd"))
+    of 'B', 'b': result.add (if japanese: $ord(t.month) & "月" elif c == 'B': t.format("MMMM") else: t.format("MMM"))
+    of '%': result.add '%'
+    else: result.add '%' & c
+
+proc appendedText*(text, entry: string): string =
+  ## text with entry on a line of its own at the end.
+  result = text
+  if result.len > 0 and result[^1] != '\n': result.add '\n'
+  result.add entry
+
+proc insertUnder*(text, title, entry: string): tuple[text: string, at: int] =
+  ## entry added at the end of the subtree of the headline titled `title` (created at
+  ## the end of the file when missing), or at the end of the file when title is "".
+  ## `at` is the byte offset where entry begins.
+  var lines: seq[seq[Rune]]
+  for l in text.split('\n'): lines.add l.toRunes
+  if text.len > 0 and text[^1] == '\n': lines.setLen(lines.len - 1)
+  var head = -1
+  if title.len > 0:
+    for n, l in lines:
+      if isHeadline(l) and headline(l).title == title:
+        head = n
+        break
+    if head < 0:
+      let base = appendedText(text, "* " & title & "\n")
+      return (base & entry, base.len)
+  let last = if head < 0: lines.high else: subtreeEnd(lines, head)
+  var before = ""
+  for n in 0..last: before.add $lines[n] & "\n"
+  var after = ""
+  for n in last+1..lines.high: after.add $lines[n] & "\n"
+  if text.len > 0 and text[^1] != '\n' and after.len > 0: after.setLen(after.len - 1)
+  if text.len > 0 and text[^1] != '\n' and after.len == 0: before.setLen(before.len - 1); before.add "\n"
+  (before & entry & after, before.len)
+
+proc fillTemplate*(tmpl, text: string, t: DateTime): string =
+  ## org-capture's %? takes the typed text; %t / %u are today's active / inactive
+  ## timestamp, %T / %U with the time; %% a percent sign.
+  var i = 0
+  while i < tmpl.len:
+    if tmpl[i] != '%' or i + 1 >= tmpl.len:
+      result.add tmpl[i]
+      inc i
+      continue
+    let c = tmpl[i+1]
+    i += 2
+    case c
+    of '?': result.add text
+    of 't': result.add timestamp(t)
+    of 'u': result.add timestamp(t, active = false)
+    of 'T': result.add "<" & t.format("yyyy-MM-dd ddd HH:mm") & ">"
+    of 'U': result.add "[" & t.format("yyyy-MM-dd ddd HH:mm") & "]"
+    of '%': result.add '%'
+    else: result.add '%' & c

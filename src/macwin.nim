@@ -6,8 +6,16 @@ import windy
 import windy/platforms/macos/[macdefs, objc, platform]
 export takeOpenedFiles
 
+type NSLocale = distinct NSObject
+
 objc:
   proc visibleFrame(self: NSScreen): NSRect
+  proc currentLocale(class: typedesc[NSLocale]): NSLocale
+  proc localeIdentifier(self: NSLocale): NSString
+
+proc systemLocale*(): string =
+  ## The user's locale as macOS sets it ("ja_JP"): GUI apps get no LANG in their environment.
+  $NSLocale.currentLocale.localeIdentifier
 
 proc visibleArea*(window: Window): tuple[x, y, w, h: float32] =
   ## The window's screen's visible frame (under the menu bar, beside the Dock) in
