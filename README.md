@@ -617,7 +617,15 @@ one undo step).
   marks the okurigana (`OkuRi` → 送り, converted as soon as the kana is complete).
   SPC converts, Enter / C-j commits the reading without a newline, `q` commits it as
   katakana, Backspace deletes the last kana, C-g cancels. Enter, Backspace and Tab
-  mean the same as C-m, C-h and C-i here.
+  mean the same as C-m, C-h and C-i here. Tab completes the reading like skk-comp:
+  it becomes the next dictionary key starting with what was typed (user dictionary
+  entries first, then the main one, alphabetically; okuri-ari keys skipped), another
+  Tab the next, and after the last Tab brings the typed text back; typing continues
+  from the completion and SPC converts it.
+- `/` starts an abbrev reading (`▽` typed as ASCII, no romaji; uppercase and `;` are
+  literal): `/dog` SPC looks up the key `dog`, so `dog /犬/` in the user dictionary
+  gives 犬, Enter commits the ASCII as typed, Tab completes among ASCII keys, and a
+  miss registers under the ASCII key. Kana input resumes afterwards.
 - ▼: SPC / `x` step through candidates 1-4, and C-n / C-p (or the arrows) one
   candidate at a time anywhere; from the 5th the current page of seven hangs from
   the cursor as a list with its pick keys `a s d f j k l` and the selected one
@@ -642,8 +650,8 @@ one undo step).
 - Each commit from ▼ moves the choice to the front and rewrites `~/.darger-skk-jisyo`
   (UTF-8 SKK format, searched first, keys sorted rather than by recency). Emacs'
   `~/.skk-jisyo` is never touched.
-- Not implemented: zenkaku latin (`L`), abbrev (`/`), Tab completion, `l`-prefixed
-  small kana (use `x`), okuri `[…]` blocks and `(concat …)` evaluation.
+- Not implemented: zenkaku latin (`L`), `l`-prefixed small kana (use `x`), okuri `[…]`
+  blocks and `(concat …)` evaluation.
 
 Windy 0.5.0 forwards repeated Windows WM_KEYDOWN events to `onButtonPress`, so
 held command keys use native OS repeat. `onRune` handles printable text only.

@@ -26,12 +26,16 @@ type
     stage*: Stage
     reading*, okuri*, pending*: string  ## hiragana reading / okurigana, pending romaji
     okuriActive: bool
+    abbrev*: bool  ## ▽ started with "/": the reading is typed as ASCII, no romaji
+    compBase: string          ## Tab completion: the reading as typed, and the keys found
+    comps*: seq[string]
+    compIndex: int
     okuriPrefix: string
     candidates*: seq[string]
     index*: int  ## current candidate; from 4 on, the first one of a 7-candidate page
     dictionary*, user*: Dictionary
     userPath*: string  ## user dictionary rewritten on every kakutei when set
-    saved: tuple[reading, okuri, okuriPrefix: string, okuriActive: bool]  ## the ▽ a registration came from
+    saved: tuple[reading, okuri, okuriPrefix: string, okuriActive, abbrev: bool]  ## the ▽ a registration came from
 
 const
   tags: array[KanaMode, string] = ["[かな]", "[カナ]", "[SKK]"]
@@ -212,8 +216,11 @@ proc reset(s: Skk) =
   s.pending = ""
   s.okuriActive = false
   s.okuriPrefix = ""
+  s.abbrev = false
   s.candidates = @[]
   s.index = 0
+  s.compBase = ""
+  s.comps = @[]
 
 proc tag*(s: Skk): string =
   if s.enabled: tags[s.mode] else: ""
@@ -258,13 +265,40 @@ proc finish(s: Skk, res: var SkkResult) =
 proc okuriKey(s: Skk): string =
   if s.okuriActive and s.okuri.len > 0: s.okuriPrefix else: ""
 
+proc complete(s: Skk, res: var SkkResult) =
+  ## Tab in ▽, like skk-comp: the reading becomes the next dictionary key starting
+  ## with what was typed, user dictionary entries first, wrapping back to the typed
+  ## text. Okuri-ari keys are skipped for kana readings; abbrev readings match ASCII keys.
+  if s.comps.len == 0 or s.compBase != s.reading and s.reading notin s.comps:
+    s.reading.add flush(s.pending)
+    s.compBase = s.reading
+    s.comps = @[]
+    if s.reading.len == 0: return
+    var main: seq[string]
+    for dict in [s.user, s.dictionary]:
+      var keys: seq[string]
+      for key in dict.keys:
+        if key.startsWith(s.reading) and key != s.reading and okuriAri(key) == false and
+            (s.abbrev == (key[0].ord < 0x80)) and key notin s.comps: keys.add key
+      keys.sort()
+      s.comps.add keys
+    if s.comps.len == 0:
+      res.echo = "No completions for " & s.reading
+      return
+    s.compIndex = -1
+  inc s.compIndex
+  if s.compIndex >= s.comps.len:
+    s.compIndex = -1
+    s.reading = s.compBase
+  else: s.reading = s.comps[s.compIndex]
+
 proc continues(s: Skk, c: char): bool =
   s.pending.len > 0 and (startsRule(s.pending & c) or doubled(s.pending, c))
 
 proc beginRegister(s: Skk, res: var SkkResult) =
   ## No (more) candidates: the editor asks for the word to register. The ▽ state is
   ## kept so cancelRegister can bring it back.
-  s.saved = (s.reading, s.okuri, s.okuriPrefix, s.okuriActive)
+  s.saved = (s.reading, s.okuri, s.okuriPrefix, s.okuriActive, s.abbrev)
   res.register = s.reading & (if s.okuriKey.len > 0: "*" & toKana(s.okuri, s.mode) else: "")  # shown as DDSKK does
   s.reset()
 
@@ -287,12 +321,12 @@ proc registerWord*(s: Skk, word: string): string =
   try: s.saveUserDictionary()
   except CatchableError: discard
   result = word & toKana(s.saved.okuri, s.mode)
-  s.saved = ("", "", "", false)
+  s.saved = ("", "", "", false, false)
 
 proc cancelRegister*(s: Skk) =
   ## Back to ▽ with the reading, as when the registration prompt is abandoned.
-  (s.reading, s.okuri, s.okuriPrefix, s.okuriActive) = s.saved
-  s.saved = ("", "", "", false)
+  (s.reading, s.okuri, s.okuriPrefix, s.okuriActive, s.abbrev) = s.saved
+  s.saved = ("", "", "", false, false)
   s.stage = Reading
 
 proc typeKana(s: Skk, c: char, res: var SkkResult) =
@@ -308,10 +342,10 @@ proc typeKana(s: Skk, c: char, res: var SkkResult) =
     s.reading.add kana
 
 proc commitReading(s: Skk, mode: KanaMode): string =
-  ## ▽ kakutei as typed (no learning).
+  ## ▽ kakutei as typed (no learning); an abbrev reading stays ASCII.
   let tail = flush(s.pending)
   if s.okuriActive: s.okuri.add tail else: s.reading.add tail
-  result = toKana(s.reading & s.okuri, mode)
+  result = if s.abbrev: s.reading else: toKana(s.reading & s.okuri, mode)
   s.reset()
 
 proc commitCandidate(s: Skk, res: var SkkResult) =
@@ -338,6 +372,9 @@ proc direct(s: Skk, c: char, next: Rune, res: var SkkResult) =
   of ')':
     if next == Rune(0xFF09): res.move = 1 else: res.text.add "）"
   of ';': s.stage = Reading
+  of '/':  # abbrev: an ASCII reading ("/dog" SPC -> 犬, from entries keyed "dog")
+    s.stage = Reading
+    s.abbrev = true
   of 'L': discard  # ponytail: no zenkaku-latin mode
   of 'A'..'K', 'M'..'Z':
     s.stage = Reading
@@ -357,7 +394,13 @@ proc feedRune(s: Skk, r: Rune, next: Rune, res: var SkkResult) =
       if c == '\0': res.consumed = false
       else: s.direct(c, next, res)
   of Reading:
-    if (c in {'A'..'Z'} or c == ';') and not s.okuriActive and
+    s.comps = @[]
+    if s.abbrev:
+      if c != '\0': s.reading.add c  # any ASCII, as typed; SPC converts, Enter commits
+      else:
+        res.text.add s.commitReading(s.mode)
+        s.feedRune(r, next, res)
+    elif (c in {'A'..'Z'} or c == ';') and not s.okuriActive and
         (s.reading.len > 0 or s.pending == "n"):
       s.reading.add flush(s.pending)
       s.okuriActive = true  # ";" leaves the okuri prefix to the next letter
@@ -417,6 +460,7 @@ proc feedKey(s: Skk, key: SkkKey, res: var SkkResult) =
       res.text = s.commitReading(s.mode)
       res.consumed = false
     of skBackspace:
+      s.comps = @[]
       if s.pending.len > 0: s.pending.setLen(s.pending.len - 1)
       elif s.okuri.len > 0: s.okuri.setLen(s.okuri.len - s.okuri.lastRune(s.okuri.high)[1])
       elif s.okuriActive: s.okuriActive = false
@@ -424,7 +468,7 @@ proc feedKey(s: Skk, key: SkkKey, res: var SkkResult) =
         s.reading.setLen(s.reading.len - s.reading.lastRune(s.reading.high)[1])
       else: s.reset()
     of skCtrlG: s.reset()
-    of skTab: discard  # ponytail: no completion
+    of skTab: s.complete(res)
   of Choosing:
     case key
     of skSpace:  # the next candidate, or from the 5th the next page; past the end: register

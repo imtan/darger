@@ -31,7 +31,7 @@ block romaji:
   let close = s.feed(Rune(')'.ord), "）".runeAt(0))
   doAssert close.text == "" and close.move == 1
   doAssert s.press(')').text == "）"
-  for c in ".,1 /":
+  for c in ".,1 ":
     let r = s.press(c)
     doAssert not r.consumed and r.text == "", $c
   doAssert not s.feed(skSpace).consumed and not s.feed(skEnter).consumed
@@ -123,6 +123,53 @@ block registration:  # a reading without candidates asks for the word
   discard empty.toggle()
   discard empty.typeText("Kanji")
   doAssert empty.feed(skSpace).echo == "No dictionary" and empty.stage == Reading
+
+block abbrev:  # "/" starts an ASCII reading looked up as typed
+  let s = engine()
+  s.dictionary["dog"] = @["犬"]
+  doAssert s.press('/').consumed and s.preedit == "▽" and s.abbrev
+  doAssert s.typeText("dog") == "" and s.preedit == "▽dog"  # no romaji: "do" is not ど
+  doAssert s.feed(skSpace).preedit == "▼犬"
+  doAssert s.feed(skEnter).text == "犬" and s.stage == Direct and not s.abbrev and s.mode == Hiragana
+  discard s.typeText("/Foo;1")
+  doAssert s.preedit == "▽Foo;1"  # uppercase and ";" are literal here
+  doAssert s.feed(skEnter).text == "Foo;1" and s.stage == Direct
+  discard s.typeText("/xyz")
+  doAssert s.feed(skBackspace).preedit == "▽xy"
+  let miss = s.feed(skSpace)
+  doAssert miss.register == "xy"
+  s.cancelRegister()
+  doAssert s.preedit == "▽xy" and s.abbrev
+  discard s.feed(skSpace)
+  doAssert s.registerWord("エックスワイ") == "エックスワイ" and s.user["xy"] == @["エックスワイ"]
+  discard s.typeText("/xy")
+  doAssert s.feed(skSpace).preedit == "▼エックスワイ"
+  doAssert s.feed(skCtrlG).preedit == "▽xy" and s.feed(skCtrlG).preedit == "" and not s.abbrev
+  doAssert s.typeText("ka") == "か"  # kana input is back
+
+block completion:  # Tab in ▽ completes the reading from the dictionaries
+  let s = engine()
+  s.user["かんたん"] = @["簡単"]
+  s.user["かんい"] = @["簡易"]
+  discard s.typeText("Ka")
+  doAssert s.feed(skTab).preedit == "▽かんい"    # user keys first, sorted: かんい, かんたん; then かな, かんじ
+  doAssert s.feed(skTab).preedit == "▽かんたん"
+  doAssert s.feed(skTab).preedit == "▽かな"
+  doAssert s.feed(skTab).preedit == "▽かんじ"    # "かt" (okuri-ari) is skipped
+  doAssert s.feed(skTab).preedit == "▽か"        # wraps back to what was typed
+  doAssert s.feed(skTab).preedit == "▽かんい"
+  doAssert s.feed(skSpace).preedit == "▼簡易"    # the completed reading converts
+  discard s.feed(skCtrlG); discard s.feed(skCtrlG)
+  discard s.typeText("Kan")
+  doAssert s.feed(skTab).preedit == "▽かんい"    # pending "n" is flushed first
+  doAssert s.press('t').preedit == "▽かんいt" and s.comps.len == 0  # typing continues from the completion
+  discard s.feed(skCtrlG)
+  discard s.typeText("Zzz")
+  doAssert s.feed(skTab).echo == "No completions for ざ" or s.feed(skTab).echo.startsWith("No completions")
+  discard s.feed(skCtrlG)
+  s.dictionary["dog"] = @["犬"]
+  discard s.typeText("/d")
+  doAssert s.feed(skTab).preedit == "▽dog"      # abbrev completes ASCII keys only
 
 block commit:  # kakutei before another editor command
   let s = engine()
