@@ -1,9 +1,10 @@
 ## The editor: its state, buffers, prompts, overlays, key dispatch and drawing. The
 ## window and main loop are in darger.nim; features build on this module.
-import std/[os, osproc, tempfiles, strutils, times, unicode, tables, sets, math, json, uri, browsers]
+import std/[os, osproc, tempfiles, strutils, times, unicode, tables, sets, math, json, uri, browsers, hashes]
 import windy, vmath
 when defined(macosx): import macwin
-import buffer, buffers, render, skk, lisp, recent, syntax, complete, lsp
+import buffer, buffers, render, skk, lisp, recent, syntax, complete, lsp, panes
+export panes
 
 const
   bufferCommands* = ["forward", "backward", "next-line", "previous-line", "bol", "eol",
@@ -64,6 +65,11 @@ const
 (global-set-key "C-c ," (lambda () (find-file "~/.darger.el")))
 (global-set-key "C-x b" 'switch-to-buffer)
 (global-set-key "C-x k" 'kill-buffer)
+(global-set-key "C-x 2" 'split-window-below)
+(global-set-key "C-x 3" 'split-window-right)
+(global-set-key "C-x 0" 'delete-window)
+(global-set-key "C-x 1" 'delete-other-windows)
+(global-set-key "C-x o" 'other-window)
 (global-set-key "C-x right" 'next-buffer)
 (global-set-key "C-x left" 'previous-buffer)
 (global-set-key "M-g l" 'consult-line)
@@ -112,6 +118,16 @@ var
   shownVersion*: int
   faces*: seq[seq[Face]]
 
+proc hash*(buf: Buffer): Hash = hash(cast[int](buf))  # buffers as table keys, by identity
+
+# ---- Windows (panes): the frame split below / right, as C-x 2 / C-x 3 in Emacs
+var
+  layout* = newLayout(Pane(buf: b))  # the tree of panes
+  pane* = layout.leaves[0]           # the selected one: it shows b at renderer.top / left
+  bars: seq[Bar]                     # separator columns from the last layout
+  paneFaces: Table[Buffer, tuple[version: int, faces: seq[seq[Face]]]]  # other panes' highlighting
+
+
 var langHints*: seq[proc(buf: Buffer): string]  # a path to detect a buffer's language by; "" = its own
 
 proc detectLang*() =
@@ -127,6 +143,12 @@ var
 window.makeContextCurrent()
 window.runeInputEnabled = true
 var renderer*: Renderer
+
+proc layoutPanes*() =
+  ## Gives every pane its cells in the frame; the editor's rows and columns are the selected pane's.
+  bars = @[]
+  layout.place(0, 0, renderer.frameCols, renderer.frameRows, bars)
+  renderer.setPane(pane.x, pane.y, pane.w, pane.h)
 try: renderer = newRenderer()
 except CatchableError as e:
   stderr.writeLine(e.msg)
@@ -329,6 +351,7 @@ proc switchTo*(buf: Buffer) =
   buf.kills = b.kills
   buf.yankIndex = b.yankIndex
   b = buf
+  pane.buf = b
   let slot = reg.slot(b)
   if overlay: (overlayTop = slot.top; overlayLeft = slot.left)
   else: (renderer.top = slot.top; renderer.left = slot.left)
@@ -362,8 +385,54 @@ proc killBuffer*(buf: Buffer) =
   ## Killing the current buffer shows the previous one; the last one leaves a fresh *scratch*.
   for hook in killHooks: hook(buf)
   reg.remove buf
+  paneFaces.del buf
   if reg.len == 0: reg.add newBuffer()
+  for p in layout.leaves:  # other panes showing it get the most recent remaining buffer
+    if p != pane and p.buf == buf:
+      p.buf = reg.current
+      p.cursor = (0, 0)
+      (p.top, p.left) = (0, 0)
   if buf == b: switchTo(reg.current)
+
+proc selectPane*(p: Pane) =
+  ## Makes p the selected pane: the pane left keeps its point and scroll, p's buffer
+  ## becomes current at p's point and scroll (a buffer in two panes has a point in each).
+  if p == pane: return
+  pane.cursor = b.cursor
+  pane.top = renderer.top
+  pane.left = renderer.left
+  let target = p.buf
+  pane = p
+  if target != b: switchTo(target)
+  else: pane.buf = b
+  renderer.top = p.top
+  renderer.left = p.left
+  let line = min(p.cursor.line, b.lines.high)
+  b.cursor = (line, min(p.cursor.col, b.lines[line].len))
+  b.goal = -1
+
+proc splitPane*(below: bool) =
+  ## C-x 2 / C-x 3: the selected pane shares its space with a new pane on the same buffer.
+  if renderer.frameCols == 0: renderer.resize(window, b)  # from ~/.darger.el, before the first frame
+  layoutPanes()
+  if not pane.canSplit(below):
+    echoLine = "Window too small to split"
+    return
+  layout.split(pane, below, Pane(buf: b, top: renderer.top, left: renderer.left, cursor: b.cursor))
+  layoutPanes()
+
+proc deletePane*() =
+  ## C-x 0: the selected pane goes, its neighbour takes the space and the selection.
+  let next = layout.remove(pane)
+  if next == nil:
+    echoLine = "Attempt to delete the sole window"
+    return
+  layoutPanes()
+  selectPane(next)
+
+proc deleteOtherPanes*() =
+  layout.keepOnly(pane)
+  layoutPanes()
 
 proc ctrl*(): bool = window.buttonDown[KeyLeftControl] or window.buttonDown[KeyRightControl]
 proc alt*(): bool =
@@ -1158,6 +1227,26 @@ proc pollInit*(): bool =
   loadInit(report = true)
   true
 
+interp.defPrimitive("split-window-below", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  splitPane(true)
+  nilValue())
+interp.defPrimitive("split-window-right", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  splitPane(false)
+  nilValue())
+interp.defPrimitive("delete-window", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  deletePane()
+  nilValue())
+interp.defPrimitive("delete-other-windows", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  deleteOtherPanes()
+  nilValue())
+interp.defPrimitive("other-window", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  selectPane(layout.next(pane, 1))
+  nilValue())
 interp.defPrimitive("save-buffer", proc(args: seq[Value]): Value =
   args.arity(0, 0)
   saveBuffer()
@@ -1278,6 +1367,24 @@ definePrompt(Prompt(kind: "line", text: true, consult: true, candidates: lineRow
 
 tickHooks.add pollInit
 
+proc langOf(buf: Buffer): Lang =
+  ## A non-selected pane's buffer language: from its slot, else detected now.
+  if buf == b: return lang
+  if buf in reg:
+    let slot = reg.slot(buf)
+    if slot.lang.name.len > 0 and slot.langPath == buf.path: return slot.lang
+  detect(buf.path, if buf.lines.len > 0: $buf.lines[0] else: "")
+
+proc facesOf(buf: Buffer): seq[seq[Face]] =
+  ## Highlighting for a non-selected pane, cached per buffer version.
+  if buf in paneFaces and paneFaces[buf].version == buf.version: return paneFaces[buf].faces
+  result = langOf(buf).highlight(buf.lines)
+  paneFaces[buf] = (buf.version, result)
+
+proc modeLineText(buf: Buffer, name: string, cursor: Point, modeName, tag: string): string =
+  " -" & (if buf.modified: "**" else: "--") & "- " & name & "   L" & $(cursor.line+1) &
+    " C" & $buf.cellCol(cursor) & "  (" & modeName & ") " & tag
+
 proc redraw*(hover = thNone, maximized = false) =
   ## hover and maximized: the title bar's state, which the window code in darger.nim owns.
   if not running or window.closed or window.minimized or window.size.x == 0 or window.size.y == 0: return
@@ -1286,6 +1393,7 @@ proc redraw*(hover = thNone, maximized = false) =
   let active = if mode in modes: modes[mode] else: nil  # the view taking the keys
   var displayed = if view != nil: view.buffer() else: b
   renderer.resize(window, displayed)
+  layoutPanes()
   if view != nil and view.beforeDraw != nil:
     view.beforeDraw()  # a resized or zoomed window lays the view out again
     displayed = view.buffer()
@@ -1320,18 +1428,40 @@ proc redraw*(hover = thNone, maximized = false) =
       (start: b.offset((b.cursor.line, 0)), len: max(1, b.lines[b.cursor.line].len))
     else: (start: -1, len: 0)
   let editing = view == nil or view.editing
-  renderer.draw(window, displayed, message, mini.text,
+  let name = if editing: reg.displayName(b)
+    elif displayed.path.len == 0: "*scratch*" else: displayed.path
+  let modeName = if displayed == b: lang.name & (if modeLineHook != nil: modeLineHook() else: "")
+    elif view.modeName.len > 0: view.modeName else: "Text"
+  let tag = if view != nil and view.tag.len > 0: view.tag else: inputMethod.tag()
+  # The selected pane shows the view or b with everything; the others their buffer plainly.
+  let leaves = layout.leaves
+  var views: seq[PaneView]
+  for p in leaves:
+    if p == pane:
+      views.add PaneView(b: displayed, x: p.x, y: p.y, w: p.w, h: p.h,
+        top: renderer.top, left: renderer.left, cursor: displayed.cursor, active: true,
+        faces: displayFaces, marks: if displayed == b: shownMarks else: @[],
+        fold: if displayed == b: folds(b) else: @[],
+        lineColors: if view != nil and view.colors != nil: view.colors() else: @[],
+        lineNumbers: displayed == b,
+        modeLine: modeLineText(displayed, name, displayed.cursor, modeName, tag),
+        box: if displayed == b: box else: CursorBox(),
+        matchStart: highlight.start, matchLen: highlight.len)
+    else:
+      let buf = p.buf
+      let line = min(p.cursor.line, buf.lines.high)
+      p.cursor = (line, min(p.cursor.col, buf.lines[line].len))
+      views.add PaneView(b: buf, x: p.x, y: p.y, w: p.w, h: p.h, top: p.top, left: p.left,
+        cursor: p.cursor, active: false, faces: facesOf(buf), fold: folds(buf), lineNumbers: true,
+        modeLine: modeLineText(buf, reg.displayName(buf), p.cursor, langOf(buf).name, ""),
+        matchStart: -1)
+  renderer.draw(window, views, bars, message, mini.text,
     if inMini(): mini.cursor.col else: -1,
-    highlight.start, highlight.len,
     if skkShown: inputMethod.preedit() else: "",
-    if view != nil and view.tag.len > 0: view.tag else: inputMethod.tag(),
-    if view != nil and view.colors != nil: view.colors() else: @[],
-    prompt, popup, displayFaces,
-    if displayed == b: lang.name & (if modeLineHook != nil: modeLineHook() else: "")
-    elif view.modeName.len > 0: view.modeName else: "Text",
-    if editing: reg.displayName(b) else: displayed.path,
+    prompt, popup,
     cands.toOpenArray(0, if listed: cands.high else: -1), candIndex, listed,
     if isConsult(mode): atBottom else: atTop,
-    if displayed == b: shownMarks else: @[],
-    if displayed == b: box else: CursorBox(), lineNumbers = displayed == b,
-    hover = hover, maximized = maximized, fold = if displayed == b: folds(b) else: @[])
+    "darger — " & name, hover, maximized)
+  for i, p in leaves:  # the scroll each pane settled on, so its cursor stays in view
+    if p == pane: (renderer.top = views[i].top; renderer.left = views[i].left)
+    else: (p.top = views[i].top; p.left = views[i].left)

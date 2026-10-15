@@ -1,6 +1,6 @@
 ## Org mode and org-roam: structure editing on Org buffers and a directory of notes
 ## linked by id. Built on orgmode.nim (parsing) and roam.nim (the notes).
-import std/[os, strutils, unicode, times, tables, browsers, hashes]
+import std/[os, strutils, unicode, times, tables, browsers]
 import ../[core, buffer, buffers, lisp, lsp, orgmode, roam]
 when defined(macosx): import ../macwin
 
@@ -73,7 +73,6 @@ type FoldState = object
   map: seq[int8]
   global: string           # the last org-shifttab state, to cycle from
 
-proc hash(buf: Buffer): Hash = hash(cast[int](buf))  # by identity
 var folded: Table[Buffer, FoldState]
 
 proc foldMapOf(buf: Buffer): seq[int8] =

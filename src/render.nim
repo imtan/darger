@@ -15,7 +15,9 @@ type
     lastTitle: string
     pad, areaW: int
     bar, padTop: int  # the title bar's height; the text area's top: bar + pad
-    cellW*, cellH*, rows*, cols*, top*, left*: int
+    cellW*, cellH*, rows*, cols*, top*, left*: int  # rows/cols/top/left: the selected pane
+    frameRows*, frameCols*: int  # the text area in cells: every pane and mode line, not the echo line
+    px, py, pw, ph: int   # the pane being drawn: its cell origin and size (ph includes its mode line)
     candTop: int  # first candidate row shown in the popup
   Anchor* = enum atTop, atBottom
   CursorBox* = object   ## a completion or hover box hanging from a buffer position
@@ -238,6 +240,21 @@ proc uiScale*(window: Window): float32 =
       let g = envScale("GDK_SCALE")
       if g > 0: result = g
 
+proc setPane*(r: Renderer, x, y, w, h: int) =
+  ## Draws into the pane at cells (x, y), w by h (h includes its mode line row); the
+  ## text rows and columns the editor's commands see are this pane's.
+  (r.px, r.py, r.pw, r.ph) = (x, y, w, h)
+  r.rows = max(1, h - 1)
+  r.cols = max(1, w)
+
+proc setFrame*(r: Renderer) =
+  ## The whole text area as one pane, for the prompt popup and the echo line.
+  r.setPane(0, 0, r.frameCols, r.frameRows)
+
+proc cellAt*(r: Renderer, pos: IVec2): tuple[x, y: int] =
+  ## The frame cell under a window position (y < 0 above the text area).
+  ((pos.x.int - r.pad) div r.cellW, (pos.y.int - r.padTop) div r.cellH)
+
 proc resize*(r: Renderer, window: Window, b: Buffer) =
   let ui = window.uiScale
   let scale = ui * r.zoom
@@ -257,8 +274,9 @@ proc resize*(r: Renderer, window: Window, b: Buffer) =
   r.pad = max(0, min(int(round(32 * ui)), min((w - r.cellW) div 2, (h - r.bar - 3 * r.cellH) div 2)))
   r.padTop = r.bar + r.pad
   r.areaW = max(0, w - 2 * r.pad)
-  r.rows = max(1, (h - r.bar - 2 * r.pad) div r.cellH - 2)
-  r.cols = max(1, r.areaW div r.cellW)
+  r.frameRows = max(2, (h - r.bar - 2 * r.pad) div r.cellH - 1)
+  r.frameCols = max(1, r.areaW div r.cellW)
+  r.setFrame()  # one pane filling the frame until the editor lays its panes out
 
 proc titleHit*(r: Renderer, window: Window, pos: IVec2): TitleHit =
   titleHit(r.bar, window.size.x.int, pos.x.int, pos.y.int)
@@ -301,14 +319,17 @@ proc glyph(r: Renderer, rune: Rune, x, y: int, tint: Color) =
     r.glyphs.incl key
   r.gpu.drawImage(key, vec2(x.float32, y.float32), tint)
 
+proc cellX(r: Renderer, cell: int): int = r.pad + (r.px + cell) * r.cellW
+proc rowY(r: Renderer, row: int): int = r.padTop + (r.py + row) * r.cellH
+
 proc fill(r: Renderer, cell, row, count: int, c: Color) =
-  r.gpu.drawRect(rect((r.pad + cell * r.cellW).float32, (r.padTop + row * r.cellH).float32,
+  r.gpu.drawRect(rect(r.cellX(cell).float32, r.rowY(row).float32,
     (count * r.cellW).float32, r.cellH.float32), c)
 
 proc band(r: Renderer, row: int, c: Color) =
-  ## A full-width row of the text area, including the part right of the last cell.
-  r.gpu.drawRect(rect(r.pad.float32, (r.padTop + row * r.cellH).float32,
-    r.areaW.float32, r.cellH.float32), c)
+  ## A full-width row of the pane; the rightmost pane's reaches the text area's edge.
+  let w = if r.px + r.pw >= r.frameCols: r.pad + r.areaW - r.cellX(0) else: r.pw * r.cellW
+  r.gpu.drawRect(rect(r.cellX(0).float32, r.rowY(row).float32, w.float32, r.cellH.float32), c)
 
 proc cursorSpan(line: seq[Rune], col: int): tuple[cell, width: int] =
   result.cell = cellCol(line, col)
@@ -347,7 +368,7 @@ proc drawLine(r: Renderer, line: seq[Rune], row, scroll: int, cursor = -1,
               composition: seq[Rune] = @[], imeCursor = 0,
               x0 = 0, width = -1, tint = theme.fg, faces: seq[Face] = @[],
               marks: seq[int8] = @[], paren = [-1, -1]) =
-  let visible = if width < 0: r.cols else: width
+  let visible = if width < 0: r.pw else: width
   let rs = displayLine(line, composition, cursor)
   let caret = if composition.len > 0 and cursor >= 0: cursor + imeCursor else: cursor
   let span = if caret >= 0: cursorSpan(rs, caret) else: (-1, 0)
@@ -374,26 +395,25 @@ proc drawLine(r: Renderer, line: seq[Rune], row, scroll: int, cursor = -1,
           if not composing and original in paren: r.fill(x0+at-scroll, row, size, theme.paren)
         else:
           let face = if composing or original >= faces.len: fPlain else: faces[original]
-          r.glyph(rune, r.pad + (x0+at-scroll)*r.cellW, r.padTop + row*r.cellH,
+          r.glyph(rune, r.cellX(x0+at-scroll), r.rowY(row),
             if underCursor: theme.bg elif matched: theme.searchFg else: faceColor(face, tint))
           let mark = if composing or original >= marks.len: 0'i8 else: marks[original]
           if mark in 1'i8..4'i8:  # a diagnostic: 2 px underline at the bottom of the cell
-            r.gpu.drawRect(rect((r.pad + (x0+at-scroll)*r.cellW).float32,
-              (r.padTop + (row+1)*r.cellH - 2).float32, (size*r.cellW).float32, 2),
+            r.gpu.drawRect(rect(r.cellX(x0+at-scroll).float32,
+              (r.rowY(row+1) - 2).float32, (size*r.cellW).float32, 2),
               [theme.err, theme.warn, theme.info, theme.hint][mark - 1])
       cell += width
     if pass == 0 and caret >= 0: r.fill(x0+span.cell-scroll, row, span.width, theme.cursor)
 
 proc status(r: Renderer, window: Window, text: string, row: int, cursor = -1,
             composition: seq[Rune] = @[], imeCursor = 0, x0 = 0, width = -1, tint = theme.fg) =
-  let visible = if width < 0: r.cols else: width
+  let visible = if width < 0: r.pw else: width
   var scroll = 0
   if cursor >= 0:
     let span = cursorSpan(displayLine(text.toRunes, composition, cursor), cursor + imeCursor)
     scroll = max(0, span.cell + span.width - visible)
     when defined(windows) or defined(macosx):
-      window.imePos = ivec2((r.pad + (x0+span.cell-scroll)*r.cellW).int32,
-        (r.padTop + (row+1)*r.cellH).int32)
+      window.imePos = ivec2(r.cellX(x0+span.cell-scroll).int32, r.rowY(row+1).int32)
   r.drawLine(text.toRunes, row, scroll, cursor, composition = composition, imeCursor = imeCursor,
     x0 = x0, width = width, tint = tint)
 
@@ -410,7 +430,9 @@ proc fitCells(s: string, width: int): seq[Rune] =
 proc popupFit(r: Renderer): int =
   ## Candidate rows the popup has room for, leaving a few text rows visible
   ## beside it; 0 when not even 2 fit (the bottom-line prompt is used instead).
-  if r.rows >= 6: min(10, max(2, r.rows - 7)) else: 0
+  ## The popup floats over the whole frame, whatever the panes.
+  let rows = r.frameRows - 1
+  if rows >= 6: min(10, max(2, rows - 7)) else: 0
 
 proc popupShown*(r: Renderer, candidates: int): int =
   ## Candidate rows the popup lists.
@@ -422,8 +444,9 @@ proc popupRows*(r: Renderer, candidates: int, anchor: Anchor): tuple[top, bottom
   ## The bottom box sits on the last text row and keeps its full height, so the
   ## preview above it does not shift while the list is filtered.
   let fit = r.popupFit
-  if fit == 0: return (r.rows, r.rows)
-  if anchor == atBottom: (r.rows - 4 - fit, r.rows - 1)
+  let rows = r.frameRows - 1
+  if fit == 0: return (rows, rows)
+  if anchor == atBottom: (rows - 4 - fit, rows - 1)
   else: (1, 4 + min(candidates, fit))
 
 proc popupBox(r: Renderer, window: Window, label: seq[Rune], text: string, cursor: int,
@@ -438,8 +461,8 @@ proc popupBox(r: Renderer, window: Window, label: seq[Rune], text: string, curso
   let box = r.popupRows(candidates.len, anchor)
   let y0 = box.top + 1
   let shown = r.popupShown(candidates.len)
-  let fx = (r.pad + (x0 - 1) * r.cellW).float32
-  let fy = (r.padTop + (y0 - 1) * r.cellH).float32
+  let fx = r.cellX(x0 - 1).float32
+  let fy = r.rowY(y0 - 1).float32
   let fw = ((w + 2) * r.cellW).float32
   let fh = ((box.bottom - box.top + 1) * r.cellH).float32
   r.gpu.drawRect(rect(fx - 2, fy - 2, fw + 4, fh + 4), theme.border)
@@ -486,8 +509,8 @@ proc cursorBox(r: Renderer, lines: seq[string], selected: int, cell, row: int, m
   if w <= tagW: return
   let x0 = clamp(cell - 1, 0, max(0, r.cols - w - 2))  # the frame's column; text at x0 + 1
   let first = clamp(top, 0, lines.len - shown)
-  let fx = (r.pad + x0 * r.cellW).float32
-  let fy = (r.padTop + y0 * r.cellH).float32
+  let fx = r.cellX(x0).float32
+  let fy = r.rowY(y0).float32
   let fw = ((w + 2) * r.cellW).float32
   let fh = (shown * r.cellH).float32
   r.gpu.drawRect(rect(fx, fy, fw, fh), theme.popup)
@@ -570,102 +593,133 @@ proc titleBar(r: Renderer, window: Window, title: string, hover: TitleHit, maxim
     r.glyph(rune, x + (if width == 0: max(0, cell - 1) else: cell) * r.cellW, 0, theme.titleBarFg)
     cell += width
 
-proc draw*(r: Renderer, window: Window, b: Buffer, echo, mini: string,
-           miniCursor = -1, matchStart = -1, matchLen = 0,
-           inputSegment = "", modeTag = "", lineColors: seq[int8] = @[],
-           prompt = "", popup = false, faces: openArray[seq[Face]] = [], modeName = "Text",
-           bufName = "", candidates: openArray[string] = [], selected = -1, listed = false,
-           anchor = atTop, marks: openArray[seq[int8]] = [], box = CursorBox(),
-           lineNumbers = false, hover = thNone, maximized = false, fold: seq[int8] = @[]) =
+type PaneView* = object
+  ## One pane to draw: its buffer, scroll (updated so the cursor stays in view) and
+  ## what the editor shows in it. Only the selected pane (active) draws the cursor,
+  ## the region, marks, the box and the input composition.
+  b*: Buffer
+  x*, y*, w*, h*: int
+  top*, left*: int
+  cursor*: Point
+  active*: bool
+  faces*: seq[seq[Face]]
+  marks*: seq[seq[int8]]
+  fold*: seq[int8]
+  lineColors*: seq[int8]
+  lineNumbers*: bool
+  modeLine*: string
+  box*: CursorBox
+  matchStart*, matchLen*: int
+
+proc drawPane(r: Renderer, window: Window, p: var PaneView, composition: seq[Rune],
+              imeCursor: int, textCursor: bool) =
+  ## textCursor: the cursor is in the text (no prompt open), so the active pane draws it.
+  r.setPane(p.x, p.y, p.w, p.h)
+  let b = p.b
+  let showCursor = p.active and textCursor
   # The gutter: right-aligned numbers, at least 3 digits wide so it rarely shifts, and
   # 2 empty cells before the text.
-  let gutter = if lineNumbers: max(3, len($b.lines.len)) + 2 else: 0
+  let gutter = if p.lineNumbers: max(3, len($b.lines.len)) + 2 else: 0
   let cols = max(1, r.cols - gutter)
-  let cursorCell = b.cellCol(b.cursor)
-  let nativeIme = window.imeCompositionString.len > 0
-  let composition = (if nativeIme: window.imeCompositionString else: inputSegment).toRunes
-  let imeCursor = if nativeIme: imeRuneCol(composition, window.imeCursorIndex) else: composition.len
-  let textComposition = if miniCursor < 0: composition else: @[]
-  let span = cursorSpan(displayLine(b.lines[b.cursor.line], textComposition, b.cursor.col),
-    b.cursor.col + (if miniCursor < 0: imeCursor else: 0))
-  # Hidden (folded) lines take no row: rows count shown lines from r.top.
+  let comp = if showCursor: composition else: @[]
+  let cursor = if p.active: b.cursor else: p.cursor
+  let span = cursorSpan(displayLine(b.lines[cursor.line], comp, cursor.col),
+    cursor.col + (if showCursor: imeCursor else: 0))
+  # Hidden (folded) lines take no row: rows count shown lines from the top.
+  let fold = p.fold
+  var top = p.top  # (locals: a nested proc cannot capture the var parameter)
+  var left = p.left
   proc hidden(n: int): bool = n < fold.len and fold[n] == 1
-  proc rowOf(n: int): int =  # the row line n lands on, counting shown lines from r.top
-    for i in r.top..<n:
+  proc rowOf(n: int): int =  # the row line n lands on, counting shown lines from the top
+    for i in top..<n:
       if not hidden(i): inc result
-  if b.cursor.line < r.top or rowOf(b.cursor.line) >= r.rows:
-    var top = b.cursor.line
+  if cursor.line < top or rowOf(cursor.line) >= r.rows:
+    top = cursor.line
     var back = r.rows div 2
     while top > 0 and back > 0:
       dec top
       if not hidden(top): dec back
-    r.top = top
-  let cursorRow = rowOf(b.cursor.line)
-  if span.cell < r.left: r.left = span.cell
-  if span.cell + span.width > r.left + cols: r.left = max(0, span.cell + span.width - cols)
+  let cursorRow = rowOf(cursor.line)
+  if span.cell < left: left = span.cell
+  if span.cell + span.width > left + cols: left = max(0, span.cell + span.width - cols)
+  p.top = top
+  p.left = left
   when defined(windows) or defined(macosx):
-    if miniCursor < 0:
-      window.imePos = ivec2((r.pad + (gutter+span.cell-r.left)*r.cellW).int32,
-        (r.padTop + (cursorRow+1)*r.cellH).int32)
-  r.gpu.beginFrame(window.size)
-  r.gpu.drawRect(rect(0, 0, window.size.x.float32, window.size.y.float32), theme.bg)
-  let name = if bufName.len > 0: bufName elif b.path.len == 0: "*scratch*" else: extractFilename(b.path)
-  let title = "darger — " & name
-  r.titleBar(window, title, hover, maximized)
+    if showCursor: window.imePos = ivec2(r.cellX(gutter+span.cell-left).int32, r.rowY(cursorRow+1).int32)
   let selection = b.region
-  let pair = if miniCursor < 0: matchParen(b.lines, faces, b.cursor.line, b.cursor.col) else: @[]
-  var offset = b.offset((min(r.top, b.lines.high), 0))
+  let pair = if showCursor: matchParen(b.lines, p.faces, cursor.line, cursor.col) else: @[]
+  var offset = b.offset((min(top, b.lines.high), 0))
   var row = 0
-  for line in r.top..<b.lines.len:
+  for line in top..<b.lines.len:
     if row >= r.rows: break
     if hidden(line):
       offset += b.lines[line].len + 1
       continue
-    if line < lineColors.len and lineColors[line] in 1'i8..4'i8:
-      r.band(row, theme.review[lineColors[line]])
-    let cursor = if miniCursor < 0 and line == b.cursor.line: b.cursor.col else: -1
+    if line < p.lineColors.len and p.lineColors[line] in 1'i8..4'i8:
+      r.band(row, theme.review[p.lineColors[line]])
+    let at = if showCursor and line == cursor.line: cursor.col else: -1
     var paren = [-1, -1]
-    for i, p in pair:
-      if p.line == line: paren[i] = p.col
+    for i, pp in pair:
+      if pp.line == line: paren[i] = pp.col
     if gutter > 0:
       r.drawLine(align($(line + 1), gutter - 2).toRunes, row, 0, width = gutter - 2,
-        tint = if line == b.cursor.line: theme.lineNoNow else: theme.lineNo)
+        tint = if line == cursor.line: theme.lineNoNow else: theme.lineNo)
     # A folded headline ends in "..." like Emacs' ellipsis for hidden text.
     let shownLine = if line < fold.len and fold[line] == 2: b.lines[line] & " ...".toRunes else: b.lines[line]
-    r.drawLine(shownLine, row, r.left, cursor,
-      if b.regionActive: selection.a-offset else: -1,
-      if b.regionActive: selection.z-offset else: -1,
-      if matchStart >= 0: matchStart-offset else: -1,
-      if matchStart >= 0: matchStart+matchLen-offset else: -1,
-      if cursor >= 0: textComposition else: @[], imeCursor,
-      faces = if line < faces.len: faces[line] else: @[],
-      marks = if line < marks.len: marks[line] else: @[], paren = paren,
-      x0 = gutter, width = if gutter > 0: cols else: -1)
+    r.drawLine(shownLine, row, left, at,
+      if p.active and b.regionActive: selection.a-offset else: -1,
+      if p.active and b.regionActive: selection.z-offset else: -1,
+      if p.matchStart >= 0: p.matchStart-offset else: -1,
+      if p.matchStart >= 0: p.matchStart+p.matchLen-offset else: -1,
+      if at >= 0: comp else: @[], imeCursor,
+      faces = if line < p.faces.len: p.faces[line] else: @[],
+      marks = if line < p.marks.len: p.marks[line] else: @[], paren = paren,
+      x0 = gutter, width = cols)
     offset += b.lines[line].len + 1
     inc row
-  if box.lines.len > 0 and box.line >= r.top and rowOf(box.line) < r.rows:
-    r.cursorBox(box.lines, box.selected, gutter + box.cell - r.left, rowOf(box.line), box.maxRows,
-      box.top, box.tags, box.details)
-  r.band(r.rows, theme.modeLine)
-  r.status(window, " -" & (if b.modified: "**" else: "--") & "- " & name &
-    "   L" & $(b.cursor.line+1) & " C" & $cursorCell & "  (" & modeName & ") " & modeTag, r.rows,
-    tint = theme.modeLineFg)
+  if p.box.lines.len > 0 and p.box.line >= top and rowOf(p.box.line) < r.rows:
+    r.cursorBox(p.box.lines, p.box.selected, gutter + p.box.cell - left, rowOf(p.box.line),
+      p.box.maxRows, p.box.top, p.box.tags, p.box.details)
+  # The mode line: the selected pane's in the mode line colours, the others dimmed.
+  r.band(r.rows, if p.active: theme.modeLine else: theme.popup)
+  r.status(window, p.modeLine, r.rows, tint = if p.active: theme.modeLineFg else: theme.label)
+
+proc draw*(r: Renderer, window: Window, panes: var seq[PaneView], bars: seq[tuple[x, y, h: int]],
+           echo, mini: string, miniCursor = -1, inputSegment = "", prompt = "", popup = false,
+           candidates: openArray[string] = [], selected = -1, listed = false,
+           anchor = atTop, title = "darger", hover = thNone, maximized = false) =
+  ## A frame: the title bar, every pane with its mode line, the separators, then the
+  ## prompt popup or the echo line over the whole text area.
+  let nativeIme = window.imeCompositionString.len > 0
+  let composition = (if nativeIme: window.imeCompositionString else: inputSegment).toRunes
+  let imeCursor = if nativeIme: imeRuneCol(composition, window.imeCursorIndex) else: composition.len
+  r.gpu.beginFrame(window.size)
+  r.gpu.drawRect(rect(0, 0, window.size.x.float32, window.size.y.float32), theme.bg)
+  r.titleBar(window, title, hover, maximized)
+  for i in 0..<panes.len:
+    r.drawPane(window, panes[i], composition, imeCursor, miniCursor < 0)
+  r.setFrame()
+  for bar in bars:
+    for row in 0..<bar.h: r.glyph(Rune(0x2502), r.cellX(bar.x), r.rowY(bar.y + row), theme.border)
+  let echoRow = r.frameRows
   let miniComp = if miniCursor >= 0: composition else: @[]
   let miniIme = if miniCursor >= 0: imeCursor else: 0
   let label = prompt.strip(leading = false).toRunes
   if popup and miniCursor >= 0 and r.popupFit > 0 and r.cols >= 10 and
       cellCol(label, label.len) <= r.cols - 2:
-    r.status(window, echo, r.rows+1)
+    r.status(window, echo, echoRow)
     r.popupBox(window, label, mini, miniCursor, miniComp, miniIme, candidates, selected, listed,
       anchor)
   elif miniCursor >= 0:
     # Isearch, or a window too small for the popup: the bottom-line minibuffer.
     # Like icomplete, the fallback shows the candidate Enter would accept.
     let pick = if listed and selected >= 0: "  {" & candidates[selected] & "}" else: ""
-    r.status(window, prompt & mini & pick & (if echo.len > 0: "  [" & echo & "]" else: ""), r.rows+1,
+    r.status(window, prompt & mini & pick & (if echo.len > 0: "  [" & echo & "]" else: ""), echoRow,
       prompt.runeLen + miniCursor, miniComp, miniIme)
   else:
-    r.status(window, echo, r.rows+1)
+    r.status(window, echo, echoRow)
   r.gpu.endFrame()
   window.swapBuffers()
   if r.lastTitle != title: (window.title = title; r.lastTitle = title)
+  for p in panes:  # the editor's rows and columns stay the selected pane's
+    if p.active: r.setPane(p.x, p.y, p.w, p.h)

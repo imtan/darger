@@ -122,7 +122,7 @@ the left on macOS, on the right elsewhere). Dragging anywhere with the left butt
 moves the window, dragging its right or bottom edge (6 px) or its bottom right corner
 (32 px) resizes it, and a double click on the title bar toggles maximized, which covers
 the whole screen including the taskbar (on macOS, the screen beside the menu bar and
-the Dock). The mouse does nothing else. On macOS, windy 0.5.0 registers its borderless
+the Dock). A click in another window selects it; the mouse does nothing else. On macOS, windy 0.5.0 registers its borderless
 window's `canBecomeKeyWindow` override under the wrong selector, so such a window never
 takes keyboard focus; the patched backend above registers the real one (re-check on
 any windy bump). macOS itself takes C-SPC for "Select the previous input source"
@@ -255,6 +255,8 @@ fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK
 | Yank / rotate last yank | C-y / M-y |
 | Undo | C-/, C-_ (Ctrl+Shift+Minus), C-x u |
 | Find / save / save as / exit | C-x C-f / C-x C-s / C-x C-w / C-x C-c |
+| Split window below / right | C-x 2 / C-x 3 |
+| Other window / delete window / delete other windows | C-x o / C-x 0 / C-x 1 |
 | Incremental search forward / backward | C-s / C-r; repeat for next / previous |
 | Cancel | C-g |
 | SKK Japanese input on / off | C-\ or C-x C-j |
@@ -376,6 +378,23 @@ content. Entries are not cached on disk: each session fetches the feeds again.
   and fetches it. s filters the list orderless-style on feed and title (empty resets).
 - q / Escape / C-g close the list (fetches continue; `RSS: 3 new (C-c r)` is echoed
   when they finish). F1 opens the manual; C-x C-c quits.
+
+## Windows
+
+Like Emacs, the frame can show several windows at once: C-x 2 (`split-window-below`)
+and C-x 3 (`split-window-right`) split the selected window in two, both showing its
+buffer at the same place; C-x o (`other-window`) selects the next one (left to right,
+top to bottom, wrapping), a mouse click selects the one under it, C-x 0
+(`delete-window`) removes the selected window and gives its space to its neighbour,
+and C-x 1 (`delete-other-windows`) keeps only the selected one. Each window has its
+own buffer, point and scroll (a buffer shown in two windows has a point in each),
+and its own mode line; the selected window's is bright, the others dimmed, and a `│`
+column separates side-by-side windows. A split is refused when a half would be
+smaller than 3 rows or 10 columns. The selected window is the one every command,
+prompt, overlay (dired, eww, the manual, a review) and the cursor box act in; the
+others just show their buffer with its highlighting and folds. Killing a buffer
+shown in another window puts the most recently used buffer there. The prompt popup
+and the echo line belong to the frame, not to a window.
 
 ## Buffers
 

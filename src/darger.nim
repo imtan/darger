@@ -84,6 +84,10 @@ window.onButtonPress = proc(key: Button) =
     let hit = renderer.titleHit(window, window.mousePos)
     pressed = if hit in titleButtons: hit else: thNone
     grab = if pressed == thNone: window.mousePos else: ivec2(-1, -1)
+    if hit == thNone and mode.len == 0:  # a click in another pane selects it (the drag still moves the window)
+      let (cx, cy) = renderer.cellAt(window.mousePos)
+      let p = layout.paneAt(cx, cy)
+      if p != nil and p != pane: selectPane(p)
     grabSize = window.size
     let ui = window.uiScale
     let corner = int32(32 * ui)
@@ -193,12 +197,30 @@ window.onImeChange = proc() =
 
 window.onCloseRequest = proc() = quitEditor()
 
-if paramCount() >= 1:
+proc openSystemFiles(paths: seq[string]): bool =
+  ## Files handed over by Finder, Spotlight or `open -a darger` (macOS); true when any came.
+  for path in paths:
+    result = true
+    if overlayOf(mode) == "dash": closeOverlay()  # the file shows instead of the dashboard
+    try: visit(path)
+    except CatchableError as e: echoLine = e.msg
+
+var args: seq[string]
+for i in 1..paramCount(): args.add paramStr(i)
+# The launch-time files arrive inside windy's finishLaunching, so they are already here.
+# AppKit also reports our own command-line arguments as opened files: those are dropped.
+var launchFiles: seq[string]
+when defined(macosx):
+  for path in takeOpenedFiles():
+    var given = false
+    for a in args:
+      if absolutePath(a) == absolutePath(path): given = true
+    if not given: launchFiles.add path
+if args.len >= 1:
   var opened: seq[Buffer]
   var firstPath: string
-  for i in 1..paramCount():
+  for path in args:
     try:
-      let path = paramStr(i)
       if not dirExists(path):
         visit(path)
         opened.add b
@@ -214,20 +236,12 @@ loadInit()
 proc draw() = redraw(hover, isMaximized())
 window.onResize = draw
 removeStaleExe()
-proc openSystemFiles(): bool =
-  ## Files handed over by Finder, Spotlight or `open -a darger` (macOS); true when any came.
-  when defined(macosx):
-    for path in takeOpenedFiles():
-      result = true
-      if overlayOf(mode) == "dash": closeOverlay()  # the file shows instead of the dashboard
-      try: visit(path)
-      except CatchableError as e: echoLine = e.msg
-# The launch-time files arrive inside windy's finishLaunching, so they are already here.
-if not openSystemFiles() and paramCount() == 0 and startScreen != nil: startScreen()  # the dashboard over an empty *scratch*
+if not openSystemFiles(launchFiles) and args.len == 0 and startScreen != nil: startScreen()  # the dashboard over an empty *scratch*
 var lastDraw = 0.0
 while running and not window.closed:
   pollEvents()
-  if openSystemFiles(): dirty = true  # from Finder, Spotlight or `open -a darger` while running
+  when defined(macosx):
+    if openSystemFiles(takeOpenedFiles()): dirty = true  # from Finder, Spotlight or `open -a darger` while running
   if runTicks(): dirty = true
   # ponytail: redraw after input or every 250 ms; an unconditional per-frame redraw kept ~2 cores busy while idle
   if dirty or epochTime() - lastDraw > 0.25:
