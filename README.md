@@ -47,8 +47,12 @@ used only after a successful reply; a failed first message retries the first
 command. With these defaults, `claude -p` can read the project, and refuses to
 edit files or run commands unless your Claude Code settings already allow them,
 since nobody can be asked. Adding `--permission-mode acceptEdits` to both
-variables allows edits. **darger does not reload buffers changed on disk: saving a buffer
-already open in the editor can overwrite the agent's edit.**
+variables allows edits. A buffer without edits of its own follows its file: when the
+agent (or anything else) changes it on disk, darger reads it again within a second
+(`Reverted NAME`, one undo step brings the old text back); a buffer you have edited
+keeps your text, and C-x C-s over a file changed on disk first asks
+`NAME changed on disk; save anyway? (y or n)`. `M-x revert-buffer` reads the file
+again over your edits.
 
 ```powershell
 nimble build -d:release
@@ -430,6 +434,8 @@ parent directory appended (`darger.nim<src>`, `darger.nim<tests>`, deepening to
 the name typed at C-x b. The mode line and window title show this name. C-x C-s
 saves only the current buffer; C-x C-c asks before exiting when any buffer is
 modified. The kill ring is shared: it follows you to the buffer you switch to.
+Buffers follow their files (see the agent section above): an unedited buffer whose
+file changed on disk is re-read, an edited one asks before saving over the change.
 
 ## Completion
 

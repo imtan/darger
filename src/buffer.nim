@@ -144,6 +144,22 @@ proc splice*(b: Buffer, a, z: int, s: string) =
   b.regionActive = false
   b.goal = -1
 
+proc revert*(b: Buffer) =
+  ## Reads the file again (like revert-buffer): one undo step takes the old text back,
+  ## the cursor stays on its line and column as far as they still exist.
+  let fresh = loadBuffer(b.path)
+  b.snapshot()
+  b.setText(fresh.text)
+  b.saved = fresh.saved
+  b.bom = fresh.bom
+  b.crlf = fresh.crlf
+  b.modified = false
+  b.regionActive = false
+  let line = min(b.cursor.line, b.lines.high)
+  b.cursor = (line, min(b.cursor.col, b.lines[line].len))
+  b.mark = b.cursor
+  b.goal = -1
+
 proc insert*(b: Buffer, s: string, selfInsert = false) =
   if s.len == 0: return
   let whitespace = s.toRunes.len != 1 or s.toRunes[0].isWhiteSpace

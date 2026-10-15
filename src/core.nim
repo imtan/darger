@@ -225,6 +225,7 @@ var
   cancelHooks*: seq[proc()]          # C-g outside a view: stop what runs in the background
   killHooks*: seq[proc(buf: Buffer)] # before a buffer is killed
   saveHooks*: seq[proc()]            # after b is saved
+  saveGuards*: seq[proc(): bool]     # before C-x C-s writes: true = the guard took over (asked)
   modifiedIgnore*: seq[proc(buf: Buffer): bool]  # buffers whose edits never block quitting
   keyFilters*: seq[proc(c: string): bool]  # before dispatch; true consumes the key (popups)
   runeHooks*: seq[proc()]            # before a typed rune is inserted
@@ -743,6 +744,8 @@ proc saveBuffer*() =
   ## C-x C-s: saves the buffer, asking for a name when it has none.
   if b.path.len == 0: beginMini("write", "Write file: ", getCurrentDir() & DirSep)
   else:
+    for guard in saveGuards:
+      if guard(): return
     b.save()
     wrote()
 

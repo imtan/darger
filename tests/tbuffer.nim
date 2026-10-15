@@ -232,3 +232,18 @@ block:
   discard b.command("undo")
   doAssert b.version > v and b.text == "ab"
 echo "All buffer checks passed"
+
+block revert:  # the file changed on disk: revert follows it, undo brings the old text back
+  let path = getTempDir() / "darger-trevert.txt"
+  writeFile(path, "one\ntwo\nthree\n")
+  let b = loadBuffer(path)
+  b.cursor = (2, 4)
+  writeFile(path, "uno\ndos\n")
+  b.revert()
+  doAssert b.text == "uno\ndos\n" and not b.modified and b.cursor == (2, 0)  # the last, empty line
+  doAssert b.command("undo") == "Undo" and b.text == "one\ntwo\nthree\n" and b.modified
+  b.insert("x")
+  writeFile(path, "changed again\n")
+  b.revert()
+  doAssert b.text == "changed again\n" and not b.modified
+  removeFile(path)

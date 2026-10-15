@@ -144,7 +144,7 @@ M-x agent-chat-new       現在のルートの会話を空にして新規セッ�
                          初回は --session-id {id}、継続は --resume {id}
                          既定の claude -p は読み取りのみ（Claude Code 側で許可済みの操作は除く）
                          両設定に --permission-mode acceptEdits で編集を許可
-                         ディスクの変更は再読込されないため保存時の上書きに注意
+                         未編集バッファはディスクの変更に追従 (Reverted)。編集済みは保存時に確認
 
 [Org / org-roam]  （.org ファイルで。ノートは org-roam-directory、既定 ~/org-roam）
 C-c C-t                  見出しの TODO / DONE を切り替え

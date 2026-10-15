@@ -4,7 +4,7 @@ import std/[os, times, unicode, strutils, tables]
 import windy, vmath
 when defined(macosx): import macwin
 import core, buffer, buffers, render, skk, update
-import ext/[org, web, rss, dired, help, dash, blist, agent, selfupdate, langserver]
+import ext/[org, web, rss, dired, help, dash, blist, agent, selfupdate, langserver, revert]
 
 when defined(macosx):
   # AppKit reports a borderless window as always zoomed and zoom() leaves it alone, so

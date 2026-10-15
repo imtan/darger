@@ -19,24 +19,24 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
 
 ## Open
 
-1. Reload a buffer when its file changes on disk (unmodified buffer: silently; modified:
-   ask) — README warns that saving can overwrite an agent's edit.
-2. Terminal buffer (vterm replacement) — slice 1: spawn a shell on a pty, show its
+1. Terminal buffer (vterm replacement) — slice 1: spawn a shell on a pty, show its
    output in a buffer, send typed lines; slice 2: raw key mode and ANSI colours;
    slice 3: `claude` in it with C-c C c-style bindings (send region / file).
-3. Mouse in the text: click places the cursor, wheel scrolls the pane under it.
-4. SKK: `skk-egg-like-newline` variable (Enter inserts a newline after kakutei when
+2. Mouse in the text: click places the cursor, wheel scrolls the pane under it.
+3. SKK: `skk-egg-like-newline` variable (Enter inserts a newline after kakutei when
    nil, as DDSKK's default); zenkaku latin `L`; `l`-prefixed small kana.
-5. Org journal: insert `templates/journal-daily.org` (org-journal-daily-template-file)
+4. Org journal: insert `templates/journal-daily.org` (org-journal-daily-template-file)
    when the day's first entry is created, as the user's Emacs does.
-6. Org agenda, minimal: `M-x org-agenda` lists TODO / SCHEDULED items of
+5. Org agenda, minimal: `M-x org-agenda` lists TODO / SCHEDULED items of
    `org-agenda-files` for today in a consult-style list.
-7. Windows: `C-x +` balance, `C-x ^` / `C-x }` resize, `C-x 4 b` other-window buffer.
-8. Add the monkey/fuzz tests (Buffer, SKK, Lisp, HTML) to `tests/` and the README list.
-9. Dashboard: a line for C-c j (today's journal) and C-c t (capture).
-10. Dictionary registration: Enter with text containing `;` annotations, and
+6. Windows: `C-x +` balance, `C-x ^` / `C-x }` resize, `C-x 4 b` other-window buffer.
+7. Add the monkey/fuzz tests (Buffer, SKK, Lisp, HTML) to `tests/` and the README list.
+8. Dashboard: a line for C-c j (today's journal) and C-c t (capture).
+9. Dictionary registration: Enter with text containing `;` annotations, and
     `(concat ...)` evaluation when a candidate uses it.
 
 ## Log
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
+
+- 2026-10-15 auto-revert: unedited buffers follow their files, saving over a changed file asks, M-x revert-buffer (src/ext/revert.nim, Buffer.revert)
