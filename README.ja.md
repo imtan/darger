@@ -69,17 +69,23 @@ nim r tests/torg.nim      # Org 構造と org-roam ノート
 
 ## macOS の darger.app
 
-`nimble app` はリリースビルドを行い、チェックアウト内に `darger.app` を組み立てて
-`~/Applications` にリンクします。これで Spotlight、Dock、Finder の「このアプリケーションで開く」
-(プレーンテキスト、ソースコード、Markdown、`.org`)、`open -a darger file.org` から darger を
-開けます。バンドルの実行ファイルはチェックアウトの `darger` バイナリを起動するスタブなので、
-`nimble build` や `M-x darger-update` だけでアプリは最新になり、バンドルを作り直す必要は
-ありません。この経路で開いたファイルは引数ではなく Apple Event で届きます。windy の macOS
-バックエンドのパッチ版 (`patches/windy/macos/platform.nim`) がそれを受け取り、エディタが
-開きます (起動中の darger があればそこへ)。こうして起動するとウィンドウがフォーカスも取ります。
-最近の macOS では、他のプログラムから素の `./darger` を起動してもフォーカスは来ません。
-スクリプトからは `open -n -W -a darger --args FILE` で、FILE を開いた新しいインスタンスを
-起動して閉じるまで待てます。
+`nimble app` はリリースビルドを行い、そのコピーを中に入れた `~/Applications/darger.app` を
+組み立てて LaunchServices に登録します。これで Spotlight、Dock、Finder の「このアプリケーションで
+開く」(プレーンテキスト、ソースコード、Markdown、`.org`)、`open -a darger file.org` から darger を
+開けます。チェックアウトのバイナリを直接動かさずコピーするのは、macOS が `~/Documents` (Desktop、
+Downloads も) 配下の実行ファイルの LaunchServices 経由の起動を、プライバシーの許可ダイアログの
+後にしか通さず、署名のないビルドではそのダイアログが出ないためです。起動は最初の命令の前で
+止まり、同じバイナリでもターミナルからは普通に動きます。バンドルの `darger` はチェックアウトの
+場所を `DARGER_SOURCE` に記録してコピーの `darger-bin` を起動するスタブなので、`M-x darger-update`
+はチェックアウトを見つけられ、バンドルから起動した場合は `nimble -y app` でビルドしてコピーも
+更新します。手で `nimble build` した後は `nimble app` をもう一度実行してください。この経路で
+開いたファイルは引数ではなく Apple Event で届きます (AppKit はコマンドライン引数も同じ形で
+報告するので、それは捨てます)。windy の macOS バックエンドのパッチ版
+(`patches/windy/macos/platform.nim`) がそれを受け取り、エディタがダッシュボードの代わりに開きます
+(起動中の darger があればそこへ)。こうして起動するとウィンドウがフォーカスも取ります。最近の
+macOS では、他のプログラムから素の `./darger` を起動してもフォーカスは来ません。スクリプトからは
+`open -n -W -a darger --args FILE` で、FILE を開いた新しいインスタンスを起動して閉じるまで
+待てます。
 
 ## darger の更新
 

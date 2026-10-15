@@ -74,18 +74,25 @@ nim r tests/torg.nim      # Org structure and org-roam notes
 
 ## darger.app on macOS
 
-`nimble app` builds the release binary and assembles `darger.app` in the checkout,
-linked into `~/Applications`, so darger opens from Spotlight, the Dock and Finder's
-"Open With" (plain text, source code, Markdown and `.org` files) and with
-`open -a darger file.org`. The bundle's executable is a stub that runs the `darger`
-binary in the checkout, so `nimble build` and `M-x darger-update` keep the app
-current without rebuilding the bundle. Files opened this way arrive as an Apple
-event, not as arguments; a patched copy of windy's macOS backend
+`nimble app` builds the release binary and assembles `~/Applications/darger.app`
+around a copy of it, registered with LaunchServices, so darger opens from Spotlight,
+the Dock and Finder's "Open With" (plain text, source code, Markdown and `.org`
+files) and with `open -a darger file.org`. The binary is copied rather than run
+from the checkout because macOS lets LaunchServices start an executable that lives
+under `~/Documents` (or Desktop, Downloads) only after a privacy prompt that never
+comes for an unsigned build: the launch hangs before the first instruction, while
+the same binary runs fine from a terminal. The bundle's `darger` is a stub that
+records the checkout in `DARGER_SOURCE` and runs the copied `darger-bin`, so
+`M-x darger-update` still finds the checkout, and started from the bundle it
+rebuilds with `nimble -y app`, refreshing the copy; after a manual `nimble build`
+run `nimble app` again. Files opened this way arrive as an Apple event, not as
+arguments (AppKit also reports the command-line arguments that way; those are
+dropped); a patched copy of windy's macOS backend
 (`patches/windy/macos/platform.nim`) collects them and the editor visits them, into
-the running darger when there is one. Launched this way the window also takes
-focus, which a bare `./darger` started from another program does not get on
-recent macOS; for a script, `open -n -W -a darger --args FILE` starts a new
-instance with FILE and waits until it closes.
+the running darger when there is one, instead of the dashboard. Launched this way
+the window also takes focus, which a bare `./darger` started from another program
+does not get on recent macOS; for a script, `open -n -W -a darger --args FILE`
+starts a new instance with FILE and waits until it closes.
 
 ## Updating darger
 

@@ -20,12 +20,17 @@ type
     error*: string         ## "" on success
     parked: string         ## Windows: the running exe moved aside for the build
 
-const defaultBuildCommand* = "nimble -y build -d:release"
+proc defaultBuildCommand*(): string =
+  ## Started from the macOS darger.app (DARGER_SOURCE set), an update rebuilds the
+  ## bundle too; otherwise just the binary.
+  if getEnv("DARGER_SOURCE").len > 0: "nimble -y app" else: "nimble -y build -d:release"
 
 proc sourceDirectory*(configured: string): string =
-  ## The checkout to update: darger-source-directory, else the directory holding
-  ## the running executable. It must be a git checkout with darger.nimble.
+  ## The checkout to update: darger-source-directory, else DARGER_SOURCE (set by the
+  ## macOS darger.app stub), else the directory holding the running executable. It
+  ## must be a git checkout with darger.nimble.
   let dir = if configured.len > 0: normalizedPath(absolutePath(expandTilde(configured)))
+            elif getEnv("DARGER_SOURCE").len > 0: getEnv("DARGER_SOURCE")
             else: getAppDir()
   if not (dirExists(dir / ".git") or fileExists(dir / ".git")) or not fileExists(dir / "darger.nimble"):
     raise newException(ValueError, "No darger git checkout at " & dir &

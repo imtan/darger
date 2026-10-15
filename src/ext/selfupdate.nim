@@ -57,5 +57,5 @@ busyHooks.add proc(): bool = updater != nil
 tickHooks.add pollUpdate
 defaults.add """
 (setq darger-source-directory "")
-(setq darger-build-command "nimble -y build -d:release")
 """
+defaults.add "(setq darger-build-command \"" & defaultBuildCommand() & "\")"
