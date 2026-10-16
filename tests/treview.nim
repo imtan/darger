@@ -84,4 +84,9 @@ block refine:
   r.decisions[0] = accepted
   doAssert r.view(0).bgs[1].len == 0 and r.hunkLabel(0).endsWith("[taken]  line ONE")
 
+block texts:
+  let r = newReview("keep\nline one\nline two\n", "keep\nline ONE\nline two\nadded\n")
+  doAssert r.proposedText() == "keep\nline ONE\nline two\nadded\n"
+  doAssert r.hunkText(0) == ("line one\n", "line ONE\n") and r.hunkText(1) == ("", "added\n")
+
 echo "All review checks passed"

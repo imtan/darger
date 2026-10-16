@@ -44,12 +44,14 @@ when defined(windows):
 else:
   var agentGroup*: bool
 
-var reviewSource = "Agent"  # what the proposed text is: the agent, the file on disk, git HEAD, a file
+var
+  reviewSource = "Agent"  # what the proposed text is: the agent, the file on disk, git HEAD, a file
+  reviewRequest = false   # the running agent answers a request for changes to the open review
 
 proc reviewMessage*(): string =
   let (removed, added) = reviewState.stats(currentHunk)
   "Review " & reviewSource & ": hunk " & $(currentHunk + 1) & "/" & $reviewState.hunks.len &
-    " (-" & $removed & " +" & $added & ")  y:take k:keep u:undo n/p l:list a:all q:done ?:help"
+    " (-" & $removed & " +" & $added & ")  y:take k:keep u:undo n/p l:list r:request a:all q:done ?:help"
 
 proc rebuildReview*() =
   let display = reviewState.view(currentHunk)
@@ -61,6 +63,8 @@ proc rebuildReview*() =
   renderer.top = reviewBuf.cursor.line
   renderer.left = 0
   echoLine = reviewMessage()
+
+proc beginReviewText(proposed, source: string)  # forward: the review replaced in place
 
 proc beginReview*(proposed: string, source = "Agent") =
   ## A hunk-by-hunk review of the current buffer against `proposed`: y takes the
@@ -81,20 +85,50 @@ proc beginReview*(proposed: string, source = "Agent") =
   window.closeIme()
   rebuildReview()
 
+proc beginReviewText(proposed, source: string) =
+  ## The open review's proposal replaced (decisions start over); closes it when nothing differs.
+  reviewSource = source
+  reviewState = newReview(b.text, proposed)
+  if reviewState.hunks.len == 0:
+    mode = ""
+    reviewBuf = nil
+  else:
+    currentHunk = 0
+    rebuildReview()
+
+proc applyDecisions(): int =
+  ## The accepted hunks into the buffer; returns how many.
+  let text = reviewState.appliedText()
+  for decision in reviewState.decisions:
+    if decision == accepted: inc result
+  if text != b.text:
+    let point = b.offset(b.cursor)
+    b.snapshot()
+    b.splice(0, b.text.runeLen, text)
+    b.cursor = b.point(point)
+    b.finish()
+
+proc applyAndContinue() =
+  ## w: the decisions so far go into the buffer; the pending hunks stay under review.
+  let taken = applyDecisions()
+  let proposed = reviewState.proposedText()
+  let source = reviewSource
+  reviewState = newReview(b.text, proposed)
+  reviewSource = source
+  if reviewState.hunks.len == 0:
+    mode = ""
+    reviewBuf = nil
+    echoLine = "Applied " & $taken & " hunks; nothing left to review"
+    return
+  currentHunk = min(currentHunk, reviewState.hunks.high)
+  rebuildReview()
+  echoLine = "Applied " & $taken & " hunks; " & $reviewState.hunks.len & " left"
+
 proc finishReview*(cancel = false) =
   if cancel: echoLine = "Review cancelled"
   else:
-    let text = reviewState.appliedText()
-    var count = 0
-    for decision in reviewState.decisions:
-      if decision == accepted: inc count
-    if text != b.text:
-      let point = b.offset(b.cursor)
-      b.snapshot()
-      b.splice(0, b.text.runeLen, text)
-      b.cursor = b.point(point)
-      b.finish()
-    echoLine = "Applied " & $count & " of " & $reviewState.hunks.len & " hunks"
+    let total = reviewState.hunks.len
+    echoLine = "Applied " & $applyDecisions() & " of " & $total & " hunks"
   mode = ""
   reviewBuf = nil
   reviewColors = @[]
@@ -290,21 +324,67 @@ proc pollAgent*(): bool =
     agentJob = 0
   try:
     if agentChat != nil: discard updateChat(code)
-    elif agentCancelled: echoLine = "Agent cancelled"
+    elif agentCancelled:
+      reviewRequest = false
+      echoLine = "Agent cancelled"
     elif code != 0:
+      reviewRequest = false
       let errors = readFile(agentDir / "err.txt").splitLines()
       echoLine = if errors.len > 0 and errors[0].len > 0: errors[0] else: "Agent exited with code " & $code
     else:
       let text = cleanAgentOutput(readFile(agentDir / "out.txt"))
       if validateUtf8(text) != -1: raise newException(ValueError, "Agent output is not valid UTF-8")
       if agentBuf notin reg: raise newException(ValueError, "Agent: its buffer was killed")
-      abandonLine()
-      switchTo(agentBuf)  # review the buffer the instruction was about
-      beginReview(text)
+      if reviewRequest:
+        # The answer to a request for changes: the new proposal replaces the review's.
+        reviewRequest = false
+        if mode == "review" and b == agentBuf:
+          let at = currentHunk
+          beginReviewText(text, "Agent")
+          if mode == "review":
+            currentHunk = min(at, reviewState.hunks.high)
+            rebuildReview()
+            echoLine = "Agent changed the proposal: " & $reviewState.hunks.len & " hunks"
+          else: echoLine = "Agent: the new proposal has no changes"
+        else: echoLine = "Agent answered, but the review was closed"
+      else:
+        abandonLine()
+        switchTo(agentBuf)  # review the buffer the instruction was about
+        beginReview(text)
   except CatchableError as e: echoLine = e.msg
   finally:
     agentChat = nil
     cleanAgentFiles()
+
+proc requestChanges*(instruction: string) =
+  ## r: the reviewer's instruction for the current hunk goes to the agent with the
+  ## whole proposal and that hunk; its complete new text replaces the proposal.
+  if mode != "review": raise newException(ValueError, "No review is open")
+  let command = interp.env.values["agent-command"].asString
+  if strutils.strip(command).len == 0: raise newException(ValueError, "agent-command is empty")
+  let (removed, added) = reviewState.hunkText(currentHunk)
+  agentBuf = b
+  reviewRequest = true
+  launchAgent(command,
+    "You proposed a new version of a text file. A reviewer asks for a change to one hunk of it. " &
+    "Apply the request to the proposed version (keep everything else as proposed) and output ONLY the " &
+    "complete new file content. No explanations, no code fences.\n" &
+    "File path: " & (if b.path.len > 0: b.path else: "(unnamed)") & "\n" &
+    "Request: " & instruction & "\n" &
+    "--- HUNK: LINES THE PROPOSAL REMOVES ---\n" & removed &
+    "--- HUNK: LINES THE PROPOSAL ADDS ---\n" & added &
+    "--- PROPOSED FILE START ---\n" & reviewState.proposedText() & "\n--- PROPOSED FILE END ---\n")
+  echoLine = "Agent: changing hunk " & $(currentHunk + 1) & "..."
+
+definePrompt(Prompt(kind: "review-request", text: true, over: "review", onAccept: proc(value: string): bool =
+  if strutils.strip(value).len == 0: return false
+  try: requestChanges(value)
+  except CatchableError as e: echoLine = e.msg
+  true))
+interp.defPrimitive("review-request-changes", proc(args: seq[Value]): Value =
+  args.arity(1, 1)
+  requestChanges(args[0].asString)
+  nilValue())
 
 var hunkRows: seq[string]
 definePrompt(Prompt(kind: "review-hunks", text: true, over: "review", candidates: proc(): seq[string] = hunkRows,
@@ -326,6 +406,18 @@ proc dispatchReview*(c: string) =
     reviewState.decisions[currentHunk] = if c == "y": accepted else: rejected
     currentHunk = min(currentHunk + 1, reviewState.hunks.high)
   of "u": reviewState.decisions[currentHunk] = pending
+  of "A":
+    for decision in reviewState.decisions.mitems:
+      if decision == pending: decision = rejected
+    finishReview()
+    return
+  of "w":
+    applyAndContinue()
+    return
+  of "r":
+    if agentProcess != nil: echoLine = "Agent already running"
+    else: beginMini("review-request", "Request changes to hunk " & $(currentHunk + 1) & ": ")
+    return
   of "l":
     hunkRows = @[]
     for i in 0..<reviewState.hunks.len: hunkRows.add reviewState.hunkLabel(i)
@@ -333,7 +425,8 @@ proc dispatchReview*(c: string) =
     return
   of "?":
     echoLine = "y: take the proposed hunk  k: keep the buffer's  u: undo the decision  " &
-      "n / p: next / previous hunk  l: list the hunks  a: take all pending and finish  q / Enter: apply decisions  C-g: cancel"
+      "n / p: move  l: list  r: ask the agent to change this hunk  w: apply so far, go on  " &
+      "a / A: take / keep all pending and finish  q / Enter: apply decisions  C-g: cancel"
     return
   of "a":
     for decision in reviewState.decisions.mitems:

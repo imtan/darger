@@ -27,10 +27,9 @@ human gate for agent edits, so it grows before the other items:
 R1. (done) Reviews from any source: diff-buffer-with-file, vc-review (git HEAD), review-file;
     the supersede prompt's `r`; u / ? keys.
 R2. (done) Word-level refine highlighting, per-hunk +/- counts, `l` hunk list.
-R3. `e`: edit the proposed hunk in place before taking it; `A`: keep all; `w`: apply
-    the decisions so far and keep reviewing.
-R4. `r`: request changes: an instruction for this hunk goes back to the agent with the
-    hunk, its reply replaces the proposal (the AI-era loop: review -> feedback -> re-propose).
+R3. `e`: edit the proposed hunk in place before taking it (needs a multi-line edit
+    buffer over the review). (`A` keep all and `w` apply-and-continue are done.)
+R4. (done) `r`: request changes to the hunk through the agent; the reply replaces the proposal.
 R5. Agent writes to open files: when a file changed on disk and the buffer has edits,
     offer the review automatically (auto-revert-review setting); a `*review*` summary
     of all files an agent changed in a chat turn (git diff of the root), each opening
@@ -55,6 +54,7 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-16 review R4 + part of R3: `r` sends a hunk request to the agent and the reply replaces the proposal (checked with a fake agent); `w` applies so far and continues; `A` keeps all
 - 2026-10-16 review R2: refine highlighting of the changed part of paired lines (bgs 9-12), -/+ counts in the echo line, `l` hunk list
 - 2026-10-16 review R1: diff-buffer-with-file, vc-review, review-file, supersede `r`, u / ? keys, source in the echo line
 - 2026-10-16 term line mode (user request): C-c C-j / C-c C-k, Enter sends the input typed after the screen, [Line]/[Char] in the mode line

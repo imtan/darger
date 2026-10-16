@@ -122,7 +122,8 @@ C-x C-j / C-\            SKK の入れ / 切り
                          (setq skk-egg-like-newline nil) で Enter が確定 + 改行
 
 [エージェント]
-C-c a                    agent-command に指示を送る (結果はレビューで y/k/u/n/p/l/a/q、? でキー一覧)
+C-c a                    agent-command に指示を送る (結果はレビューで y/k/u/n/p/l/w/a/A/q、? でキー一覧)
+  r (レビュー中)         今のハンクへの修正指示をエージェントに送り、再提案を受け取る
 M-x diff-buffer-with-file  ディスク上のファイルとの差分をレビュー (保存時の確認でも r)
 M-x vc-review            git HEAD との差分をレビュー。M-x review-file は別ファイルとの比較
                          実行中は C-g で中止

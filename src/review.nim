@@ -51,6 +51,14 @@ proc changedSpan*(a, b: seq[Rune]): tuple[a, b: Slice[int]] =
   while tail < a.len - head and tail < b.len - head and a[^(tail+1)] == b[^(tail+1)]: inc tail
   (head ..< a.len - tail, head ..< b.len - tail)
 
+proc proposedText*(r: Review): string = r.proposed.join("")
+  ## The whole proposed text.
+
+proc hunkText*(r: Review, i: int): tuple[removed, added: string] =
+  ## The lines a hunk removes from the original and adds from the proposal.
+  let h = r.hunks[i]
+  (r.original[h.startA ..< h.startA + h.deletedA].join(""), r.proposed[h.startB ..< h.startB + h.insertedB].join(""))
+
 proc stats*(r: Review, i: int): tuple[removed, added: int] =
   (r.hunks[i].deletedA, r.hunks[i].insertedB)
 

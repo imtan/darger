@@ -336,11 +336,19 @@ A review shows the buffer with another version's changes as hunks, the way the
 agent's edits are reviewed: removed lines in red, added in green, the current hunk
 brighter. Keys: y takes the proposed version of the hunk, k keeps the buffer's,
 u undoes the decision, n / p move, l lists the hunks (`3  -1 +2  [taken]  first
-line`) to jump to one, a takes every pending hunk and finishes, q or Enter applies
-the decisions (pending hunks stay as they are), C-g cancels, ? lists the keys. Within
-a pending hunk, the k-th removed and added lines are compared and the part that
-differs is highlighted brighter, like diff-refine-hunk. The echo line names the
-source, the hunk and its `-removed +added` line counts. Besides the agent (C-c a),
+line`) to jump to one, a takes every pending hunk and finishes, A keeps every
+pending one and finishes, w applies the decisions made so far and keeps reviewing
+the rest, q or Enter applies the decisions (pending hunks stay as they are), C-g
+cancels, ? lists the keys. Within a pending hunk, the k-th removed and added lines
+are compared and the part that differs is highlighted brighter, like
+diff-refine-hunk. The echo line names the source, the hunk and its `-removed
++added` line counts.
+
+r asks the agent for a change to the current hunk: the instruction goes to
+`agent-command` with that hunk and the whole proposal, and the agent's complete new
+text replaces the proposal (decisions start over, the hunk position is kept), so a
+review goes round review, feedback, new proposal without leaving the buffer;
+`(review-request-changes "…")` does the same from Lisp. Besides the agent (C-c a),
 these open a review:
 
 - `M-x diff-buffer-with-file`: the buffer against its file on disk, so an agent's
