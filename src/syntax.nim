@@ -182,6 +182,9 @@ let
   markdown = Lang(name: "Markdown", special: spMarkdown)
   org = Lang(name: "Org", special: spOrg)
 
+var orgTodoFaces*: seq[(string, Face)] = @[("TODO", fConstant), ("DONE", fConstant)]
+  ## Org TODO keywords and their faces; the Org extension sets them from org-todo-keywords
+
 proc detect*(path: string, firstLine: string): Lang =
   case splitFile(path).ext.toLowerAscii
   of ".nim", ".nims", ".nimble": nimLang
@@ -561,7 +564,8 @@ proc orgLines(lines: seq[seq[Rune]], faces: var seq[seq[Face]]) =
       let a = stars + 1
       var z = a
       while z < line.len and isWord(line[z]): inc z
-      if $line[a..<z] in ["TODO", "DONE"]: faces[n].paint(a, z, fConstant)
+      for (word, face) in orgTodoFaces:
+        if $line[a..<z] == word: faces[n].paint(a, z, face)
       continue
     var i = 0
     var failed: seq[(Rune, int)]

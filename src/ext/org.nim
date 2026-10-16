@@ -1,7 +1,7 @@
 ## Org mode and org-roam: structure editing on Org buffers and a directory of notes
 ## linked by id. Built on orgmode.nim (parsing) and roam.nim (the notes).
 import std/[os, strutils, unicode, times, tables, browsers, sequtils]
-import ../[core, buffer, buffers, lisp, lsp, orgmode, roam]
+import ../[core, buffer, buffers, lisp, lsp, orgmode, roam, syntax]
 when defined(macosx): import ../macwin
 
 var
@@ -263,11 +263,54 @@ proc openLink*(target: string) =
     if fileExists(path) or dirExists(path): visit(path)
     else: echoLine = "Cannot open link: " & target
 
+var todoSpec = ""      # org-todo-keywords as last applied
+var todoLine = -1      # the headline the fast-selection prompt is about
+
+proc syncTodoKeywords() =
+  ## org-todo-keywords, a list of "WORD(k)" and "|", drives cycling, faces and the agenda.
+  let v = interp.env.values["org-todo-keywords"]
+  let spec = if v.kind == vNil: @["TODO", "DONE"] else: v.asList.mapIt(it.asString)
+  if $spec == todoSpec: return
+  todoSpec = $spec
+  setTodoKeywords(spec)
+  # faces: active words red, yellow, blue, magenta, cyan in turn (the user's NEXT orange,
+  # WAITING blue), done words dimmed
+  const active = [fAnsi1, fAnsi3, fAnsi4, fAnsi5, fAnsi6, fAnsi2]
+  orgTodoFaces = @[]
+  var n = 0
+  for w in todoKeywords:
+    if isDone(w): orgTodoFaces.add (w, fComment)
+    else:
+      orgTodoFaces.add (w, active[min(n, active.high)])
+      inc n
+  shownBuf = nil  # highlight again
+
+proc pickTodo*(key: char) =
+  ## A fast-selection key: that keyword on the headline; SPC removes it.
+  if todoLine notin 0..b.lines.high: return
+  if key == ' ': setLine(todoLine, $withTodo(b.lines[todoLine], ""))
+  else:
+    for (word, k) in todoKeys:
+      if k == key: setLine(todoLine, $withTodo(b.lines[todoLine], word))
+
+tickHooks.add proc(): bool =
+  syncTodoKeywords()
+  false
+
 interp.defPrimitive("org-todo", proc(args: seq[Value]): Value =
+  ## C-c C-t: cycles the keywords, or with selection keys in org-todo-keywords asks for
+  ## one key, as Emacs' fast TODO selection does.
   args.arity(0, 0)
   if orgBuffer():
+    syncTodoKeywords()
     let n = orgHeadline()
-    if n >= 0: setLine(n, $cycleTodo(b.lines[n]))
+    if n < 0: return nilValue()
+    if todoKeys.len == 0: setLine(n, $cycleTodo(b.lines[n]))
+    else:
+      todoLine = n
+      var label = "TODO: "
+      for (word, k) in todoKeys: label.add "[" & k & "] " & word & "  "
+      beginMini("org-todo", label & "[SPC] none: ")
   nilValue())
 interp.defPrimitive("org-toggle-checkbox", proc(args: seq[Value]): Value =
   args.arity(0, 0)
@@ -458,6 +501,16 @@ definePrompt(Prompt(kind: "roam-find", text: true, candidates: roamRowsNow, onAc
 definePrompt(Prompt(kind: "roam-insert", text: true, candidates: roamRowsNow, onAccept: acceptRoam))
 definePrompt(Prompt(kind: "capture", text: true, onAccept: captureText))
 definePrompt(Prompt(kind: "agenda", text: true, consult: true, candidates: refRowsNow, onAccept: acceptReference))
+definePrompt(Prompt(kind: "org-todo", onAccept: proc(value: string): bool =
+  if value.len > 0: pickTodo(value[0])
+  true))
+runeFilters.add proc(r: Rune): bool =
+  if mode != "org-todo": return false
+  if r.int < 128: pickTodo(char(r.int))
+  mode = ""
+  prompt = ""
+  echoLine = ""
+  true
 definePrompt(Prompt(kind: "journal-condition", onAccept: proc(value: string): bool =
   if value.len > 0 and value[0] in '1'..'5': recordCondition(ord(value[0]) - ord('0'))
   true))
@@ -487,6 +540,7 @@ defaults.add """
 (setq org-capture-headline "")
 (setq org-capture-template "* TODO %?\n")
 (setq org-agenda-files nil)
+(setq org-todo-keywords nil)
 (global-set-key "C-c j" 'org-journal-new-entry)
 (global-set-key "C-c t" 'org-capture)
 (global-set-key "C-c C-t" 'org-todo)

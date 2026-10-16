@@ -646,6 +646,14 @@ jump), C-c C-o follows the `[[link]]` at point (`id:` opens the note, `file:` an
 plain paths open files, URLs go to the system browser, `*Headline` jumps), and
 C-c . inserts `<2026-10-07 Wed>`.
 
+`(setq org-todo-keywords '("TODO(t)" "NEXT(n)" "WAITING(w)" "|" "DONE(d)"))` sets
+the keyword sequence (default `TODO` `DONE`): C-c C-t cycles through it and back to
+none, the words after `|` count as done (the last word without a `|`) for the
+agenda, and headlines colour them (active words red, yellow, blue, magenta, cyan in
+turn, done words dimmed). With selection keys like `(t)`, C-c C-t instead asks
+`TODO: [t] TODO [n] NEXT …` and takes one key, SPC for none, as Emacs' fast TODO
+selection does.
+
 Folding works as in Emacs: TAB on a headline cycles FOLDED (the subtree hidden, the
 headline ending in `...`), CHILDREN (its text and its child headlines, folded) and
 SUBTREE; Shift-TAB cycles the whole file through OVERVIEW (top-level headlines only),

@@ -151,7 +151,7 @@ M-x agent-chat-new       現在のルートの会話を空にして新規セッ�
                          未編集バッファはディスクの変更に追従 (Reverted)。編集済みは保存時に確認
 
 [Org / org-roam]  （.org ファイルで。ノートは org-roam-directory、既定 ~/org-roam）
-C-c C-t                  見出しの TODO / DONE を切り替え
+C-c C-t                  見出しの TODO を巡回 (org-todo-keywords。選択キーがあれば 1 キー選択)
 C-c C-c                  チェックボックス [ ] / [X] を切り替え
 M-Enter                  同じ階層の見出し・項目を下に追加
 M-left / M-right         見出しの階層を上げる / 下げる

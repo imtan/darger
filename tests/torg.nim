@@ -22,6 +22,19 @@ doAssert $cycleTodo(rs"* TODO") == "* DONE"
 doAssert $cycleTodo(rs"* DONE") == "* "
 doAssert $cycleTodo(rs"plain") == "plain"
 
+# the keyword sequence from org-todo-keywords
+setTodoKeywords(@["TODO(t)", "NEXT(n)", "WAITING(w)", "|", "DONE(d)"])
+doAssert todoKeywords == @["TODO", "NEXT", "WAITING", "DONE"] and doneKeywords == @["DONE"]
+doAssert todoKeys == @[("TODO", 't'), ("NEXT", 'n'), ("WAITING", 'w'), ("DONE", 'd')]
+doAssert isDone("DONE") and not isDone("WAITING")
+doAssert headline(rs"* NEXT Call").todo == "NEXT" and headline(rs"* WAITING").todo == "WAITING"
+doAssert $cycleTodo(rs"* TODO x") == "* NEXT x" and $cycleTodo(rs"* WAITING x") == "* DONE x" and $cycleTodo(rs"* DONE x") == "* x"
+doAssert $withTodo(rs"* NEXT x :t:", "WAITING") == "* WAITING x :t:" and $withTodo(rs"* NEXT x", "") == "* x"
+setTodoKeywords(@["TODO", "DONE"])  # no "|": the last word is the done one
+doAssert doneKeywords == @["DONE"] and todoKeys.len == 0
+setTodoKeywords(@[])                # an empty spec changes nothing
+doAssert todoKeywords == @["TODO", "DONE"]
+
 # levels
 doAssert $shiftLevel(rs"** A", 1) == "*** A"
 doAssert $shiftLevel(rs"** A", -1) == "* A"
@@ -234,6 +247,11 @@ SCHEDULED: <2026-10-30 Fri>
 DEADLINE: <2026-12-01 Tue>
 ** TODO missed deadline
 DEADLINE: <2026-10-10 Sat>""")
+  setTodoKeywords(@["TODO", "NEXT", "WAITING", "|", "DONE"])
+  let waiting = lines("* WAITING reply\nSCHEDULED: <2026-10-16 Fri>\n* DONE old\nSCHEDULED: <2026-10-16 Fri>")
+  let w = agendaItems("/x/w.org", waiting, today)
+  doAssert w.len == 1 and w[0].text == "WAITING reply"  # active keywords count, done ones do not
+  setTodoKeywords(@["TODO", "DONE"])
   let items = agendaOrder(agendaItems("/x/tasks.org", doc, today))
   let rows = items.mapIt(agendaLabel(it) & " " & it.text)
   doAssert rows == @["6 d. ago: TODO missed deadline", "Sched. 3x: TODO overdue task", "Scheduled: TODO today task",

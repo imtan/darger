@@ -9,7 +9,36 @@ type
     title*: string  # after the keyword, before the tags
     tags*: string   # ":a:b:" or ""
 
-const todoKeywords* = ["TODO", "DONE"]
+var
+  todoKeywords* = @["TODO", "DONE"]  ## the sequence C-c C-t cycles, active then done words
+  doneKeywords* = @["DONE"]          ## the words after "|" in org-todo-keywords: finished
+  todoKeys*: seq[(string, char)]     ## fast-selection keys, from "WORD(k)" in the spec
+
+proc setTodoKeywords*(spec: seq[string]) =
+  ## `("TODO(t)" "NEXT(n)" "WAITING(w)" "|" "DONE(d)")`: words before "|" are active,
+  ## after it done (the last word when there is no "|"); "(k)" gives a selection key.
+  var words, done: seq[string]
+  var keys: seq[(string, char)]
+  var afterBar = false
+  for item in spec:
+    if item == "|":
+      afterBar = true
+      continue
+    var word = item
+    let paren = item.find('(')
+    if paren > 0 and item.endsWith(")") and item.len >= paren + 3:
+      word = item[0..<paren]
+      keys.add (word, item[paren+1])
+    if word.len == 0: continue
+    words.add word
+    if afterBar: done.add word
+  if words.len == 0: return
+  if done.len == 0 and words.len > 1: done.add words[^1]
+  todoKeywords = words
+  doneKeywords = done
+  todoKeys = keys
+
+proc isDone*(todo: string): bool = todo in doneKeywords
 
 proc stars(line: seq[Rune]): int =
   while result < line.len and line[result] == Rune('*'): inc result
@@ -48,18 +77,23 @@ proc headlineAbove*(lines: seq[seq[Rune]], n: int): int =
   result = n
   while result >= 0 and not isHeadline(lines[result]): dec result
 
-proc cycleTodo*(line: seq[Rune]): seq[Rune] =
-  ## none -> TODO -> DONE -> none, keeping the rest of the line as it is.
+proc withTodo*(line: seq[Rune], next: string): seq[Rune] =
+  ## The headline with its TODO keyword replaced by `next` ("" removes it), the rest as it is.
   let h = headline(line)
   if h.level == 0: return line
-  let at = todoKeywords.find(h.todo)
-  let next = if at < 0: todoKeywords[0] elif at == todoKeywords.high: "" else: todoKeywords[at+1]
   let s = $line
   var i = h.level + 1
   while i < s.len and s[i] == ' ': inc i
   var tail = if h.todo.len > 0: s[i + h.todo.len .. ^1] else: s[i .. ^1]
   if h.todo.len > 0 and tail.len > 0 and tail[0] == ' ': tail = tail[1..^1]
   (s[0..<i] & (if next.len > 0: next & (if tail.len > 0: " " else: "") else: "") & tail).toRunes
+
+proc cycleTodo*(line: seq[Rune]): seq[Rune] =
+  ## none -> the first keyword -> ... -> the last -> none, as C-c C-t cycles.
+  let h = headline(line)
+  if h.level == 0: return line
+  let at = todoKeywords.find(h.todo)
+  withTodo(line, if at < 0: todoKeywords[0] elif at == todoKeywords.high: "" else: todoKeywords[at+1])
 
 proc shiftLevel*(line: seq[Rune], delta: int): seq[Rune] =
   ## The headline promoted (delta < 0) or demoted; unchanged when not a headline or at level 1.
@@ -423,7 +457,7 @@ proc agendaItems*(path: string, lines: seq[seq[Rune]], today: DateTime,
     let next = if n + 1 < lines.len: $lines[n+1] else: ""
     # A headline with any planning or timestamp is dated: it shows on its day, not among the undated TODOs.
     var dated = planning(next, "SCHEDULED").len + planning(next, "DEADLINE").len + activeDates($l).len > 0
-    if h.todo.len > 0 and h.todo != "DONE":
+    if h.todo.len > 0 and not isDone(h.todo):
       for d in planning(next, "SCHEDULED"):
         let days = daysBetween(day, d)
         if days <= 0: result.add AgendaItem(path: path, line: n, kind: akScheduled, days: days, text: text)
@@ -433,7 +467,7 @@ proc agendaItems*(path: string, lines: seq[seq[Rune]], today: DateTime,
     for d in activeDates($l):
       if daysBetween(day, d) == 0:
         result.add AgendaItem(path: path, line: n, kind: akTimestamp, days: 0, text: text)
-    if not dated and h.todo.len > 0 and h.todo != "DONE":
+    if not dated and h.todo.len > 0 and not isDone(h.todo):
       result.add AgendaItem(path: path, line: n, kind: akTodo, text: text)
 
 proc agendaLabel*(it: AgendaItem): string =
