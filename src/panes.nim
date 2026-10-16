@@ -14,6 +14,7 @@ type
     pane*: Pane            # a leaf; else a split:
     below*: bool           # a above z, else a left of z
     a*, z*: Layout
+    ratio*: float          # a's share of the split (0 = half, until resized)
   Bar* = tuple[x, y, h: int]  # a vertical separator column between side-by-side panes
 
 const
@@ -63,20 +64,62 @@ proc keepOnly*(l: Layout, p: Pane) =
   ## Every pane but p goes away.
   l[] = Layout(pane: p)[]
 
+proc share(l: Layout, total, minimum: int): int =
+  ## a's cells of `total`: half, or its ratio, never below the minimum on either side.
+  let r = if l.ratio > 0: l.ratio else: 0.5
+  clamp(int(float(total) * r), min(minimum, total div 2), max(total - minimum, total div 2))  # odd leftovers go to z
+
 proc place*(l: Layout, x, y, w, h: int, bars: var seq[Bar]) =
-  ## Assigns cells: a split below gives the top half the smaller share of an odd
-  ## height, a split right leaves one separator column between the halves.
+  ## Assigns cells: a split below gives the top part its share of the height, a split
+  ## right its share of the width with one separator column between the halves.
   if l.pane != nil:
     (l.pane.x, l.pane.y, l.pane.w, l.pane.h) = (x, y, w, h)
   elif l.below:
-    let top = h div 2
+    let top = l.share(h, minRows)
     l.a.place(x, y, w, top, bars)
     l.z.place(x, y + top, w, h - top, bars)
   else:
-    let left = (w - 1) div 2
+    let left = l.share(w - 1, minCols)
     bars.add (x + left, y, h)
     l.a.place(x, y, left, h, bars)
     l.z.place(x + left + 1, y, w - left - 1, h, bars)
+
+proc splitAbove(l: Layout, p: Pane, below: bool): tuple[node: Layout, inA: bool] =
+  ## The nearest split in the given direction holding p, and whether p is in its a side.
+  if l.pane != nil: return (nil, false)
+  for (child, inA) in [(l.a, true), (l.z, false)]:
+    if child.nodeOf(p) != nil:
+      let inner = child.splitAbove(p, below)
+      if inner.node != nil: return inner
+      return (if l.below == below: (l, inA) else: (nil, false))
+
+proc resize*(l: Layout, p: Pane, below: bool, delta: int): bool =
+  ## Grows (delta > 0) or shrinks p by delta rows (below) or columns within the nearest
+  ## split in that direction; false when there is none. place() applies the limits.
+  let (node, inA) = l.splitAbove(p, below)
+  if node == nil: return false
+  # the split's current size in that direction, from its children's placed cells
+  let first = node.a.leaves[0]
+  let last = node.z.leaves[^1]
+  let size = if below: last.y + last.h - first.y else: last.x + last.w - first.x - 1
+  if size <= 0: return false
+  let current = if below: node.a.leaves[^1].y + node.a.leaves[^1].h - first.y else: node.a.leaves[^1].x + node.a.leaves[^1].w - first.x
+  let wanted = if inA: current + delta else: current - delta
+  node.ratio = clamp(float(wanted) / float(size), 0.05, 0.95)
+  true
+
+proc countAlong(l: Layout, below: bool): int =
+  ## Leaves in l counted along one direction: same-direction splits add up, others count 1.
+  if l.pane != nil or l.below != below: 1 else: l.a.countAlong(below) + l.z.countAlong(below)
+
+proc balance*(l: Layout) =
+  ## Every split shares its space by the number of windows on each side, as balance-windows.
+  if l.pane != nil: return
+  let a = l.a.countAlong(l.below)
+  let z = l.z.countAlong(l.below)
+  l.ratio = float(a) / float(a + z)
+  l.a.balance()
+  l.z.balance()
 
 proc next*(l: Layout, p: Pane, delta: int): Pane =
   ## The pane delta steps from p in leaves order, wrapping.

@@ -53,6 +53,53 @@ block right:
   l.place(0, 0, 80, 24, bars)
   doAssert l.leaves == @[r] and (r.x, r.y, r.w, r.h) == (0, 0, 80, 24)
 
+block resizing:
+  let p = pane()
+  let q = pane()
+  let l = newLayout(p)
+  var bars: seq[Bar]
+  l.place(0, 0, 80, 24, bars)
+  l.split(p, true, q)
+  l.place(0, 0, 80, 24, bars)
+  doAssert p.h == 12 and q.h == 12
+  doAssert l.resize(p, true, 4)                      # C-x ^: four more rows for the top pane
+  l.place(0, 0, 80, 24, bars)
+  doAssert p.h == 16 and q.h == 8 and q.y == 16
+  doAssert l.resize(q, true, 2)                      # growing the bottom pane shrinks the top
+  l.place(0, 0, 80, 24, bars)
+  doAssert p.h == 14 and q.h == 10
+  doAssert not l.resize(p, false, 3)                 # no side-by-side split holds p
+  doAssert l.resize(p, true, 100)                    # limits: the other pane keeps its minimum
+  l.place(0, 0, 80, 24, bars)
+  doAssert q.h >= minRows and p.h + q.h == 24
+  let r = pane()
+  l.split(p, false, r)
+  bars = @[]
+  l.place(0, 0, 80, 24, bars)
+  doAssert l.resize(r, false, 10)                    # C-x }: the right pane widens
+  bars = @[]
+  l.place(0, 0, 80, 24, bars)
+  doAssert r.w > p.w and p.w + r.w + 1 == 80
+  l.balance()                                        # C-x +: equal again
+  bars = @[]
+  l.place(0, 0, 80, 24, bars)
+  doAssert abs(p.w - r.w) <= 1 and abs(p.h - q.h) <= 1
+
+block balanceThree:  # three side-by-side panes get equal widths, not 1/2 1/4 1/4
+  let p = pane()
+  let q = pane()
+  let r = pane()
+  let l = newLayout(p)
+  var bars: seq[Bar]
+  l.place(0, 0, 92, 24, bars)
+  l.split(p, false, q)
+  l.place(0, 0, 92, 24, bars)
+  l.split(q, false, r)
+  l.balance()
+  bars = @[]
+  l.place(0, 0, 92, 24, bars)
+  doAssert p.w == 30 and q.w == 30 and r.w == 30, $(p.w, q.w, r.w)
+
 block tooSmall:
   let p = pane()
   let l = newLayout(p)

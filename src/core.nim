@@ -71,6 +71,12 @@ const
 (global-set-key "C-x 0" 'delete-window)
 (global-set-key "C-x 1" 'delete-other-windows)
 (global-set-key "C-x o" 'other-window)
+(global-set-key "C-x ^" 'enlarge-window)
+(global-set-key "C-x }" 'enlarge-window-horizontally)
+(global-set-key "C-x {" 'shrink-window-horizontally)
+(global-set-key "C-x +" 'balance-windows)
+(global-set-key "C-x 4 b" 'switch-to-buffer-other-window)
+(global-set-key "C-x 4 f" 'find-file-other-window)
 (global-set-key "C-x right" 'next-buffer)
 (global-set-key "C-x left" 'previous-buffer)
 (global-set-key "M-g l" 'consult-line)
@@ -444,6 +450,19 @@ proc deletePane*() =
 proc deleteOtherPanes*() =
   layout.keepOnly(pane)
   layoutPanes()
+
+proc resizePane*(below: bool, delta: int) =
+  ## C-x ^ / C-x } / C-x {: the selected pane grows or shrinks within its nearest split.
+  layoutPanes()
+  if not layout.resize(pane, below, delta):
+    echoLine = if below: "No window above or below to resize against" else: "No window beside to resize against"
+    return
+  layoutPanes()
+
+proc otherPaneFor(): Pane =
+  ## C-x 4: the next pane, made by splitting when there is only one.
+  if layout.leaves.len == 1: splitPane(false)
+  layout.next(pane, 1)
 
 proc clickAt*(cx, cy: int) =
   ## Mouse-1 on a text cell: that pane is selected and its point goes there (the mark
@@ -1296,6 +1315,37 @@ interp.defPrimitive("delete-window", proc(args: seq[Value]): Value =
 interp.defPrimitive("delete-other-windows", proc(args: seq[Value]): Value =
   args.arity(0, 0)
   deleteOtherPanes()
+  nilValue())
+interp.defPrimitive("enlarge-window", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  resizePane(true, 1)
+  nilValue())
+interp.defPrimitive("shrink-window", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  resizePane(true, -1)
+  nilValue())
+interp.defPrimitive("enlarge-window-horizontally", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  resizePane(false, 1)
+  nilValue())
+interp.defPrimitive("shrink-window-horizontally", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  resizePane(false, -1)
+  nilValue())
+interp.defPrimitive("balance-windows", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  layout.balance()
+  layoutPanes()
+  nilValue())
+interp.defPrimitive("switch-to-buffer-other-window", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  selectPane(otherPaneFor())
+  switchPrompt()
+  nilValue())
+interp.defPrimitive("find-file-other-window", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  selectPane(otherPaneFor())
+  findPrompt()
   nilValue())
 interp.defPrimitive("other-window", proc(args: seq[Value]): Value =
   args.arity(0, 0)

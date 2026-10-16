@@ -278,6 +278,8 @@ fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK
 | Find / save / save as / exit | C-x C-f / C-x C-s / C-x C-w / C-x C-c |
 | Split window below / right | C-x 2 / C-x 3 |
 | Other window / delete window / delete other windows | C-x o / C-x 0 / C-x 1 |
+| Enlarge window / wider / narrower / balance | C-x ^ / C-x } / C-x { / C-x + |
+| Buffer / file in the other window | C-x 4 b / C-x 4 f |
 | Incremental search forward / backward | C-s / C-r; repeat for next / previous |
 | Cancel | C-g |
 | SKK Japanese input on / off | C-\ or C-x C-j |
@@ -470,7 +472,14 @@ and C-x 3 (`split-window-right`) split the selected window in two, both showing 
 buffer at the same place; C-x o (`other-window`) selects the next one (left to right,
 top to bottom, wrapping), a mouse click selects the one under it, C-x 0
 (`delete-window`) removes the selected window and gives its space to its neighbour,
-and C-x 1 (`delete-other-windows`) keeps only the selected one. Each window has its
+and C-x 1 (`delete-other-windows`) keeps only the selected one. C-x ^
+(`enlarge-window`, `shrink-window` by M-x) gives the selected window a row more from
+the window above or below it, C-x } / C-x { (`enlarge-window-horizontally` /
+`shrink-window-horizontally`) a column more or less from the window beside it, and
+C-x + (`balance-windows`) shares every split by the number of windows on each side.
+C-x 4 b and C-x 4 f (`switch-to-buffer-other-window`, `find-file-other-window`) ask
+for a buffer or a file and show it in the next window, splitting when there is only
+one. Each window has its
 own buffer, point and scroll (a buffer shown in two windows has a point in each),
 and its own mode line; the selected window's is bright, the others dimmed, and a `│`
 column separates side-by-side windows. A split is refused when a half would be

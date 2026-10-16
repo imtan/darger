@@ -22,14 +22,14 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
 
 1. Terminal: mouse reporting for programs that ask for it (?1000 / ?1006), `C-c C-j`
    line mode as in Emacs term, a bold face (a second font weight) for bold text.
-2. Windows: `C-x +` balance, `C-x ^` / `C-x }` resize, `C-x 4 b` other-window buffer.
-3. Dictionary registration: Enter with text containing `;` annotations, and
+2. Dictionary registration: Enter with text containing `;` annotations, and
     `(concat ...)` evaluation when a candidate uses it.
 
 ## Log
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-16 windows: split ratios with C-x ^ / C-x } / C-x { resizing, C-x + balance (panes.resize / balance tested), C-x 4 b / C-x 4 f
 - 2026-10-16 dashboard: a Today list (j journal, t capture, a agenda, s shell); recent files now 1-9 and 0
 - 2026-10-16 org-agenda (minimal): today's scheduled / deadline / dated items and undated TODOs of org-agenda-files as a consult list (orgmode.agendaItems tested)
 - 2026-10-16 terminal: background colours, underline and inverse video in the screen model and renderer (backProviders / markProviders hooks)
