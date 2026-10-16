@@ -22,20 +22,19 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
 
 1. Terminal: background colours and bold / underline in the screen model; mouse
    reporting for programs that ask for it; `C-c C-j` line mode as in Emacs term.
-2. Org journal: the 体調 ★ prompt on a new entry (1-5 stars after the time, skip on
-   any other key), as the user's Emacs hook does.
-3. Org agenda, minimal: `M-x org-agenda` lists TODO / SCHEDULED items of
+2. Org agenda, minimal: `M-x org-agenda` lists TODO / SCHEDULED items of
    `org-agenda-files` for today in a consult-style list.
-4. Windows: `C-x +` balance, `C-x ^` / `C-x }` resize, `C-x 4 b` other-window buffer.
-5. Add the monkey/fuzz tests (Buffer, SKK, Lisp, HTML) to `tests/` and the README list.
-6. Dashboard: a line for C-c j (today's journal) and C-c t (capture).
-7. Dictionary registration: Enter with text containing `;` annotations, and
+3. Windows: `C-x +` balance, `C-x ^` / `C-x }` resize, `C-x 4 b` other-window buffer.
+4. Add the monkey/fuzz tests (Buffer, SKK, Lisp, HTML) to `tests/` and the README list.
+5. Dashboard: a line for C-c j (today's journal) and C-c t (capture).
+6. Dictionary registration: Enter with text containing `;` annotations, and
     `(concat ...)` evaluation when a candidate uses it.
 
 ## Log
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-16 journal: org-journal-condition-prompt, the one-key 体調 [1-5] ★ prompt after a new entry
 - 2026-10-16 terminal slice 3: several terminals (Terminal objects), wide runes take two cells, src/ext/claude.nim with C-c C c / C-c C t / C-c C n / C-c C r / C-c C f as in the user's Emacs
 - 2026-10-16 terminal slice 2c: M-x term shows the screen model in *terminal*, every key raw to the pty (keySequence tested), C-x / C-c stay the editor's; runeFilters hook in core
 - 2026-10-16 journal: org-journal-daily-template-file under the date headline of a new day, org-journal-add-id for an ID drawer (user: format differed from Emacs)

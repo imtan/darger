@@ -590,7 +590,9 @@ C-c j (`org-journal-new-entry`) は org-journal のように日報を付けま�
 ファイルに書きます。新しいファイルには `org-journal-daily-template-file` (既定なし) の内容が
 日付見出しの下に入り、最初のエントリの前にその日の節が揃います。`org-journal-add-id` が `t`
 (既定 `nil`) なら先頭に ID プロパティドロワーが付き、その日が org-roam のノードになります。
-書式は strftime の `%Y %y %m %d %e %H %M %S %R %A %a %B %b %j %%` を
+`org-journal-condition-prompt` が `t` (既定 `nil`) なら、新しいエントリの後に `体調 [1-5]` を
+1 キーで聞きます。数字ならその数の `★` を時刻の後ろに置いてカーソルをその後ろに、他のキーなら
+スキップします (Emacs のフックと同じ)。書式は strftime の `%Y %y %m %d %e %H %M %S %R %A %a %B %b %j %%` を
 受け付け、日本語ロケール (`LANG=ja_JP.UTF-8`) では Emacs と同じく `%A` が `火曜日`、`%B` が
 `10月` になります。C-c t (`org-capture`) は `Capture: ` と尋ね、入力を `org-capture-template`
 (既定 `* TODO %?\n`。`%?` が入力、`%t` / `%u` が今日のアクティブ / 非アクティブな

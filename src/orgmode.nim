@@ -366,3 +366,7 @@ proc newJournalText*(header, dateLine, dayTemplate: string, id = ""): string =
   if id.len > 0: result.add ":PROPERTIES:\n:ID:       " & id & "\n:END:\n"
   result = appendedText(result & header, dateLine & "\n")
   if dayTemplate.len > 0: result = appendedText(result, dayTemplate)
+
+proc conditionMark*(n: int): string =
+  ## The 体調 stars the user's journal hook puts after the time: " ★★★ " for 3, "" outside 1..5.
+  if n in 1..5: " " & "★".repeat(n) & " " else: ""

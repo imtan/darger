@@ -194,6 +194,8 @@ block:
   let withId = newJournalText("#+title: T\n", "* Day", "", "ABC-123")
   doAssert withId == ":PROPERTIES:\n:ID:       ABC-123\n:END:\n#+title: T\n* Day\n"
 
+doAssert conditionMark(3) == " ★★★ " and conditionMark(5).count("★") == 5 and conditionMark(0) == "" and conditionMark(6) == ""
+
 # capture: under a headline's subtree, at the end, or under a headline created at the end
 block:
   let tasks = "#+title: t\n* Inbox\n** TODO old\n* Tasks\n** TODO a\n   note\n* Later\ntext\n"

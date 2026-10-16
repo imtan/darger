@@ -627,7 +627,10 @@ still belongs to yesterday. A new file gets the contents of
 `org-journal-daily-template-file` (default none) under the date headline, so the
 day's sections are there before the first entry, and an ID property drawer at the
 top when `org-journal-add-id` is `t` (default `nil`), making the day an org-roam
-node. The formats take strftime's `%Y %y %m %d %e %H %M %S %R
+node. With `org-journal-condition-prompt` `t` (default `nil`) a new entry asks
+`体調 [1-5]` with one key: a digit puts that many `★` after the time and leaves the
+cursor after them, any other key skips, as the user's Emacs hook does. The formats
+take strftime's `%Y %y %m %d %e %H %M %S %R
 %A %a %B %b %j %%`; under a Japanese locale (`LANG=ja_JP.UTF-8`) `%A` and `%B` give
 `火曜日` and `10月`, as Emacs does. C-c t (`org-capture`) prompts `Capture: ` and
 files the text, through `org-capture-template` (default `* TODO %?\n`; `%?` is the

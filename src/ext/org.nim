@@ -150,6 +150,17 @@ proc japaneseLocale(): bool =
   when defined(macosx): systemLocale().startsWith("ja")  # apps launched from the Finder have no LANG
   else: false
 
+var conditionLine = -1  # the journal headline the 体調 prompt is about
+
+proc recordCondition*(n: int) =
+  ## 1-5 at the prompt: that many ★ after the new entry's time, the cursor after them.
+  if conditionLine notin 0..b.lines.high or conditionMark(n).len == 0: return
+  let at = b.offset((conditionLine, b.lines[conditionLine].len))
+  b.snapshot()
+  b.splice(at, at, conditionMark(n))
+  b.cursor = b.point(at + conditionMark(n).runeLen)
+  b.last = "edit"
+
 proc journalNewEntry*() =
   ## C-c j, like org-journal-new-entry: today's file under org-journal-dir (created
   ## with org-journal-file-header and the date headline), then a time headline at
@@ -180,6 +191,11 @@ proc journalNewEntry*() =
   b.splice(0, b.text.runeLen, text)
   b.cursor = b.point(b.text.runeLen)
   b.last = "edit"
+  if interp.env.values["org-journal-condition-prompt"].kind != vNil:
+    # The user's Emacs hook asks for the day's condition right after the entry.
+    conditionLine = headlineAbove(b.lines, b.cursor.line)
+    if conditionLine >= 0: beginMini("journal-condition", "体調 [1-5] (他のキーでスキップ): ")
+
 
 proc captureText*(value: string): bool =
   ## The capture prompt's Enter: the filled template goes under org-capture-headline in
@@ -394,6 +410,17 @@ definePrompt(Prompt(kind: "backlinks", text: true, consult: true, candidates: re
 definePrompt(Prompt(kind: "roam-find", text: true, candidates: roamRowsNow, onAccept: acceptRoam))
 definePrompt(Prompt(kind: "roam-insert", text: true, candidates: roamRowsNow, onAccept: acceptRoam))
 definePrompt(Prompt(kind: "capture", text: true, onAccept: captureText))
+definePrompt(Prompt(kind: "journal-condition", onAccept: proc(value: string): bool =
+  if value.len > 0 and value[0] in '1'..'5': recordCondition(ord(value[0]) - ord('0'))
+  true))
+runeFilters.add proc(r: Rune): bool =
+  # The condition prompt takes one key: a digit records, anything else skips, as read-char did.
+  if mode != "journal-condition": return false
+  if r.int in ord('1')..ord('5'): recordCondition(r.int - ord('0'))
+  mode = ""
+  prompt = ""
+  echoLine = ""
+  true
 
 defaults.add """
 (setq org-roam-directory "~/org-roam")
@@ -407,6 +434,7 @@ defaults.add """
 (setq org-extend-today-until "0")
 (setq org-journal-daily-template-file "")
 (setq org-journal-add-id nil)
+(setq org-journal-condition-prompt nil)
 (setq org-capture-file "~/org/inbox.org")
 (setq org-capture-headline "")
 (setq org-capture-template "* TODO %?\n")
