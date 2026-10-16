@@ -165,6 +165,11 @@ M-x org-id-get-create    ファイルに ID を付けてノートにする
 C-c j                    日報 (org-journal)。org-journal-dir の今日のファイルに時刻見出しを足す
 C-c t                    capture。入力を org-capture-file の org-capture-headline の下に追記
 
+[背景シェーダー]  （.glsl バッファで。(background-shader "path") を ~/.darger.el に）
+C-c C-c                  このバッファを背景シェーダーとして適用（保存・外部変更でも再適用）
+C-c C-o                  絵だけ ↔ うっすら背景（background-shader-dim、既定 0.6）
+C-c C-k                  解除。エラーは *shader* バッファとエコー行に
+
 [その他]
 C-g                      操作を中断
 F1                       このヘルプを表示 / 閉じる

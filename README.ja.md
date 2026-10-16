@@ -197,6 +197,7 @@ Emacs の `internal-border-width` 32 と同様に、テキスト領域、モー�
 シンタックスハイライトは内蔵です (外部の文法ファイルやライブラリを使わないので、Windows でも
 同じように動きます)。言語はファイル拡張子 (大文字小文字を区別しない) か、Python、Ruby、
 シェルスクリプトの `#!` 行から決まり、モードラインに表示されます。Nim (`.nim .nims .nimble`)、
+GLSL (`.glsl .frag .vert .fs .vs`)、
 Python (`.py .pyi`)、Ruby (`.rb .rake`、Gemfile、Rakefile)、GDScript (`.gd`)、
 JS/TS (`.js .mjs .ts .tsx .jsx`)、C/C++ (`.c .h .cpp .hpp .cc`)、Rust (`.rs`)、Go (`.go`)、
 Shell (`.sh .bash .zsh`)、Lisp (`.el .lisp .scm .clj`、`.emacs`)、JSON、TOML、
@@ -264,6 +265,7 @@ CJK と対応する絵文字範囲は 2 セルを占めます。結合文字、�
 | ズーム 拡大 / 縮小 / リセット (粘着) | F2 g / l / 0 |
 | 初期化ファイル `~/.darger.el` を開く | C-c , |
 | Web ブラウザ (eww) / RSS リーダー | C-c w / C-c r |
+| GLSL バッファ: シェーダー適用 / 絵だけ / 解除 | C-c C-c / C-c C-o / C-c C-k |
 | Org: TODO / チェックボックス / 新しい項目 | C-c C-t / C-c C-c / M-Enter |
 | Org: 昇格 / 降格 / サブツリーを上 / 下へ | M-Left / M-Right / M-Up / M-Down |
 | Org: 見出し一覧 / リンクを開く / タイムスタンプ | C-c C-j / C-c C-o / C-c . |
@@ -310,6 +312,22 @@ C-x C-f では、ディレクトリ候補での Enter は従来通り降りて�
   ごみ箱は未対応。
 - q / C-g / Escape でファイラを閉じる。C-g / Escape は作成/リネームのプロンプトを
   キャンセルして一覧に戻る。
+
+## 背景シェーダー
+
+NeoEmacs のフレームシェーダーと同じように、GLSL のフラグメントシェーダーをテキストの下で
+動かせます。`~/.darger.el` か M-: で `(background-shader "~/.emacs.d/bg-shader.glsl")` と
+すると、そのファイルをコンパイルしてウィンドウ全体に毎フレーム描き、その上にテーマの背景色を
+`background-shader-dim` の不透明度 (既定 `0.6`。`0` で絵だけ) で重ねます。ファイルは Shadertoy
+形式 (`mainImage(out vec4 fragColor, in vec2 fragCoord)`。`iResolution`、`iTime`、`iMouse`、
+`iFrame` が使える) か、独自の `main` と `out` を持つ `#version 410 core` のフラグメント
+シェーダー全体です。GLSL バッファ (`.glsl .frag .vert .fs .vs`。ハイライトあり) では C-c C-c で
+バッファの内容を適用、C-c C-o で絵だけ ↔ うっすら背景を切り替え、C-c C-k で解除します。
+`M-x background-shader` (バッファを適用)、`background-shader-toggle`、`background-shader-clear`
+はどこからでも使えます。適用中のファイルを保存するか、ディスク上で変わると再適用されるので、
+動かしながら書けます。コンパイルエラーのときは前のシェーダーが動いたまま、GL のログが
+ファイルの行番号に直されてエコー行と `*shader*` バッファ (C-x b) に入ります。シェーダー実行中は
+入力時だけでなく毎フレーム再描画します。
 
 ## Web ブラウザ (eww)
 
@@ -588,7 +606,8 @@ import を外せば拡張を取り除けます。
 `(load-theme "catppuccin")`、`(set-font "path")`、`(set-fallback-fonts "path;path")`、
 `(find-file "path")` (`~` は展開)、`save-buffer`、`kill-emacs`、`skk-mode`、
 `zoom-in` / `zoom-out` / `zoom-reset`、
-`(eww "url")`、`(rss-feed "url")`、`(setq fetch-command "...")`、
+`(eww "url")`、`(background-shader "path")`、`(setq background-shader-dim 0.6)`、
+`(rss-feed "url")`、`(setq fetch-command "...")`、
 `(setq eww-search-prefix "...")`、そして `(hydra "PREFIX" "hint")` が使えます。hydra は
 1 キーのプレフィックスを粘着にします。割り当てられた `PREFIX x` コマンドの後もプレフィックスが
 有効なままで、ヒントがエコー領域に出ます。デフォルトの

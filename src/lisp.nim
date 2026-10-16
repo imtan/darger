@@ -60,7 +60,7 @@ proc arity*(args: seq[Value], minimum: int, maximum = -1) =
 proc asString*(v: Value): string =
   if v.kind != vString: fail("Expected string")
   v.str
-proc asNumber(v: Value): float =
+proc asNumber*(v: Value): float =
   if v.kind != vNumber: fail("Expected number")
   v.number
 proc asList(v: Value): seq[Value] =

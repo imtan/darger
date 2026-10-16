@@ -207,7 +207,7 @@ Mocha colours and `(load-theme "modus-vivendi")` back, at any time (M-: or
 Syntax highlighting is built in (no external grammars or libraries, so it works the
 same on Windows). The language comes from the file extension, case-insensitively,
 or a `#!` line for Python, Ruby and shell scripts, and is shown in the mode line:
-Nim (`.nim .nims .nimble`), Python (`.py .pyi`), Ruby (`.rb .rake`, Gemfile,
+Nim (`.nim .nims .nimble`), GLSL (`.glsl .frag .vert .fs .vs`), Python (`.py .pyi`), Ruby (`.rb .rake`, Gemfile,
 Rakefile), GDScript (`.gd`), JS/TS (`.js .mjs .ts .tsx .jsx`), C/C++ (`.c .h .cpp
 .hpp .cc`), Rust (`.rs`), Go (`.go`), Shell (`.sh .bash .zsh`), Lisp (`.el .lisp .scm
 .clj`, `.emacs`), JSON, TOML, YAML (`.yaml .yml`), Markdown (`.md .markdown`) and
@@ -277,6 +277,7 @@ fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK
 | Zoom in / out / reset (sticky) | F2 g / l / 0 |
 | Open the init file `~/.darger.el` | C-c , |
 | Web browser (eww) / RSS reader | C-c w / C-c r |
+| GLSL buffer: shader apply / picture only / clear | C-c C-c / C-c C-o / C-c C-k |
 | Org: TODO / checkbox / new item | C-c C-t / C-c C-c / M-Enter |
 | Org: promote / demote / move subtree up / down | M-Left / M-Right / M-Up / M-Down |
 | Org: headline list / open link / timestamp | C-c C-j / C-c C-o / C-c . |
@@ -324,6 +325,24 @@ and name; directory names have a trailing `/` and are highlighted.
   fallback. Trash is unsupported on other platforms.
 - q / C-g / Escape closes the filer. C-g / Escape cancels a create/rename prompt
   and returns to the listing.
+
+## Background shader
+
+A GLSL fragment shader can run under the text, as the NeoEmacs frame shader did:
+`(background-shader "~/.emacs.d/bg-shader.glsl")` in `~/.darger.el` or at M-:
+compiles the file and draws it over the whole window every frame, with the theme's
+background laid over it at `background-shader-dim` opacity (default `0.6`; `0` shows
+the picture alone). The file is either Shadertoy-style, a `mainImage(out vec4
+fragColor, in vec2 fragCoord)` with `iResolution`, `iTime`, `iMouse` and `iFrame`
+available, or a whole `#version 410 core` fragment shader with its own `main` and
+`out`. In a GLSL buffer (`.glsl .frag .vert .fs .vs`, highlighted) C-c C-c applies
+the buffer's text, C-c C-o toggles between the picture alone and the dimmed
+background, and C-c C-k clears it; `M-x background-shader` (the buffer),
+`background-shader-toggle` and `background-shader-clear` do the same anywhere.
+Saving the applied file, or changing it on disk, re-applies it, so a shader can be
+written while it runs. A compile error leaves the previous shader running and puts
+GL's log, with the file's line numbers, in the echo line and a `*shader*` buffer
+(C-x b). While a shader runs darger redraws every frame instead of only on input.
 
 ## Web browser (eww)
 
@@ -619,7 +638,7 @@ added stay until restart. The echo line reports `Loaded ~/.darger.el` or the err
 `insert` and `command`, it can use `(load-theme "catppuccin")`, `(set-font "path")`,
 `(set-fallback-fonts "path;path")`, `(find-file "path")`
 (`~` expands), `save-buffer`, `kill-emacs`, `skk-mode`, `zoom-in` / `zoom-out` /
-`zoom-reset`, `(eww "url")`,
+`zoom-reset`, `(eww "url")`, `(background-shader "path")`, `(setq background-shader-dim 0.6)`,
 `(rss-feed "url")`, `(setq fetch-command "...")`, `(setq eww-search-prefix "...")`, and
 `(hydra "PREFIX" "hint")`, which makes a one-key prefix sticky: after a bound
 `PREFIX x` command the prefix stays active and the hint shows in the echo area, as

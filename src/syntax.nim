@@ -114,6 +114,17 @@ let
       parseFloat setTimeout setInterval""",
     types: words"string number boolean any unknown never object bigint symbol",
     capitalTypes: true)
+  glsl = Lang(name: "GLSL", special: spCode, lineComment: "//", blockComments: @[("/*", "*/")],
+    strings: @[],
+    keywords: words"""break case const continue default discard do else for if in inout out return
+      switch uniform varying attribute layout precision lowp mediump highp struct while
+      flat smooth centroid invariant""",
+    types: words"""void bool int uint float double vec2 vec3 vec4 ivec2 ivec3 ivec4 uvec2 uvec3 uvec4
+      bvec2 bvec3 bvec4 mat2 mat3 mat4 mat2x2 mat3x3 mat4x4 sampler2D sampler3D samplerCube""",
+    constants: words"true false",
+    builtins: words"""mainImage iResolution iTime iMouse iFrame gl_FragCoord gl_FragColor gl_Position
+      gl_VertexID sin cos tan atan pow exp log sqrt abs sign floor ceil fract mod min max clamp mix
+      step smoothstep length distance dot cross normalize reflect refract texture""")
   c = Lang(name: "C/C++", special: spCode, lineComment: "//", blockComments: @[("/*", "*/")],
     strings: @[rule("\""), rule("'", isChar = true)],
     keywords: words"""break case const continue default do else enum extern for goto if inline
@@ -178,6 +189,7 @@ proc detect*(path: string, firstLine: string): Lang =
   of ".gd": gdscript
   of ".js", ".mjs", ".ts", ".tsx", ".jsx": js
   of ".c", ".h", ".cpp", ".hpp", ".cc": c
+  of ".glsl", ".frag", ".vert", ".fs", ".vs": glsl
   of ".rs": rust
   of ".go": go
   of ".sh", ".bash", ".zsh": shell
