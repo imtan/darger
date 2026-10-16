@@ -606,6 +606,13 @@ C-c j (`org-journal-new-entry`) は org-journal のように日報を付けま�
 `org-capture-headline` のサブツリー末尾 (既定は `""` でファイル末尾、`~/org/inbox.org`) に
 入れます。見出しやファイルがなければ作ります。そのファイルのバッファが開いていれば編集して
 保存し、なければファイルに直接書き、カーソルは今いる場所から動きません。
+`M-x org-agenda` は `org-agenda-files` (パス、パスのリスト、または `.org` を含むディレクトリ。
+既定なし) を読み、Emacs の日次アジェンダが今日表示するものを consult 風にプレビュー付きで
+一覧します。今日以前に SCHEDULED された TODO (`Scheduled:` / `Sched. 3x:`)、期限切れか 14 日
+以内の DEADLINE (`Deadline:` / `In 3 d.:` / `3 d. ago:`)、今日の日付を持つ見出し、そして日付の
+ない TODO (`TODO:`) をファイル名付きで並べ、Enter で見出しへ (M-, で戻る)、C-g で元の位置に
+戻ります。DONE と他の日の項目は出ません。キーは自分で割り当ててください。例えば
+`(global-set-key "C-c a" 'org-agenda)` はエージェントのプロンプトを置き換えます。
 
 org-roam ノートは `org-roam-directory` (デフォルト `~/org-roam`。`~/.darger.el` で
 `(setq org-roam-directory "~/notes")`) の下にある、ID プロパティドロワーと `#+title:` を持つ

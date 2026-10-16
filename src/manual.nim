@@ -166,6 +166,7 @@ M-x org-id-get-create    ファイルに ID を付けてノートにする
 C-c j                    日報 (org-journal)。org-journal-dir の今日のファイルに時刻見出しを足す
                          org-journal-condition-prompt t なら体調 [1-5] を 1 キーで聞く (★)
 C-c t                    capture。入力を org-capture-file の org-capture-headline の下に追記
+M-x org-agenda           org-agenda-files の今日の予定・期限・TODO を一覧 (Enter で移動、C-g で戻る)
 
 [シェル]
 C-c s                    *shell* を開く (comint 風。Enter で送信、C-c C-c 割り込み、C-d で EOF)

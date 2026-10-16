@@ -1,6 +1,6 @@
 ## Org structure as pure functions over rune lines: headlines, TODO keywords,
 ## checkboxes, list items, links and timestamps, for the editor's Org commands.
-import std/[unicode, strutils, times]
+import std/[unicode, strutils, times, algorithm, os]
 
 type
   Headline* = object
@@ -370,3 +370,96 @@ proc newJournalText*(header, dateLine, dayTemplate: string, id = ""): string =
 proc conditionMark*(n: int): string =
   ## The 体調 stars the user's journal hook puts after the time: " ★★★ " for 3, "" outside 1..5.
   if n in 1..5: " " & "★".repeat(n) & " " else: ""
+
+# ---- Agenda: dated and TODO items across the agenda files, for today
+
+type
+  AgendaKind* = enum akScheduled, akDeadline, akTimestamp, akTodo
+  AgendaItem* = object
+    path*: string
+    line*: int        ## the headline
+    kind*: AgendaKind
+    days*: int        ## the date relative to today (negative = past); 0 for plain TODOs
+    text*: string     ## the headline without stars
+
+proc parseDate*(s: string, at: int): tuple[ok: bool, date: DateTime] =
+  ## The yyyy-mm-dd starting at s[at] (the day name, time and repeater after it are ignored).
+  if at + 10 > s.len or s[at+4] != '-' or s[at+7] != '-': return
+  try:
+    result.date = dateTime(parseInt(s[at..at+3]), Month(parseInt(s[at+5..at+6])), parseInt(s[at+8..at+9]))
+    result.ok = true
+  except ValueError, RangeDefect: discard
+
+proc activeDates*(s: string): seq[DateTime] =
+  ## Every active timestamp <yyyy-mm-dd ...> in s.
+  var i = 0
+  while i < s.len:
+    if s[i] == '<':
+      let (ok, date) = parseDate(s, i + 1)
+      if ok: result.add date
+    inc i
+
+proc planning*(line: string, key: string): seq[DateTime] =
+  ## The timestamps after `SCHEDULED:` or `DEADLINE:` in a planning line.
+  let at = line.find(key & ":")
+  if at < 0: return
+  var rest = line[at + key.len + 1 .. ^1]
+  let stop = max(rest.find("SCHEDULED:"), rest.find("DEADLINE:"))
+  if stop >= 0: rest = rest[0..<stop]
+  activeDates(rest)
+
+proc daysBetween(a, b: DateTime): int = int((b - a).inDays)
+
+proc agendaItems*(path: string, lines: seq[seq[Rune]], today: DateTime,
+                  deadlineWarning = 14): seq[AgendaItem] =
+  ## What today's agenda shows from one file: TODO headlines scheduled today or earlier,
+  ## deadlines due within deadlineWarning days or overdue, headlines dated today, and
+  ## the undated TODO headlines.
+  let day = dateTime(today.year, today.month, today.monthday)
+  for n, l in lines:
+    if not isHeadline(l): continue
+    let h = headline(l)
+    let text = ($l)[h.level + 1 .. ^1].strip
+    let next = if n + 1 < lines.len: $lines[n+1] else: ""
+    # A headline with any planning or timestamp is dated: it shows on its day, not among the undated TODOs.
+    var dated = planning(next, "SCHEDULED").len + planning(next, "DEADLINE").len + activeDates($l).len > 0
+    if h.todo.len > 0 and h.todo != "DONE":
+      for d in planning(next, "SCHEDULED"):
+        let days = daysBetween(day, d)
+        if days <= 0: result.add AgendaItem(path: path, line: n, kind: akScheduled, days: days, text: text)
+      for d in planning(next, "DEADLINE"):
+        let days = daysBetween(day, d)
+        if days <= deadlineWarning: result.add AgendaItem(path: path, line: n, kind: akDeadline, days: days, text: text)
+    for d in activeDates($l):
+      if daysBetween(day, d) == 0:
+        result.add AgendaItem(path: path, line: n, kind: akTimestamp, days: 0, text: text)
+    if not dated and h.todo.len > 0 and h.todo != "DONE":
+      result.add AgendaItem(path: path, line: n, kind: akTodo, text: text)
+
+proc agendaLabel*(it: AgendaItem): string =
+  ## The agenda's prefix, as Emacs words it: Scheduled: / Sched. 3x: / Deadline: / In 3 d.: / 3 d. ago:
+  case it.kind
+  of akScheduled: (if it.days == 0: "Scheduled:" else: "Sched. " & $(-it.days) & "x:")
+  of akDeadline:
+    if it.days == 0: "Deadline:"
+    elif it.days > 0: "In " & $it.days & " d.:"
+    else: $(-it.days) & " d. ago:"
+  of akTimestamp: ""
+  of akTodo: "TODO:"
+
+proc agendaOrder*(items: seq[AgendaItem]): seq[AgendaItem] =
+  ## Overdue first (oldest first), then today's, then upcoming deadlines, then undated TODOs.
+  result = items
+  result.sort(proc(a, b: AgendaItem): int =
+    proc rank(it: AgendaItem): int =
+      if it.kind == akTodo: 3
+      elif it.days < 0: 0
+      elif it.days == 0: 1
+      else: 2
+    result = cmp(rank(a), rank(b))
+    if result == 0: result = cmp(a.days, b.days)
+    if result == 0: result = cmp(a.line, b.line))
+
+proc agendaRow*(it: AgendaItem, width = 12): string =
+  ## `  Scheduled:   TODO title` with the file's name first.
+  alignLeft(extractFilename(it.path).changeFileExt("") & ":", 10) & " " & alignLeft(agendaLabel(it), width) & " " & it.text

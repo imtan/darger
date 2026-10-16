@@ -646,6 +646,14 @@ at the end of the subtree of `org-capture-headline` in `org-capture-file`
 (defaults `""`, meaning the end of the file, and `~/org/inbox.org`), creating the
 headline or the file when missing. An open buffer of that file is edited and
 saved; otherwise the file is written directly, and you stay where you were.
+`M-x org-agenda` reads `org-agenda-files` (a path, a list of paths, or directories of
+`.org` files; default none) and lists, consult-style with a preview, what Emacs' day
+agenda would show for today: TODO headlines scheduled today or earlier
+(`Scheduled:` / `Sched. 3x:`), deadlines overdue or within 14 days (`Deadline:` /
+`In 3 d.:` / `3 d. ago:`), headlines with today's timestamp, then the undated TODOs
+(`TODO:`), each with its file's name; Enter goes to the headline (M-, comes back),
+C-g returns. DONE items and headlines dated for other days are left out. Bind it
+yourself, e.g. `(global-set-key "C-c a" 'org-agenda)` replaces the agent prompt.
 
 org-roam notes are Org files under `org-roam-directory` (default `~/org-roam`,
 `(setq org-roam-directory "~/notes")` in `~/.darger.el`) with an ID property drawer

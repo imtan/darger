@@ -1,4 +1,4 @@
-import std/[unicode, strutils, times, os]
+import std/[unicode, strutils, times, os, sequtils]
 import ../src/[orgmode, roam]
 
 proc rs(s: string): seq[Rune] = s.toRunes
@@ -211,3 +211,32 @@ block:
   doAssert insertUnder("", "Tasks", "** TODO x\n").text == "* Tasks\n** TODO x\n"
   doAssert fillTemplate("** TODO %? %t\n", "buy milk", tue) == "** TODO buy milk <2026-10-13 Tue>\n"
   doAssert fillTemplate("%u %U 50%%", "x", tue) == "[2026-10-13 Tue] [2026-10-13 Tue 09:04] 50%"
+
+# agenda
+block:
+  let today = dateTime(2026, mOct, 16)
+  doAssert parseDate("<2026-10-16 Fri 10:00 +1w>", 1).ok and activeDates("x <2026-10-16 Fri> y <2026-01-02 Sat>").len == 2
+  doAssert not parseDate("<2026-13-40>", 1).ok and activeDates("[2026-10-16 Fri]").len == 0
+  doAssert planning("DEADLINE: <2024-10-06 Sun> SCHEDULED: <2024-10-02 Wed>", "SCHEDULED").len == 1
+  doAssert planning("DEADLINE: <2024-10-06 Sun> SCHEDULED: <2024-10-02 Wed>", "DEADLINE")[0].monthday == 6
+  let doc = lines("""* Inbox
+** TODO overdue task
+SCHEDULED: <2026-10-13 Tue>
+** TODO today task
+SCHEDULED: <2026-10-16 Fri> DEADLINE: <2026-10-20 Tue>
+** DONE finished
+SCHEDULED: <2026-10-16 Fri>
+** TODO later
+SCHEDULED: <2026-10-30 Fri>
+** TODO undated
+** Meeting <2026-10-16 Fri 14:00>
+** TODO far deadline
+DEADLINE: <2026-12-01 Tue>
+** TODO missed deadline
+DEADLINE: <2026-10-10 Sat>""")
+  let items = agendaOrder(agendaItems("/x/tasks.org", doc, today))
+  let rows = items.mapIt(agendaLabel(it) & " " & it.text)
+  doAssert rows == @["6 d. ago: TODO missed deadline", "Sched. 3x: TODO overdue task", "Scheduled: TODO today task",
+    " Meeting <2026-10-16 Fri 14:00>", "In 4 d.: TODO today task", "TODO: TODO undated"], $rows
+  doAssert items[0].line == 13 and items[1].path == "/x/tasks.org"
+  doAssert agendaRow(items[2]).startsWith("tasks:     Scheduled:   ")

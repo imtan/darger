@@ -63,7 +63,7 @@ proc asString*(v: Value): string =
 proc asNumber*(v: Value): float =
   if v.kind != vNumber: fail("Expected number")
   v.number
-proc asList(v: Value): seq[Value] =
+proc asList*(v: Value): seq[Value] =
   if v.kind == vNil: return @[]
   if v.kind != vList: fail("Expected list")
   v.items

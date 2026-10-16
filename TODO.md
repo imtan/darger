@@ -22,17 +22,16 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
 
 1. Terminal: mouse reporting for programs that ask for it (?1000 / ?1006), `C-c C-j`
    line mode as in Emacs term, a bold face (a second font weight) for bold text.
-2. Org agenda, minimal: `M-x org-agenda` lists TODO / SCHEDULED items of
-   `org-agenda-files` for today in a consult-style list.
-3. Windows: `C-x +` balance, `C-x ^` / `C-x }` resize, `C-x 4 b` other-window buffer.
-4. Dashboard: a line for C-c j (today's journal) and C-c t (capture).
-5. Dictionary registration: Enter with text containing `;` annotations, and
+2. Windows: `C-x +` balance, `C-x ^` / `C-x }` resize, `C-x 4 b` other-window buffer.
+3. Dashboard: a line for C-c j (today's journal) and C-c t (capture).
+4. Dictionary registration: Enter with text containing `;` annotations, and
     `(concat ...)` evaluation when a candidate uses it.
 
 ## Log
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-16 org-agenda (minimal): today's scheduled / deadline / dated items and undated TODOs of org-agenda-files as a consult list (orgmode.agendaItems tested)
 - 2026-10-16 terminal: background colours, underline and inverse video in the screen model and renderer (backProviders / markProviders hooks)
 - 2026-10-16 tests/tmonkey.nim: fuzzers for Buffer, SKK, Lisp, HTML, terminal text/screen and pointAt; found and fixed two screen-model bugs (cursor restore after shrink, wide rune on a one-column screen)
 - 2026-10-16 journal: org-journal-condition-prompt, the one-key 体調 [1-5] ★ prompt after a new entry

@@ -1,6 +1,6 @@
 ## Org mode and org-roam: structure editing on Org buffers and a directory of notes
 ## linked by id. Built on orgmode.nim (parsing) and roam.nim (the notes).
-import std/[os, strutils, unicode, times, tables, browsers]
+import std/[os, strutils, unicode, times, tables, browsers, sequtils]
 import ../[core, buffer, buffers, lisp, lsp, orgmode, roam]
 when defined(macosx): import ../macwin
 
@@ -311,6 +311,39 @@ interp.defPrimitive("org-time-stamp", proc(args: seq[Value]): Value =
   args.arity(0, 0)
   b.insert(timestamp(now()))
   nilValue())
+proc agendaFiles(): seq[string] =
+  ## org-agenda-files: a list of paths, or one path, ~ expanded; directories give their .org files.
+  let v = interp.env.values["org-agenda-files"]
+  let paths = if v.kind == vString: @[v.asString] elif v.kind == vNil: @[] else: v.asList.mapIt(it.asString)
+  for p in paths:
+    let full = expandTilde(p)
+    if dirExists(full):
+      for f in walkFiles(full / "*.org"): result.add f
+    elif fileExists(full): result.add full
+
+proc orgAgenda*() =
+  ## M-x org-agenda: today's scheduled, deadline and dated items and the undated TODOs
+  ## of org-agenda-files, as a list; Enter goes to the headline, C-g comes back.
+  var items: seq[AgendaItem]
+  for path in agendaFiles():
+    let open = reg.byPath(path)
+    let lines = if open != nil: open.lines else: loadBuffer(path).lines
+    items.add agendaItems(path, lines, now())
+  items = agendaOrder(items)
+  if items.len == 0:
+    echoLine = if agendaFiles().len == 0: "No agenda files (setq org-agenda-files ...)" else: "Agenda is empty"
+    return
+  targets = @[]
+  refRows = @[]
+  for it in items:
+    targets.add Location(path: it.path, line: it.line)
+    refRows.add agendaRow(it)
+  beginMini("agenda", "Agenda: ")
+
+interp.defPrimitive("org-agenda", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  orgAgenda()
+  nilValue())
 interp.defPrimitive("org-journal-new-entry", proc(args: seq[Value]): Value =
   args.arity(0, 0)
   journalNewEntry()
@@ -410,6 +443,7 @@ definePrompt(Prompt(kind: "backlinks", text: true, consult: true, candidates: re
 definePrompt(Prompt(kind: "roam-find", text: true, candidates: roamRowsNow, onAccept: acceptRoam))
 definePrompt(Prompt(kind: "roam-insert", text: true, candidates: roamRowsNow, onAccept: acceptRoam))
 definePrompt(Prompt(kind: "capture", text: true, onAccept: captureText))
+definePrompt(Prompt(kind: "agenda", text: true, consult: true, candidates: refRowsNow, onAccept: acceptReference))
 definePrompt(Prompt(kind: "journal-condition", onAccept: proc(value: string): bool =
   if value.len > 0 and value[0] in '1'..'5': recordCondition(ord(value[0]) - ord('0'))
   true))
@@ -438,6 +472,7 @@ defaults.add """
 (setq org-capture-file "~/org/inbox.org")
 (setq org-capture-headline "")
 (setq org-capture-template "* TODO %?\n")
+(setq org-agenda-files nil)
 (global-set-key "C-c j" 'org-journal-new-entry)
 (global-set-key "C-c t" 'org-capture)
 (global-set-key "C-c C-t" 'org-todo)
