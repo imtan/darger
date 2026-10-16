@@ -547,6 +547,24 @@ interp.defPrimitive("org-roam-tag-add", proc(args: seq[Value]): Value =
   beginMini("roam-tag", "Tag: ")
   nilValue())
 
+interp.defPrimitive("org-roam-graph", proc(args: seq[Value]): Value =
+  ## C-c n g: the notes and their id links as a page in the browser, this note in red.
+  args.arity(0, 0)
+  let nodes = scanNodes(roamDir())
+  if nodes.len == 0:
+    echoLine = "No org-roam notes under " & shortPath(roamDir())
+    return nilValue()
+  let path = getCacheDir() / "darger" / "org-roam-graph.html"
+  try:
+    createDir(parentDir(path))
+    writeFile(path, graphHtml(nodes, property(b.lines, "ID")))
+  except CatchableError as e:
+    echoLine = e.msg
+    return nilValue()
+  openDefaultBrowser("file://" & path)
+  echoLine = $nodes.len & " notes in the graph (browser)"
+  nilValue())
+
 proc openDaily(): string =
   ## Today's org-roam daily note, created when missing; returns its path.
   result = dailyPath(roamDir(), now())
@@ -645,6 +663,7 @@ defaults.add """
 (global-set-key "C-c n d" 'org-roam-dailies-today)
 (global-set-key "C-c n j" 'org-roam-dailies-capture-today)
 (global-set-key "C-c n c" 'org-roam-capture)
+(global-set-key "C-c n g" 'org-roam-graph)
 (global-set-key "C-c n t" 'org-roam-tag-add)
 (setq org-roam-capture-templates nil)
 """

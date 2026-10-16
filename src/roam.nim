@@ -147,3 +147,133 @@ proc dailyPath*(dir: string, day: DateTime): string =
   dir / "daily" / (day.format("yyyy-MM-dd") & ".org")
 
 proc linkText*(id, title: string): string = "[[id:" & id & "][" & title & "]]"
+
+# The graph (org-roam-graph): one HTML page with the notes as nodes and their id links as
+# edges, laid out by a small force simulation in the page, so no Graphviz is needed.
+
+proc jsonString(s: string): string =
+  result = "\""
+  for c in s:
+    case c
+    of '"': result.add "\\\""
+    of '\\': result.add "\\\\"
+    of '\n': result.add "\\n"
+    of '\r': result.add "\\r"
+    of '\t': result.add "\\t"
+    of '<': result.add "\\u003c"  # never closes the <script>
+    elif c.ord < 0x20: result.add "\\u00" & toHex(c.ord, 2)
+    else: result.add c
+  result.add "\""
+
+proc graphData*(nodes: seq[RoamNode], current = ""): string =
+  ## `{"nodes": [{"id", "title", "tags", "current"}], "edges": [[from, to]]}` with
+  ## the node indexes as edge ends; links to unknown ids are dropped, duplicates merged.
+  var index: seq[string]
+  result = "{\"nodes\":["
+  for i, n in nodes:
+    index.add n.id
+    if i > 0: result.add ","
+    result.add "{\"id\":" & jsonString(n.id) & ",\"title\":" & jsonString(n.title) &
+      ",\"tags\":" & jsonString(n.tags.join(" ")) & ",\"current\":" & (if n.id == current: "true" else: "false") & "}"
+  result.add "],\"edges\":["
+  var seen: seq[(int, int)]
+  for i, n in nodes:
+    for r in n.refs:
+      let j = index.find(r.id)
+      if j < 0 or j == i or (i, j) in seen: continue
+      seen.add (i, j)
+      if seen.len > 1: result.add ","
+      result.add "[" & $i & "," & $j & "]"
+  result.add "]}"
+
+const graphPage = """<!doctype html>
+<meta charset="utf-8">
+<title>org-roam graph</title>
+<style>
+html, body { margin: 0; height: 100%; background: #1e1e2e; color: #cdd6f4; font: 13px sans-serif; overflow: hidden; }
+canvas { display: block; }
+#info { position: fixed; left: 12px; top: 10px; opacity: .8; }
+</style>
+<div id="info"></div>
+<canvas id="c"></canvas>
+<script>
+const data = DATA;
+const canvas = document.getElementById("c"), ctx = canvas.getContext("2d");
+const info = document.getElementById("info");
+const N = data.nodes, E = data.edges;
+let W, H, scale = 1, panX = 0, panY = 0;
+const deg = N.map(() => 0);
+for (const [a, b] of E) { deg[a]++; deg[b]++; }
+for (let i = 0; i < N.length; i++) {
+  const ang = i * 2.399963, r = 40 + 12 * Math.sqrt(i);
+  N[i].x = r * Math.cos(ang); N[i].y = r * Math.sin(ang); N[i].vx = 0; N[i].vy = 0;
+}
+function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
+addEventListener("resize", resize); resize();
+let hot = 1, hover = -1, drag = -1, last = null;
+function step() {
+  if (hot < 0.005) return;
+  for (let i = 0; i < N.length; i++) for (let j = i + 1; j < N.length; j++) {
+    let dx = N[j].x - N[i].x, dy = N[j].y - N[i].y, d2 = dx * dx + dy * dy + 0.01;
+    const f = 1200 / d2; dx *= f; dy *= f;
+    N[i].vx -= dx; N[i].vy -= dy; N[j].vx += dx; N[j].vy += dy;
+  }
+  for (const [a, b] of E) {
+    const dx = N[b].x - N[a].x, dy = N[b].y - N[a].y, d = Math.sqrt(dx * dx + dy * dy) + 0.01;
+    const f = (d - 60) * 0.02; N[a].vx += dx / d * f; N[a].vy += dy / d * f; N[b].vx -= dx / d * f; N[b].vy -= dy / d * f;
+  }
+  for (const n of N) {
+    n.vx -= n.x * 0.002; n.vy -= n.y * 0.002;
+    n.vx *= 0.85; n.vy *= 0.85;
+    if (N.indexOf(n) !== drag) { n.x += n.vx * hot; n.y += n.vy * hot; }
+  }
+  hot *= 0.995;
+}
+function sx(x) { return W / 2 + (x + panX) * scale; }
+function sy(y) { return H / 2 + (y + panY) * scale; }
+function draw() {
+  step();
+  ctx.clearRect(0, 0, W, H);
+  ctx.strokeStyle = "rgba(205,214,244,0.25)"; ctx.lineWidth = 1;
+  for (const [a, b] of E) {
+    const lit = hover === a || hover === b;
+    ctx.strokeStyle = lit ? "#f9e2af" : "rgba(205,214,244,0.25)";
+    ctx.beginPath(); ctx.moveTo(sx(N[a].x), sy(N[a].y)); ctx.lineTo(sx(N[b].x), sy(N[b].y)); ctx.stroke();
+  }
+  for (let i = 0; i < N.length; i++) {
+    const n = N[i], r = 3 + Math.sqrt(deg[i]) * 2;
+    ctx.fillStyle = n.current ? "#f38ba8" : hover === i ? "#f9e2af" : "#89b4fa";
+    ctx.beginPath(); ctx.arc(sx(n.x), sy(n.y), r, 0, 7); ctx.fill();
+    if (scale > 0.6 || hover === i || n.current || deg[i] > 3) {
+      ctx.fillStyle = hover === i ? "#f9e2af" : "#cdd6f4";
+      ctx.fillText(n.title, sx(n.x) + r + 3, sy(n.y) + 4);
+    }
+  }
+  requestAnimationFrame(draw);
+}
+function at(mx, my) {
+  let best = -1, bd = 100;
+  for (let i = 0; i < N.length; i++) {
+    const dx = sx(N[i].x) - mx, dy = sy(N[i].y) - my, d = dx * dx + dy * dy;
+    if (d < bd) { bd = d; best = i; }
+  }
+  return best;
+}
+canvas.onmousemove = e => {
+  if (drag >= 0) { N[drag].x = (e.clientX - W / 2) / scale - panX; N[drag].y = (e.clientY - H / 2) / scale - panY; hot = Math.max(hot, 0.3); }
+  else if (last) { panX += (e.clientX - last.x) / scale; panY += (e.clientY - last.y) / scale; last = { x: e.clientX, y: e.clientY }; }
+  else hover = at(e.clientX, e.clientY);
+  const n = hover >= 0 ? N[hover] : null;
+  info.textContent = n ? n.title + (n.tags ? "  [" + n.tags + "]" : "") + "  " + deg[hover] + " links" : N.length + " notes, " + E.length + " links. Drag to move, wheel to zoom.";
+};
+canvas.onmousedown = e => { drag = at(e.clientX, e.clientY); if (drag < 0) last = { x: e.clientX, y: e.clientY }; };
+canvas.onmouseup = () => { drag = -1; last = null; };
+canvas.onwheel = e => { scale *= e.deltaY < 0 ? 1.1 : 0.9; e.preventDefault(); };
+info.textContent = N.length + " notes, " + E.length + " links. Drag to move, wheel to zoom.";
+draw();
+</script>
+"""
+
+proc graphHtml*(nodes: seq[RoamNode], current = ""): string =
+  ## The graph page; `current` (an id) is drawn in red.
+  graphPage.replace("DATA", graphData(nodes, current))

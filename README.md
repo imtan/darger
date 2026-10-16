@@ -310,6 +310,7 @@ fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK
 | org-roam: find / insert link / backlinks / today | C-c n f / C-c n i / C-c n l / C-c n d |
 | org-roam: today's daily with a time entry | C-c n j |
 | org-roam: capture a note / add a file tag | C-c n c / C-c n t |
+| org-roam: graph in the browser | C-c n g |
 | Grep the Org directory (consult-ripgrep) | C-c n s |
 | Project: find file / switch project / project buffers | C-x p f / C-x p p / C-x p b |
 
@@ -699,6 +700,11 @@ Emacs' capture. `file` and `head` may use `${title}`, `${slug}`, `${id}`,
 "%<%Y%m%d%H%M%S>.org" "#+title:📝${title}\n#+filetags: :WIKI:\n")))`. C-c n t
 (`org-roam-tag-add`) adds a tag to the file's `#+filetags:` (the notes' existing
 tags are offered; the line is created after `#+title:` when missing).
+
+C-c n g (`org-roam-graph`) opens the notes and their `id:` links as a graph in the
+browser (a page with its own force layout, no Graphviz needed): the current note
+is red, hovering shows a note's title, tags and link count, drag moves, the wheel
+zooms.
 
 C-M-y (`org-insert-clipboard-image`) saves the clipboard's image as
 `img/YYYY-mm-dd-HH-MM-SS.png` next to the file (the buffer must have one) and inserts

@@ -23,23 +23,22 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
 (2026-10-16: reordered after comparing ~/.emacs.d/config.org with darger. The user's
 rule: only add what is missing; never rebind or remove existing darger keys.)
 
-1. org-roam graph (`C-c n g`): the id-link graph as SVG/HTML opened in the browser
-   (dot when installed, else a simple force layout in the page).
-2. Writing helpers through the agent (their Gemini/gptel map `C-c G`): translate,
+1. Writing helpers through the agent (their Gemini/gptel map `C-c G`): translate,
    proofread, summarize, keywords, blog draft on the region, through `agent-command`
    with prompt templates; result replaces the region or opens a buffer.
-3. magit, minimal: `C-x g` status buffer (branch, staged/unstaged files, untracked),
+2. magit, minimal: `C-x g` status buffer (branch, staged/unstaged files, untracked),
    `s`/`u` stage/unstage, `c c` commit with a message buffer, `P p` push, diff on Enter.
-4. Terminal: `C-c C-j` line mode as in Emacs term; a bold face (second font weight).
-5. Mode line polish (doom-modeline-ish): git branch, LSP state, SKK state grouped;
+3. Terminal: `C-c C-j` line mode as in Emacs term; a bold face (second font weight).
+4. Mode line polish (doom-modeline-ish): git branch, LSP state, SKK state grouped;
     olivetti-style centred writing width for Org (`M-x olivetti-mode`).
-6. Books viewer, skilltree / feynman menus, YouTube browse, nostr, elpher, calfw:
+5. Books viewer, skilltree / feynman menus, YouTube browse, nostr, elpher, calfw:
     personal Emacs tools; port only on request.
 
 ## Log
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-16 org-roam-graph (C-c n g): self-contained HTML force graph in the browser, current note red (roam.graphHtml tested)
 - 2026-10-16 org-roam-capture (C-c n c, templates with one-key choice) and org-roam-tag-add (C-c n t), tested in torg
 - 2026-10-16 Eagle picker thumbnail preview (Prompt.thumbnail, renderer.loadPicture shared with inline images); exit-minibuffer primitive; WebP (Eagle thumbnails) via a sips PNG cache (src/pictures.nim)
 - 2026-10-16 Inline images: cropped at the pane bottom; wheel, C-v / M-v and recenter count image rows (stepShown moved to panes.nim, tested)

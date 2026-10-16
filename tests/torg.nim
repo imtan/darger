@@ -143,6 +143,12 @@ doAssert nodes.byTitle("Beta") == 1
 let back = backlinks(nodes, "ida")
 doAssert back.len == 2 and back[0].title == "Beta" and back[0].line == 5 and back[0].text.startsWith("back")
 doAssert backlinks(nodes, "idb").len == 1
+let data = graphData(nodes, "idb")
+doAssert data == """{"nodes":[{"id":"ida","title":"Alpha","tags":"","current":false},{"id":"idb","title":"Beta","tags":"","current":true}],"edges":[[0,1],[1,0]]}""", data
+let tricky = @[RoamNode(id: "1", title: "A \"q\" <b>", tags: @["x", "y"], refs: @[(id: "9", line: 1, text: ""), (id: "1", line: 2, text: "")])]
+doAssert graphData(tricky) == """{"nodes":[{"id":"1","title":"A \"q\" \u003cb>","tags":"x y","current":false}],"edges":[]}""", graphData(tricky)
+let page = graphHtml(nodes, "ida")
+doAssert page.startsWith("<!doctype html>") and "const data = {\"nodes\"" in page and "DATA" notin page
 doAssert scanNodes(dir / "missing").len == 0
 removeDir(dir)
 echo "org tests passed"

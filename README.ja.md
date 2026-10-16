@@ -295,6 +295,7 @@ CJK と対応する絵文字範囲は 2 セルを占めます。結合文字、�
 | org-roam: 検索 / リンク挿入 / バックリンク / 今日 | C-c n f / C-c n i / C-c n l / C-c n d |
 | org-roam: 今日のデイリーに時刻エントリ | C-c n j |
 | org-roam: ノートを capture / ファイルタグを追加 | C-c n c / C-c n t |
+| org-roam: グラフをブラウザで | C-c n g |
 | Org ディレクトリを全文検索 (consult-ripgrep) | C-c n s |
 | プロジェクト: ファイル / 切替 / バッファ | C-x p f / C-x p p / C-x p b |
 
@@ -651,6 +652,9 @@ ID がなければ ID ドロワーを付けます。例: `(setq org-roam-capture
 "%<%Y%m%d%H%M%S>.org" "#+title:📝${title}\n#+filetags: :WIKI:\n")))`。C-c n t (`org-roam-tag-add`) は
 ファイルの `#+filetags:` にタグを足します (既存ノートのタグを候補に出し、行がなければ `#+title:` の
 後に作ります)。
+
+C-c n g (`org-roam-graph`) はノートと `id:` リンクのグラフをブラウザで開きます (ページ内で力学配置。
+Graphviz 不要)。今のノートは赤、ホバーで題名・タグ・リンク数、ドラッグで移動、ホイールで拡大縮小。
 
 C-M-y (`org-insert-clipboard-image`) はクリップボードの画像をファイルの隣の
 `img/YYYY-mm-dd-HH-MM-SS.png` に保存して (バッファにファイルが必要) `[[file:img/…]]` を挿入します。
