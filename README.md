@@ -685,8 +685,13 @@ selection does.
 
 C-M-y (`org-insert-clipboard-image`) saves the clipboard's image as
 `img/YYYY-mm-dd-HH-MM-SS.png` next to the file (the buffer must have one) and inserts
-`[[file:img/…]]`, like the user's Emacs command, with no pngpaste needed. Images are
-not yet shown inline.
+`[[file:img/…]]`, like the user's Emacs command, with no pngpaste needed.
+
+Image links show inline, as org-display-inline-images: a line with `[[file:…png]]`
+(also jpg, gif, webp, bmp; `~` and paths relative to the file work) gets the picture
+in the rows under it, scaled to the text width and at most `org-image-max-rows`
+rows (default 15). Files are reloaded when they change; a click on a picture puts
+point at the end of its line. M-x org-toggle-inline-images hides and shows them.
 
 Images from Eagle (eagle.cool), as the user's Emacs does: C-M-e
 (`org-insert-eagle-image`) asks for a keyword (empty for the newest items) and lists

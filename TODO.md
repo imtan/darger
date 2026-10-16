@@ -23,8 +23,9 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
 (2026-10-16: reordered after comparing ~/.emacs.d/config.org with darger. The user's
 rule: only add what is missing; never rebind or remove existing darger keys.)
 
-1. Inline images in Org buffers (`[[file:...png]]` drawn under the line, as
-   org-display-inline-images), which would also give the Eagle picker a thumbnail preview.
+1. Inline images, next slices: a picture half off the bottom of the pane is skipped
+   (crop it instead); scroll-up/down and the wheel count lines, not image rows; a
+   thumbnail preview in the Eagle picker.
 2. org-roam: `C-c n c` capture a note with a prompt for the title, `C-c n t` add a tag
    (`#+filetags:`), backlinks buffer refresh, `C-c n g` graph (open in browser via dot?).
 3. Writing helpers through the agent (their Gemini/gptel map `C-c G`): translate,
@@ -42,6 +43,7 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-16 Org inline images: [[file:…png]] drawn under its line (rows reserved, click maps to the line, org-image-max-rows)
 - 2026-10-16 C-M-y pastes the clipboard image as img/日時.png + [[file:img/…]] (windy pasteboard + pixie, no pngpaste)
 - 2026-10-16 migemo: romaji finds kana and SKK-dictionary words in isearch and all completion prompts (src/migemo.nim, no cmigemo needed)
 - 2026-10-16 projects: C-x p f / p / b over the git root (src/project.nim tested), known roots in ~/.darger-projects

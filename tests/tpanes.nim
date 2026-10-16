@@ -135,6 +135,10 @@ block pointAt:
   doAssert gutterWidth(5) == 5 and gutterWidth(1000) == 6
   doAssert pointAt(lines, @[], 0, 0, 5, 5, 0) == (0, 0)      # the gutter's cells map to column 0
   doAssert pointAt(lines, @[], 0, 0, 5, 8, 1) == (1, 3)      # cell 8 - gutter 5 = column 3
+  # image rows under line 0: rows 1-2 belong to it (its end); line 1 is on row 3
+  doAssert pointAt(lines, @[], 0, 0, 5, 8, 1, extra = @[2]) == (0, lines[0].len)
+  doAssert pointAt(lines, @[], 0, 0, 5, 8, 2, extra = @[2]) == (0, lines[0].len)
+  doAssert pointAt(lines, @[], 0, 0, 5, 8, 3, extra = @[2]) == (1, 3)
   doAssert pointAt(lines, @[], 0, 0, 5, 40, 2) == (2, 5)     # past the end: the line's end
   doAssert pointAt(lines, @[], 2, 0, 5, 5, 1) == (3, 0)      # scrolled: row 1 is line 3
   doAssert pointAt(lines, @[], 0, 0, 5, 5, 9) == (4, 0)      # below the text: the last line

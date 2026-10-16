@@ -137,20 +137,29 @@ proc gutterWidth*(lineCount: int): int =
   ## The line-number gutter: right-aligned numbers at least 3 digits wide, then 2 cells.
   max(3, len($lineCount)) + 2
 
-proc pointAt*(lines: seq[seq[Rune]], fold: seq[int8], top, left, gutter, cx, cy: int): Point =
+proc pointAt*(lines: seq[seq[Rune]], fold: seq[int8], top, left, gutter, cx, cy: int,
+              extra: seq[int] = @[]): Point =
   ## The buffer point under text cell (cx, cy) of a pane scrolled to (top, left), skipping
-  ## hidden (folded) lines; below the last line, the end of the last shown line.
+  ## hidden (folded) lines; below the last line, the end of the last shown line. `extra`
+  ## gives the rows under each line (inline images); a click on them is the line's end.
   var line = max(0, min(top, lines.high))
   var row = 0
   var last = line
+  var onPicture = false
   while line <= lines.high:
     let hidden = line < fold.len and fold[line] == 1
     if not hidden:
       last = line
       if row == cy: break
       inc row
+      let below = if line < extra.len: max(0, extra[line]) else: 0
+      if cy < row + below:
+        onPicture = true
+        break
+      row += below
     inc line
   if line > lines.high: line = last
+  if onPicture: return (line, lines[line].len)
   let cell = max(0, left + cx - gutter)
   (line, min(runeCol(lines[line], cell), lines[line].len))
 

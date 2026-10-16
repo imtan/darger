@@ -605,24 +605,42 @@ proc titleBar(r: Renderer, window: Window, title: string, hover: TitleHit, maxim
     r.glyph(rune, x + (if width == 0: max(0, cell - 1) else: cell) * r.cellW, 0, theme.titleBarFg)
     cell += width
 
-type PaneView* = object
-  ## One pane to draw: its buffer, scroll (updated so the cursor stays in view) and
-  ## what the editor shows in it. Only the selected pane (active) draws the cursor,
-  ## the region, marks, the box and the input composition.
-  b*: Buffer
-  x*, y*, w*, h*: int
-  top*, left*: int
-  cursor*: Point
-  active*: bool
-  faces*: seq[seq[Face]]
-  marks*: seq[seq[int8]]   # per rune: 1-4 diagnostic underlines, 5 a plain underline
-  bgs*: seq[seq[int8]]     # per rune: 1-8 an ANSI background colour
-  fold*: seq[int8]
-  lineColors*: seq[int8]
-  lineNumbers*: bool
-  modeLine*: string
-  box*: CursorBox
-  matchStart*, matchLen*: int
+type
+  Picture* = object
+    ## An image drawn in the rows under a line (an Org inline image): already fitted.
+    line*: int
+    key*: string   ## the renderer's picture key (addPicture)
+    w*, h*: int    ## pixels
+
+  PaneView* = object
+    ## One pane to draw: its buffer, scroll (updated so the cursor stays in view) and
+    ## what the editor shows in it. Only the selected pane (active) draws the cursor,
+    ## the region, marks, the box and the input composition.
+    b*: Buffer
+    x*, y*, w*, h*: int
+    top*, left*: int
+    cursor*: Point
+    active*: bool
+    faces*: seq[seq[Face]]
+    marks*: seq[seq[int8]]   # per rune: 1-4 diagnostic underlines, 5 a plain underline
+    bgs*: seq[seq[int8]]     # per rune: 1-8 an ANSI background colour
+    fold*: seq[int8]
+    extra*: seq[int]         # rows under each line (inline images); missing = 0
+    pictures*: seq[Picture]
+    lineColors*: seq[int8]
+    lineNumbers*: bool
+    modeLine*: string
+    box*: CursorBox
+    matchStart*, matchLen*: int
+
+proc addPicture*(r: Renderer, key: string, img: Image) =
+  ## Keeps an image for Picture rows under `key` (replacing one with the same key).
+  if r.gpu.contains(key): r.gpu.removeImage(key)
+  r.gpu.addImage(key, img)
+
+proc hasPicture*(r: Renderer, key: string): bool = r.gpu.contains(key)
+proc removePicture*(r: Renderer, key: string) =
+  if r.gpu.contains(key): r.gpu.removeImage(key)
 
 proc drawPane(r: Renderer, window: Window, p: var PaneView, composition: seq[Rune],
               imeCursor: int, textCursor: bool) =
@@ -640,18 +658,20 @@ proc drawPane(r: Renderer, window: Window, p: var PaneView, composition: seq[Run
     cursor.col + (if showCursor: imeCursor else: 0))
   # Hidden (folded) lines take no row: rows count shown lines from the top.
   let fold = p.fold
+  let extra = p.extra
   var top = p.top  # (locals: a nested proc cannot capture the var parameter)
   var left = p.left
   proc hidden(n: int): bool = n < fold.len and fold[n] == 1
-  proc rowOf(n: int): int =  # the row line n lands on, counting shown lines from the top
+  proc below(n: int): int = (if n < extra.len: max(0, extra[n]) else: 0)  # image rows under line n
+  proc rowOf(n: int): int =  # the row line n lands on, counting shown lines (and their image rows) from the top
     for i in top..<n:
-      if not hidden(i): inc result
-  if cursor.line < top or rowOf(cursor.line) >= r.rows:
+      if not hidden(i): result += 1 + below(i)
+  if cursor.line < top or rowOf(cursor.line) + below(cursor.line) >= r.rows:
     top = cursor.line
-    var back = r.rows div 2
+    var back = r.rows div 2 - below(cursor.line)
     while top > 0 and back > 0:
       dec top
-      if not hidden(top): dec back
+      if not hidden(top): back -= 1 + below(top)
   let cursorRow = rowOf(cursor.line)
   if span.cell < left: left = span.cell
   if span.cell + span.width > left + cols: left = max(0, span.cell + span.width - cols)
@@ -690,6 +710,12 @@ proc drawPane(r: Renderer, window: Window, p: var PaneView, composition: seq[Run
       x0 = gutter, width = cols, bgs = if line < p.bgs.len: p.bgs[line] else: @[])
     offset += b.lines[line].len + 1
     inc row
+    # The rows under a line hold its picture, drawn when they all fit in the pane.
+    if below(line) > 0:
+      for pic in p.pictures:
+        if pic.line == line and row + below(line) <= r.rows and r.gpu.contains(pic.key):
+          r.gpu.drawImage(pic.key, rect(r.cellX(gutter).float32, r.rowY(row).float32, pic.w.float32, pic.h.float32))
+      row += below(line)
   if p.box.lines.len > 0 and p.box.line >= top and rowOf(p.box.line) < r.rows:
     r.cursorBox(p.box.lines, p.box.selected, gutter + p.box.cell - left, rowOf(p.box.line),
       p.box.maxRows, p.box.top, p.box.tags, p.box.details)

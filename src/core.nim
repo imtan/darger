@@ -258,6 +258,8 @@ var
   mouseFilters*: seq[proc(p: Pane, cx, cy, button: int, pressed: bool): bool]  # a click (button 0),
     # a wheel notch (64 up, 65 down) at frame cell (cx, cy) in pane p; true takes the event
   foldHook*: proc(buf: Buffer): seq[int8]  # per line: 0 shown, 1 hidden, 2 a headline hiding
+  pictureHook*: proc(buf: Buffer): tuple[extra: seq[int], pictures: seq[Picture]]
+    # inline images: rows under each line and the pictures drawn there (ext/orgimage)
                                            # the lines after it (drawn with "..."); empty = none
   revealHook*: proc(buf: Buffer, line: int)  # show a hidden line: open the folds over it
   visitHooks*: seq[proc()]           # after visit() loads a file into a new buffer
@@ -302,6 +304,9 @@ proc imeStarted*() =
 
 # ---- Folds: lines an extension hides (Org subtrees); the cursor and scrolling skip them
 proc folds*(buf: Buffer): seq[int8] = (if foldHook != nil: foldHook(buf) else: @[])
+proc pictures*(buf: Buffer): tuple[extra: seq[int], pictures: seq[Picture]] =
+  if pictureHook != nil: pictureHook(buf) else: (@[], @[])
+proc rowsBelow*(extra: seq[int], n: int): int = (if n < extra.len: max(0, extra[n]) else: 0)
 proc hiddenLine*(fold: seq[int8], n: int): bool = n < fold.len and fold[n] == 1
 proc shownLine*(fold: seq[int8], count, n, direction: int): int =
   ## The nearest shown line from n (n itself when shown) in direction; -1 when none.
@@ -316,10 +321,10 @@ proc stepShown*(fold: seq[int8], count, n, delta: int): int =
     let next = shownLine(fold, count, result + direction, direction)
     if next < 0: break
     result = next
-proc shownBetween*(fold: seq[int8], a, z: int): int =
-  ## The shown lines among a..<z.
+proc shownBetween*(fold: seq[int8], a, z: int, extra: seq[int] = @[]): int =
+  ## The rows the shown lines among a..<z take (with their image rows).
   for n in a..<z:
-    if not hiddenLine(fold, n): inc result
+    if not hiddenLine(fold, n): result += 1 + rowsBelow(extra, n)
 
 proc settleFolds*() =
   ## The cursor never rests on a hidden line: after a movement it skips the fold in the
@@ -487,7 +492,8 @@ proc mouseEvent*(cx, cy, button: int, pressed: bool): bool =
 proc windmove*(dx, dy: int) =
   ## C-c <arrow>: the window in that direction from the cursor, as windmove does.
   layoutPanes()
-  let row = clamp(pane.y + shownBetween(folds(b), renderer.top, b.cursor.line), pane.y, pane.y + pane.h - 1)
+  let row = clamp(pane.y + shownBetween(folds(b), renderer.top, b.cursor.line, pictures(b).extra),
+    pane.y, pane.y + pane.h - 1)
   let col = clamp(pane.x + gutterFor(b) + b.cellCol(b.cursor) - renderer.left, pane.x, pane.x + pane.w - 1)
   let next = layout.neighbour(pane, dx, dy, col, row)
   if next == nil:
@@ -502,7 +508,8 @@ proc clickAt*(cx, cy: int) =
   if p == nil: return
   if p != pane: selectPane(p)
   if cy - p.y >= p.h - 1: return
-  b.cursor = pointAt(b.lines, folds(b), renderer.top, renderer.left, gutterFor(b), cx - p.x, cy - p.y)
+  b.cursor = pointAt(b.lines, folds(b), renderer.top, renderer.left, gutterFor(b), cx - p.x, cy - p.y,
+    pictures(b).extra)
   b.regionActive = false
   b.goal = -1
   moveDirection = 0
@@ -1513,7 +1520,7 @@ definePrompt(Prompt(kind: "line", text: true, consult: true, candidates: lineRow
 
 tickHooks.add pollInit
 
-proc langOf(buf: Buffer): Lang =
+proc langOf*(buf: Buffer): Lang =
   ## A non-selected pane's buffer language: from its slot, else detected now.
   if buf == b: return lang
   if buf in reg:
@@ -1594,6 +1601,7 @@ proc redraw*(hover = thNone, maximized = false) =
   let tag = if view != nil and view.tag.len > 0: view.tag else: inputMethod.tag()
   # The selected pane shows the view or b with everything; the others their buffer plainly.
   let leaves = layout.leaves
+  let shownPictures = pictures(b)
   var views: seq[PaneView]
   for p in leaves:
     if p == pane:
@@ -1602,6 +1610,8 @@ proc redraw*(hover = thNone, maximized = false) =
         faces: displayFaces, marks: if displayed == b: shownMarks else: @[],
         bgs: if displayed == b: provided(backProviders, b) else: @[],
         fold: if displayed == b: folds(b) else: @[],
+        extra: if displayed == b: shownPictures.extra else: @[],
+        pictures: if displayed == b: shownPictures.pictures else: @[],
         lineColors: if view != nil and view.colors != nil: view.colors() else: @[],
         lineNumbers: displayed == b and gutterFor(b) > 0,
         modeLine: modeLineText(displayed, name, displayed.cursor, modeName, tag),
@@ -1611,8 +1621,10 @@ proc redraw*(hover = thNone, maximized = false) =
       let buf = p.buf
       let line = min(p.cursor.line, buf.lines.high)
       p.cursor = (line, min(p.cursor.col, buf.lines[line].len))
+      let pics = pictures(buf)
       views.add PaneView(b: buf, x: p.x, y: p.y, w: p.w, h: p.h, top: p.top, left: p.left,
         cursor: p.cursor, active: false, faces: facesOf(buf), fold: folds(buf), lineNumbers: gutterFor(buf) > 0,
+        extra: pics.extra, pictures: pics.pictures,
         bgs: provided(backProviders, buf), marks: provided(markProviders, buf),
         modeLine: modeLineText(buf, reg.displayName(buf), p.cursor, langOf(buf).name, ""),
         matchStart: -1)

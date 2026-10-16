@@ -23,6 +23,10 @@ doAssert $cycleTodo(rs"* DONE") == "* "
 doAssert $cycleTodo(rs"plain") == "plain"
 
 doAssert clipboardImageName(dateTime(2026, mOct, 16, 15, 7, 9)) == "img/2026-10-16-15-07-09.png"
+doAssert imageLink(rs"see [[file:img/a.png]] here") == "img/a.png"
+doAssert imageLink(rs"[[file:~/Dropbox/L.library/images/X.info/山.JPG][photo]]") == "~/Dropbox/L.library/images/X.info/山.JPG"
+doAssert imageLink(rs"[[file:notes.org]] then [[file:b.webp]]") == "b.webp"
+doAssert imageLink(rs"[[file:notes.org]] [[https://x/y.png]]") == "" and imageLink(rs"plain") == ""
 
 # the keyword sequence from org-todo-keywords
 setTodoKeywords(@["TODO(t)", "NEXT(n)", "WAITING(w)", "|", "DONE(d)"])

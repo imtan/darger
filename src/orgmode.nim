@@ -394,6 +394,23 @@ proc fillTemplate*(tmpl, text: string, t: DateTime): string =
     of '%': result.add '%'
     else: result.add '%' & c
 
+const imageExtensions* = ["png", "jpg", "jpeg", "gif", "webp", "bmp"]
+
+proc imageLink*(line: seq[Rune]): string =
+  ## The file an inline image link on the line points to: the first `[[file:PATH]]` or
+  ## `[[file:PATH][description]]` whose PATH has an image extension; "" when none.
+  let s = $line
+  var i = 0
+  while true:
+    let a = s.find("[[file:", i)
+    if a < 0: return ""
+    let z = s.find("]", a)
+    if z < 0: return ""
+    let path = s[a + 7 ..< z]
+    let (_, _, ext) = splitFile(path)
+    if ext.len > 1 and ext[1..^1].toLowerAscii in imageExtensions: return path
+    i = z + 1
+
 proc clipboardImageName*(t: DateTime): string =
   ## Where a pasted image goes, relative to the Org file: img/YYYY-mm-dd-HH-MM-SS.png,
   ## as the user's Emacs command names them.
