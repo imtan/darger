@@ -84,10 +84,9 @@ window.onButtonPress = proc(key: Button) =
     let hit = renderer.titleHit(window, window.mousePos)
     pressed = if hit in titleButtons: hit else: thNone
     grab = if pressed == thNone: window.mousePos else: ivec2(-1, -1)
-    if hit == thNone and mode.len == 0:  # a click in another pane selects it (the drag still moves the window)
+    if hit == thNone and mode.len == 0:  # a click in the text places the cursor (the drag still moves the window)
       let (cx, cy) = renderer.cellAt(window.mousePos)
-      let p = layout.paneAt(cx, cy)
-      if p != nil and p != pane: selectPane(p)
+      clickAt(cx, cy)
     grabSize = window.size
     let ui = window.uiScale
     let corner = int32(32 * ui)
@@ -238,8 +237,19 @@ window.onResize = draw
 removeStaleExe()
 if not openSystemFiles(launchFiles) and args.len == 0 and startScreen != nil: startScreen()  # the dashboard over an empty *scratch*
 var lastDraw = 0.0
+var wheel = 0.0  # fractional wheel lines carried between frames
 while running and not window.closed:
   pollEvents()
+  let scroll = window.scrollDelta
+  if scroll.y != 0 and mode.len == 0:
+    wheel -= scroll.y * 3  # a notch scrolls three lines; up (positive) shows earlier text
+    let lines = int(wheel)
+    if lines != 0:
+      wheel -= lines.float
+      let (cx, cy) = renderer.cellAt(window.mousePos)
+      try: wheelAt(cx, cy, lines)
+      except CatchableError as e: echoLine = e.msg
+      dirty = true
   when defined(macosx):
     if openSystemFiles(takeOpenedFiles()): dirty = true  # from Finder, Spotlight or `open -a darger` while running
   if runTicks(): dirty = true

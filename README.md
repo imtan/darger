@@ -133,7 +133,10 @@ the left on macOS, on the right elsewhere). Dragging anywhere with the left butt
 moves the window, dragging its right or bottom edge (6 px) or its bottom right corner
 (32 px) resizes it, and a double click on the title bar toggles maximized, which covers
 the whole screen including the taskbar (on macOS, the screen beside the menu bar and
-the Dock). A click in another window selects it; the mouse does nothing else. On macOS, windy 0.5.0 registers its borderless
+the Dock). A click in the text selects that window and puts the cursor there (the mark
+is deactivated); the wheel scrolls the window under the pointer three lines a notch,
+moving its cursor only as far as needed to keep it in view, as Emacs does. The mouse does
+nothing else. On macOS, windy 0.5.0 registers its borderless
 window's `canBecomeKeyWindow` override under the wrong selector, so such a window never
 takes keyboard focus; the patched backend above registers the real one (re-check on
 any windy bump). macOS itself takes C-SPC for "Select the previous input source"

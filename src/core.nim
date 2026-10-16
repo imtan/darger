@@ -435,6 +435,45 @@ proc deleteOtherPanes*() =
   layout.keepOnly(pane)
   layoutPanes()
 
+proc clickAt*(cx, cy: int) =
+  ## Mouse-1 on a text cell: that pane is selected and its point goes there (the mark
+  ## is deactivated, as in Emacs). A click on a mode line only selects the pane.
+  let p = layout.paneAt(cx, cy)
+  if p == nil: return
+  if p != pane: selectPane(p)
+  if cy - p.y >= p.h - 1: return
+  b.cursor = pointAt(b.lines, folds(b), renderer.top, renderer.left, gutterWidth(b.lines.len), cx - p.x, cy - p.y)
+  b.regionActive = false
+  b.goal = -1
+  moveDirection = 0
+
+proc wheelAt*(cx, cy, delta: int) =
+  ## The wheel scrolls the pane under the pointer by delta lines (positive = down); its
+  ## point follows to stay in view, as mwheel-scroll does, without selecting the pane.
+  let p = layout.paneAt(cx, cy)
+  if p == nil or delta == 0: return
+  let buf = if p == pane: b else: p.buf
+  let fold = folds(buf)
+  let count = buf.lines.len
+  let rows = max(1, p.h - 1)
+  var top = if p == pane: renderer.top else: p.top
+  var cursor = if p == pane: b.cursor else: p.cursor
+  let last = shownLine(fold, count, buf.lines.high, -1)
+  let maxTop = max(0, stepShown(fold, count, last, -(rows - 1)))
+  top = clamp(stepShown(fold, count, top, delta), 0, maxTop)
+  let bottom = stepShown(fold, count, top, rows - 1)
+  if cursor.line < top: cursor.line = max(0, shownLine(fold, count, top, 1))
+  elif cursor.line > bottom: cursor.line = bottom
+  cursor.col = min(cursor.col, buf.lines[cursor.line].len)
+  if p == pane:
+    renderer.top = top
+    b.cursor = cursor
+    b.goal = -1
+    moveDirection = 0
+  else:
+    p.top = top
+    p.cursor = cursor
+
 proc ctrl*(): bool = window.buttonDown[KeyLeftControl] or window.buttonDown[KeyRightControl]
 proc alt*(): bool =
   # meta-modifier: "alt" or "cmd" (the macOS default), like Emacs' mac-command-modifier.

@@ -1,3 +1,4 @@
+import std/unicode
 import ../src/[panes, buffer]
 
 proc pane(): Pane = Pane(buf: newBuffer())
@@ -62,3 +63,18 @@ block tooSmall:
   doAssert p.canSplit(true) and p.canSplit(false)
 
 echo "panes ok"
+
+block pointAt:
+  proc rs(s: string): seq[Rune] = s.toRunes
+  let lines = @[rs"line one", rs"second", rs"third", rs"fourth", rs"last"]
+  doAssert gutterWidth(5) == 5 and gutterWidth(1000) == 6
+  doAssert pointAt(lines, @[], 0, 0, 5, 5, 0) == (0, 0)      # the gutter's cells map to column 0
+  doAssert pointAt(lines, @[], 0, 0, 5, 8, 1) == (1, 3)      # cell 8 - gutter 5 = column 3
+  doAssert pointAt(lines, @[], 0, 0, 5, 40, 2) == (2, 5)     # past the end: the line's end
+  doAssert pointAt(lines, @[], 2, 0, 5, 5, 1) == (3, 0)      # scrolled: row 1 is line 3
+  doAssert pointAt(lines, @[], 0, 0, 5, 5, 9) == (4, 0)      # below the text: the last line
+  let fold = @[0'i8, 1, 1, 0, 0]                            # lines 1-2 hidden
+  doAssert pointAt(lines, fold, 0, 0, 5, 5, 1) == (3, 0)     # row 1 skips the fold
+  doAssert pointAt(lines, fold, 0, 3, 5, 6, 0) == (0, 4)     # horizontal scroll adds to the column
+  let wide = @[rs"日本語テキスト"]
+  doAssert pointAt(wide, @[], 0, 0, 0, 3, 0) == (0, 1)       # wide runes take two cells

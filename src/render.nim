@@ -1,5 +1,6 @@
 import std/[os, unicode, sets, tables, math, strutils]
 import windy, boxy, pixie, opengl
+import panes
 import buffer, syntax
 when not defined(windows) and not defined(macosx): import std/osproc
 
@@ -621,7 +622,7 @@ proc drawPane(r: Renderer, window: Window, p: var PaneView, composition: seq[Run
   let showCursor = p.active and textCursor
   # The gutter: right-aligned numbers, at least 3 digits wide so it rarely shifts, and
   # 2 empty cells before the text.
-  let gutter = if p.lineNumbers: max(3, len($b.lines.len)) + 2 else: 0
+  let gutter = if p.lineNumbers: gutterWidth(b.lines.len) else: 0
   let cols = max(1, r.cols - gutter)
   let comp = if showCursor: composition else: @[]
   let cursor = if p.active: b.cursor else: p.cursor
