@@ -281,6 +281,7 @@ fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK
 | Other window / delete window / delete other windows | C-x o / C-x 0 / C-x 1 |
 | Enlarge window / wider / narrower / balance | C-x ^ / C-x } / C-x { / C-x + |
 | Buffer / file in the other window | C-x 4 b / C-x 4 f |
+| Window in a direction (windmove) | C-c left / right / up / down |
 | Incremental search forward / backward | C-s / C-r; repeat for next / previous |
 | Cancel | C-g |
 | SKK Japanese input on / off | C-\ or C-x C-j |
@@ -300,6 +301,7 @@ fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK
 | Org: fold the headline / the whole file | TAB / Shift-TAB |
 | Org: journal entry / capture | C-c j / C-c t |
 | org-roam: find / insert link / backlinks / today | C-c n f / C-c n i / C-c n l / C-c n d |
+| org-roam: today's daily with a time entry | C-c n j |
 
 Search ignores case for all-lowercase queries. Typing extends the current match; a
 search that hits the buffer edge shows `Failing I-search`, and repeating C-s/C-r
@@ -485,7 +487,8 @@ the window above or below it, C-x } / C-x { (`enlarge-window-horizontally` /
 C-x + (`balance-windows`) shares every split by the number of windows on each side.
 C-x 4 b and C-x 4 f (`switch-to-buffer-other-window`, `find-file-other-window`) ask
 for a buffer or a file and show it in the next window, splitting when there is only
-one. Each window has its
+one. C-c left / right / up / down (`windmove-left` …) select the window in that
+direction from the cursor, as windmove does. Each window has its
 own buffer, point and scroll (a buffer shown in two windows has a point in each),
 and its own mode line; the selected window's is bright, the others dimmed, and a `│`
 column separates side-by-side windows. A split is refused when a half would be
@@ -680,7 +683,8 @@ title (or M-Enter to take the typed title while matches are listed) creates
 `<timestamp>-<slug>.org` and opens it. C-c n i inserts `[[id:…][Title]]` at point
 (an active region becomes the title and is replaced). C-c n l lists the notes
 linking to the current one with the linking line, previewed like references.
-C-c n d opens today's `daily/YYYY-MM-DD.org`, creating it. `M-x org-id-get-create`
+C-c n d opens today's `daily/YYYY-MM-DD.org`, creating it; C-c n j
+(`org-roam-dailies-capture-today`) opens it and adds a `* HH:MM ` headline at the end. `M-x org-id-get-create`
 gives any Org file an ID, making it a note.
 
 ## Architecture

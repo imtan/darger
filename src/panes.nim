@@ -153,3 +153,20 @@ proc pointAt*(lines: seq[seq[Rune]], fold: seq[int8], top, left, gutter, cx, cy:
   if line > lines.high: line = last
   let cell = max(0, left + cx - gutter)
   (line, min(runeCol(lines[line], cell), lines[line].len))
+
+proc neighbour*(l: Layout, p: Pane, dx, dy: int, rx, ry: int): Pane =
+  ## The nearest pane in direction (dx, dy) from p that the line through the reference
+  ## cell (rx, ry) crosses, as windmove picks the window next to point; nil when none.
+  var best: Pane
+  var distance = int.high
+  for q in l.leaves:
+    if q == p: continue
+    if dx != 0:
+      if ry < q.y or ry >= q.y + q.h: continue
+      let d = if dx > 0: q.x - (p.x + p.w) else: p.x - (q.x + q.w)
+      if d >= 0 and d < distance: (best = q; distance = d)
+    else:
+      if rx < q.x or rx >= q.x + q.w: continue
+      let d = if dy > 0: q.y - (p.y + p.h) else: p.y - (q.y + q.h)
+      if d >= 0 and d < distance: (best = q; distance = d)
+  best

@@ -100,6 +100,24 @@ block balanceThree:  # three side-by-side panes get equal widths, not 1/2 1/4 1/
   l.place(0, 0, 92, 24, bars)
   doAssert p.w == 30 and q.w == 30 and r.w == 30, $(p.w, q.w, r.w)
 
+block windmove:
+  let p = pane()
+  let q = pane()
+  let r = pane()
+  let l = newLayout(p)
+  var bars: seq[Bar]
+  l.place(0, 0, 80, 24, bars)
+  l.split(p, false, q)            # p | q
+  l.place(0, 0, 80, 24, bars)
+  l.split(q, true, r)             # q above r on the right
+  bars = @[]
+  l.place(0, 0, 80, 24, bars)
+  doAssert l.neighbour(p, 1, 0, 5, 3) == q and l.neighbour(p, 1, 0, 5, 20) == r   # the row decides
+  doAssert l.neighbour(q, -1, 0, 50, 3) == p and l.neighbour(r, -1, 0, 50, 20) == p
+  doAssert l.neighbour(q, 0, 1, 50, 3) == r and l.neighbour(r, 0, -1, 50, 20) == q
+  doAssert l.neighbour(p, -1, 0, 5, 3) == nil and l.neighbour(p, 0, 1, 5, 3) == nil
+  doAssert l.neighbour(q, 1, 0, 50, 3) == nil
+
 block tooSmall:
   let p = pane()
   let l = newLayout(p)

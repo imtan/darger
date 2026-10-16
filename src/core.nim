@@ -77,6 +77,10 @@ const
 (global-set-key "C-x +" 'balance-windows)
 (global-set-key "C-x 4 b" 'switch-to-buffer-other-window)
 (global-set-key "C-x 4 f" 'find-file-other-window)
+(global-set-key "C-c left" 'windmove-left)
+(global-set-key "C-c right" 'windmove-right)
+(global-set-key "C-c up" 'windmove-up)
+(global-set-key "C-c down" 'windmove-down)
 (global-set-key "C-x right" 'next-buffer)
 (global-set-key "C-x left" 'previous-buffer)
 (global-set-key "M-g l" 'consult-line)
@@ -479,6 +483,17 @@ proc mouseEvent*(cx, cy, button: int, pressed: bool): bool =
   if p == nil: return false
   for filter in mouseFilters:
     if filter(p, cx, cy, button, pressed): return true
+
+proc windmove*(dx, dy: int) =
+  ## C-c <arrow>: the window in that direction from the cursor, as windmove does.
+  layoutPanes()
+  let row = clamp(pane.y + shownBetween(folds(b), renderer.top, b.cursor.line), pane.y, pane.y + pane.h - 1)
+  let col = clamp(pane.x + gutterFor(b) + b.cellCol(b.cursor) - renderer.left, pane.x, pane.x + pane.w - 1)
+  let next = layout.neighbour(pane, dx, dy, col, row)
+  if next == nil:
+    echoLine = "No window " & (if dx > 0: "right" elif dx < 0: "left" elif dy > 0: "below" else: "above")
+    return
+  selectPane(next)
 
 proc clickAt*(cx, cy: int) =
   ## Mouse-1 on a text cell: that pane is selected and its point goes there (the mark
@@ -1363,6 +1378,12 @@ interp.defPrimitive("find-file-other-window", proc(args: seq[Value]): Value =
   selectPane(otherPaneFor())
   findPrompt()
   nilValue())
+for (name, dx, dy) in [("windmove-left", -1, 0), ("windmove-right", 1, 0), ("windmove-up", 0, -1), ("windmove-down", 0, 1)]:
+  let (dx, dy) = (dx, dy)
+  interp.defPrimitive(name, proc(args: seq[Value]): Value =
+    args.arity(0, 0)
+    windmove(dx, dy)
+    nilValue())
 interp.defPrimitive("other-window", proc(args: seq[Value]): Value =
   args.arity(0, 0)
   selectPane(layout.next(pane, 1))

@@ -418,13 +418,27 @@ interp.defPrimitive("org-roam-buffer-toggle", proc(args: seq[Value]): Value =
     refRows.add l.title & "  " & l.text
   beginMini("backlinks", "Backlinks: ")
   nilValue())
+proc openDaily(): string =
+  ## Today's org-roam daily note, created when missing; returns its path.
+  result = dailyPath(roamDir(), now())
+  if not fileExists(result):
+    createDir(parentDir(result))
+    writeFile(result, newNoteText(newId(), now().format("yyyy-MM-dd")))
+  visit(result)
+
 interp.defPrimitive("org-roam-dailies-today", proc(args: seq[Value]): Value =
   args.arity(0, 0)
-  let path = dailyPath(roamDir(), now())
-  if not fileExists(path):
-    createDir(parentDir(path))
-    writeFile(path, newNoteText(newId(), now().format("yyyy-MM-dd")))
-  visit(path)
+  discard openDaily()
+  nilValue())
+interp.defPrimitive("org-roam-dailies-capture-today", proc(args: seq[Value]): Value =
+  ## C-c n j: today's daily with a new "* HH:MM " headline at the end, cursor after it.
+  args.arity(0, 0)
+  discard openDaily()
+  let entry = "* " & now().format("HH:mm") & " "
+  b.snapshot()
+  b.splice(0, b.text.runeLen, appendedText(b.text, entry))
+  b.cursor = b.point(b.text.runeLen)
+  b.last = "edit"
   nilValue())
 
 proc roamRowsNow*(): seq[string] = roamRows
@@ -489,4 +503,5 @@ defaults.add """
 (global-set-key "C-c n i" 'org-roam-node-insert)
 (global-set-key "C-c n l" 'org-roam-buffer-toggle)
 (global-set-key "C-c n d" 'org-roam-dailies-today)
+(global-set-key "C-c n j" 'org-roam-dailies-capture-today)
 """
