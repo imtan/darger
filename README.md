@@ -278,6 +278,7 @@ fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK
 | Open the init file `~/.darger.el` | C-c , |
 | Web browser (eww) / RSS reader | C-c w / C-c r |
 | GLSL buffer: shader apply / picture only / clear | C-c C-c / C-c C-o / C-c C-k |
+| Shell buffer / interrupt / end-of-file | C-c s / C-c C-c / C-d |
 | Org: TODO / checkbox / new item | C-c C-t / C-c C-c / M-Enter |
 | Org: promote / demote / move subtree up / down | M-Left / M-Right / M-Up / M-Down |
 | Org: headline list / open link / timestamp | C-c C-j / C-c C-o / C-c . |
@@ -325,6 +326,19 @@ and name; directory names have a trailing `/` and are highlighted.
   fallback. Trash is unsupported on other platforms.
 - q / C-g / Escape closes the filer. C-g / Escape cancels a create/rename prompt
   and returns to the listing.
+
+## Shell
+
+C-c s (`M-x shell`) opens `*shell*`, a comint-style shell buffer (macOS / Linux):
+`shell-file-name` (default `$SHELL`, else `/bin/sh`) runs on a pseudo-terminal in the
+current file's directory with `TERM=dumb`, `INSIDE_DARGER=1` and `PAGER=cat`. Its
+output, with escape sequences, carriage returns and backspaces applied, fills the top
+of the buffer; what you type after it is a command, sent with Enter (the pty does not
+echo, so the line stays as typed and the output follows), C-c C-c interrupts
+(`SIGINT`), and C-d at an empty command sends end-of-file. The output keeps about
+400 KB. The buffer never needs saving; killing it, or quitting, hangs the shell up,
+and C-c s after the shell exited (`Process shell finished`) starts a new one. This
+is the first slice of the terminal: line mode, no colours, no full-screen programs.
 
 ## Background shader
 

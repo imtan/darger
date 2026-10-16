@@ -19,9 +19,9 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
 
 ## Open
 
-1. Terminal buffer (vterm replacement) — slice 1: spawn a shell on a pty, show its
-   output in a buffer, send typed lines; slice 2: raw key mode and ANSI colours;
-   slice 3: `claude` in it with C-c C c-style bindings (send region / file).
+1. Terminal buffer — slice 2: a `term` raw-key mode (every key to the pty, cursor
+   addressing / screen model for full-screen programs) and ANSI colours; slice 3:
+   `claude` in it with C-c C c-style bindings (send region / file, side window).
 2. Mouse in the text: click places the cursor, wheel scrolls the pane under it.
 3. SKK: `skk-egg-like-newline` variable (Enter inserts a newline after kakutei when
    nil, as DDSKK's default); zenkaku latin `L`; `l`-prefixed small kana.
@@ -39,5 +39,6 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-16 terminal slice 1: M-x shell / C-c s comint-style *shell* on a pty (src/pty.nim, src/termtext.nim, src/ext/term.nim), Enter sends, C-c C-c interrupts, C-d EOF
 - 2026-10-16 background shader (user request): GLSL under the text, C-c C-c / C-c C-o / C-c C-k in GLSL buffers, live re-apply, errors to *shader* (src/ext/shader.nim, src/shadersrc.nim)
 - 2026-10-15 auto-revert: unedited buffers follow their files, saving over a changed file asks, M-x revert-buffer (src/ext/revert.nim, Buffer.revert)
