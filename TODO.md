@@ -20,14 +20,13 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
 
 ## Open
 
-(2026-10-16: reordered after comparing ~/.emacs.d/config.org with darger; the Emacs
-keys the user has are the reference)
+(2026-10-16: reordered after comparing ~/.emacs.d/config.org with darger. The user's
+rule: only add what is missing; never rebind or remove existing darger keys.)
 
-1. Key parity with the user's Emacs: `C-c a` org-agenda (agent-prompt moves to
-   `C-c C p`), `C-c c` org-capture (agent-chat moves to `C-c C a`), `C-c w` the RSS
-   reader (elfeed; eww to `C-c W`), `C-c f` freed (forward-word is M-f), windmove
-   `C-c <left/right/up/down>` to the window in that direction, `C-c n s` grep over
-   `~/Dropbox/Org` (see 2), `C-c n j` journal entry too (org-roam-dailies-capture-today).
+1. Additive keys only (the user asked to add what is missing, not to rebind what
+   exists): windmove `C-c <left/right/up/down>` to the window in that direction,
+   `C-c n s` grep over `~/Dropbox/Org` (see 2), `C-c n j` journal entry
+   (org-roam-dailies-capture-today). Existing darger keys stay as they are.
 2. `consult-ripgrep`: grep a directory (default the project root, `C-c n s` the Org
    directory) with `rg` (else `grep -rn`), results as a consult list with preview.
 3. Org TODO keywords: `(setq org-todo-keywords '("TODO" "NEXT" "WAITING" "|" "DONE"))`
