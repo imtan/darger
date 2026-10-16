@@ -80,6 +80,7 @@ proc clearShader*() =
   if program != 0: glDeleteProgram(program)
   program = 0
   renderer.background = nil
+  renderer.pictureOnly = false
   shaderPath = ""
 
 proc applySource*(text: string, path = ""): bool =
@@ -117,7 +118,8 @@ proc applySource*(text: string, path = ""): bool =
   shaderPath = path
   if path.len > 0 and fileExists(path): shaderStamp = getLastModificationTime(path)
   renderer.background = drawBackground
-  renderer.backgroundDim = if dimmed: dim() else: 0
+  renderer.backgroundDim = dim()
+  renderer.pictureOnly = not dimmed
   echoLine = "Shader applied" & (if path.len > 0: ": " & shortPath(path) else: "")
   true
 
@@ -133,9 +135,11 @@ proc applyBuffer*() =
   discard applySource(core.b.text, core.b.path)
 
 proc toggleDim*() =
+  ## C-c C-o: the picture alone (no text at all), or back behind the text.
   dimmed = not dimmed
-  renderer.backgroundDim = if dimmed: dim() else: 0
-  echoLine = if dimmed: "Shader behind the text" else: "Shader alone (C-c C-o to dim)"
+  renderer.pictureOnly = not dimmed
+  renderer.backgroundDim = dim()
+  echoLine = if dimmed: "Shader behind the text" else: "Shader alone (C-c C-o to come back)"
 
 tickHooks.add proc(): bool =
   if program == 0: return false

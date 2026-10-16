@@ -404,8 +404,9 @@ the picture alone). The file is either Shadertoy-style, a `mainImage(out vec4
 fragColor, in vec2 fragCoord)` with `iResolution`, `iTime`, `iMouse` and `iFrame`
 available, or a whole `#version 410 core` fragment shader with its own `main` and
 `out`. In a GLSL buffer (`.glsl .frag .vert .fs .vs`, highlighted) C-c C-c applies
-the buffer's text, C-c C-o toggles between the picture alone and the dimmed
-background, and C-c C-k clears it; `M-x background-shader` (the buffer),
+the buffer's text, C-c C-o toggles between the picture alone (no text, mode lines or
+echo line, only the title bar; keys still work, so C-c C-o brings the text back) and
+the dimmed background, and C-c C-k clears it; `M-x background-shader` (the buffer),
 `background-shader-toggle` and `background-shader-clear` do the same anywhere.
 Saving the applied file, or changing it on disk, re-applies it, so a shader can be
 written while it runs. A compile error leaves the previous shader running and puts

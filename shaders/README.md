@@ -6,7 +6,7 @@ to see the picture alone, C-c C-k to stop it; or start with it:
 
 ```lisp
 (background-shader "~/path/to/darger/shaders/stars.glsl")
-(setq background-shader-dim 0.6)   ; 0 = picture only
+(setq background-shader-dim 0.6)   ; the text background's opacity over the picture
 ```
 
 `mainImage(out vec4 fragColor, in vec2 fragCoord)` receives `iResolution`, `iTime`,

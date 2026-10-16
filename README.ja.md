@@ -380,7 +380,8 @@ NeoEmacs のフレームシェーダーと同じように、GLSL のフラグメ
 形式 (`mainImage(out vec4 fragColor, in vec2 fragCoord)`。`iResolution`、`iTime`、`iMouse`、
 `iFrame` が使える) か、独自の `main` と `out` を持つ `#version 410 core` のフラグメント
 シェーダー全体です。GLSL バッファ (`.glsl .frag .vert .fs .vs`。ハイライトあり) では C-c C-c で
-バッファの内容を適用、C-c C-o で絵だけ ↔ うっすら背景を切り替え、C-c C-k で解除します。
+バッファの内容を適用、C-c C-o で絵だけ (文字もモードラインもエコー行も消え、タイトルバーだけ残る。
+キーは効くので、もう一度 C-c C-o で文字が戻る) ↔ うっすら背景を切り替え、C-c C-k で解除します。
 `M-x background-shader` (バッファを適用)、`background-shader-toggle`、`background-shader-clear`
 はどこからでも使えます。適用中のファイルを保存するか、ディスク上で変わると再適用されるので、
 動かしながら書けます。コンパイルエラーのときは前のシェーダーが動いたまま、GL のログが

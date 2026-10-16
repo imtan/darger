@@ -20,7 +20,8 @@ type
     frameRows*, frameCols*: int  # the text area in cells: every pane and mode line, not the echo line
     px, py, pw, ph: int   # the pane being drawn: its cell origin and size (ph includes its mode line)
     background*: proc()   # draws under everything (a shader); nil = the theme's background colour
-    backgroundDim*: float32  # the theme background's opacity laid over it, 0 (picture only) .. 1
+    backgroundDim*: float32  # the theme background's opacity laid over it, 0 .. 1
+    pictureOnly*: bool    # show the background alone: no text, mode lines or echo line
     candTop: int  # first candidate row shown in the popup
   Anchor* = enum atTop, atBottom
   CursorBox* = object   ## a completion or hover box hanging from a buffer position
@@ -709,6 +710,11 @@ proc draw*(r: Renderer, window: Window, panes: var seq[PaneView], bars: seq[tupl
   let whole = rect(0, 0, window.size.x.float32, window.size.y.float32)
   if r.background != nil:
     r.background()
+    if r.pictureOnly:  # C-c C-o: the picture alone, under the title bar
+      r.titleBar(window, title, hover, maximized)
+      r.gpu.endFrame()
+      window.swapBuffers()
+      return
     let a = clamp(r.backgroundDim, 0, 1)  # premultiplied: boxy blends with ONE, ONE_MINUS_SRC_ALPHA
     r.gpu.drawRect(whole, color(theme.bg.r * a, theme.bg.g * a, theme.bg.b * a, a))
   else: r.gpu.drawRect(whole, theme.bg)
