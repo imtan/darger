@@ -51,6 +51,9 @@ var
   reviewSource = "Agent"  # what the proposed text is: the agent, the file on disk, git HEAD, a file
   reviewRequest = false   # the running agent answers a request for changes to the open review
   reviewExplain = false   # the running agent explains a hunk (x)
+  reviewAsk = false       # the running agent answers a question about a hunk (X)
+  reviewReadOnly = false  # a comparison (branch base -> buffer): nothing is taken, only understood
+  askQuestion = ""
   explainHunk = -1
   explained: seq[bool]        # per hunk: an explanation was read
   explanations: seq[string]   # per hunk: the explanation
@@ -82,29 +85,47 @@ proc showExplain(text: string) =
     other.top = 0
     other.cursor = (0, 0)
 
+proc currentRoot(): string = rootFromDir(if b.path.len > 0: parentDir(b.path) else: getCurrentDir())
+
+proc git(root, args: string): tuple[output: string, ok: bool] =
+  let (output, code) = execCmdEx("git -C " & quoteShell(root) & " " & args, options = {poUsePath})
+  (strutils.strip(output), code == 0)
+
+proc fileRev(root, path: string): string =
+  ## The file's last-change commit (short), "" outside git or for an uncommitted file.
+  if root.len == 0 or not (dirExists(root / ".git") or fileExists(root / ".git")): return ""
+  let (output, ok) = git(root, "log -1 --format=%h -- " & quoteShell(path))
+  if ok: output else: ""
+
 proc recordUnderstanding() =
-  ## The hunks taken go to the ledger: debt (TODO) unless explained (DONE). Reviews
-  ## against git HEAD or another file are comparisons, not new code, and are skipped.
+  ## The ledger entries: for the agent's or the disk's proposal, every hunk taken
+  ## (DONE when explained or attested, else TODO: debt); for a branch-base review,
+  ## every hunk (the branch's own work, understood or not), with the file's commit.
   let path = ledgerPath()
-  if path.len == 0 or reviewSource notin ["Agent", "file on disk"]: return
+  if path.len == 0 or reviewSource notin ["Agent", "file on disk", "branch base"]: return
+  let root = currentRoot()
+  let branch = branchOf(root)
+  let rev = if b.path.len > 0: fileRev(root, b.path) else: ""
   var entries: seq[LedgerEntry]
   var shift = 0
   for i, h in reviewState.hunks:
-    if reviewState.decisions[i] == accepted:
+    if reviewReadOnly or reviewState.decisions[i] == accepted:
       let (removed, added) = reviewState.hunkText(i)
-      entries.add LedgerEntry(file: (if b.path.len > 0: b.path else: "(unnamed)"), line: h.startA + shift + 1,
-        project: extractFilename(rootFromDir(if b.path.len > 0: parentDir(b.path) else: getCurrentDir())),
-        source: reviewSource, removed: removed, added: added,
+      entries.add LedgerEntry(file: (if b.path.len > 0: b.path else: "(unnamed)"),
+        line: (if reviewReadOnly: h.startB + 1 else: h.startA + shift + 1),
+        project: extractFilename(root), source: reviewSource, removed: removed, added: added, branch: branch, rev: rev,
         explanation: (if i < explained.len and explained[i]: explanations[i] else: ""), at: now())
-      shift += h.insertedB - h.deletedA
+    if reviewState.decisions[i] == accepted: shift += h.insertedB - h.deletedA
   if entries.len == 0: return
   try: appendEntries(path, entries)
   except CatchableError as e: echoLine = "Ledger: " & e.msg
 
 proc reviewMessage*(): string =
   let (removed, added) = reviewState.stats(currentHunk)
-  "Review " & reviewSource & ": hunk " & $(currentHunk + 1) & "/" & $reviewState.hunks.len &
-    " (-" & $removed & " +" & $added & ")  y:take k:keep u:undo n/p l:list r:request a:all q:done ?:help"
+  let head = (if reviewReadOnly: "Understand " else: "Review ") & reviewSource & ": hunk " & $(currentHunk + 1) & "/" &
+    $reviewState.hunks.len & " (-" & $removed & " +" & $added & ")"
+  if reviewReadOnly: head & "  x:explain X:ask U:understood n/p l:list q:record ?:help"
+  else: head & "  y:take k:keep u:undo n/p l:list r:request a:all q:done ?:help"
 
 proc rebuildReview*() =
   let display = reviewState.view(currentHunk)
@@ -113,21 +134,13 @@ proc rebuildReview*() =
   reviewColors = display.colors
   reviewBgs = display.bgs
   reviewBuf.cursor = (min(display.starts[currentHunk], reviewBuf.lines.high), 0)
-  renderer.top = reviewBuf.cursor.line
+  renderer.top = max(0, reviewBuf.cursor.line - 3)  # a few lines of context above the hunk
   renderer.left = 0
   echoLine = reviewMessage()
 
 proc beginReviewText(proposed, source: string)  # forward: the review replaced in place
 
-proc beginReview*(proposed: string, source = "Agent") =
-  ## A hunk-by-hunk review of the current buffer against `proposed`: y takes the
-  ## proposed version of a hunk, k keeps the buffer's. Any source can propose text.
-  reviewSource = source
-  reviewState = newReview(b.text, proposed)
-  resetUnderstanding()
-  if reviewState.hunks.len == 0:
-    echoLine = source & ": no changes"
-    return
+proc openReview() =
   closeOverlay()  # the agent finished while the manual or dashboard was open
   b.finish()
   savedTop = renderer.top
@@ -138,6 +151,30 @@ proc beginReview*(proposed: string, source = "Agent") =
   matchStart = -1
   window.closeIme()
   rebuildReview()
+
+proc beginReview*(proposed: string, source = "Agent") =
+  ## A hunk-by-hunk review of the current buffer against `proposed`: y takes the
+  ## proposed version of a hunk, k keeps the buffer's. Any source can propose text.
+  reviewSource = source
+  reviewReadOnly = false
+  reviewState = newReview(b.text, proposed)
+  resetUnderstanding()
+  if reviewState.hunks.len == 0:
+    echoLine = source & ": no changes"
+    return
+  openReview()
+
+proc beginComparison*(base: string, source: string) =
+  ## The buffer as the outcome of work from `base` (a branch's base version): hunks
+  ## read base -> buffer, nothing is taken; x, X and U build understanding, q records.
+  reviewSource = source
+  reviewReadOnly = true
+  reviewState = newReview(base, b.text)
+  resetUnderstanding()
+  if reviewState.hunks.len == 0:
+    echoLine = source & ": no changes"
+    return
+  openReview()
 
 proc beginReviewText(proposed, source: string) =
   ## The open review's proposal replaced (decisions start over); closes it when nothing differs.
@@ -183,6 +220,12 @@ proc applyAndContinue() =
 
 proc finishReview*(cancel = false) =
   if cancel: echoLine = "Review cancelled"
+  elif reviewReadOnly:
+    var understood = 0
+    for e in explained:
+      if e: inc understood
+    recordUnderstanding()
+    echoLine = "Recorded " & $reviewState.hunks.len & " hunks, " & $understood & " understood"
   else:
     let total = reviewState.hunks.len
     recordUnderstanding()
@@ -405,17 +448,37 @@ proc pollAgent*(): bool =
     elif agentCancelled:
       reviewRequest = false
       reviewExplain = false
+      reviewAsk = false
       echoLine = "Agent cancelled"
     elif code != 0:
       reviewRequest = false
       reviewExplain = false
+      reviewAsk = false
       let errors = readFile(agentDir / "err.txt").splitLines()
       echoLine = if errors.len > 0 and errors[0].len > 0: errors[0] else: "Agent exited with code " & $code
     else:
       let text = cleanAgentOutput(readFile(agentDir / "out.txt"))
       if validateUtf8(text) != -1: raise newException(ValueError, "Agent output is not valid UTF-8")
       if agentBuf notin reg: raise newException(ValueError, "Agent: its buffer was killed")
-      if reviewExplain:
+      if reviewAsk:
+        reviewAsk = false
+        if explainHunk in 0..<explained.len:
+          explained[explainHunk] = true
+          let qa = "Q: " & askQuestion & "\nA: " & strutils.strip(text)
+          explanations[explainHunk] = if explanations[explainHunk].len > 0 and
+              explanations[explainHunk] != "(understood by the reviewer)":
+            strutils.strip(explanations[explainHunk]) & "\n\n" & qa
+            else: qa
+          showExplain("Hunk " & $(explainHunk + 1) & "\n\n" & explanations[explainHunk] & "\n")
+        let glossary = glossaryPath()
+        let terms = glossaryTerms(text)
+        if glossary.len > 0 and terms.len > 0:
+          try:
+            let old = if fileExists(glossary): readFile(glossary) else: ""
+            writeFile(glossary, mergeGlossary(old, terms))
+          except CatchableError as e: echoLine = "Glossary: " & e.msg
+        echoLine = "Answered about hunk " & $(explainHunk + 1)
+      elif reviewExplain:
         reviewExplain = false
         if explainHunk in 0..<explained.len:
           explained[explainHunk] = true
@@ -472,6 +535,42 @@ proc explainCurrentHunk*() =
     "--- WHOLE PROPOSED FILE (context) ---\n" & reviewState.proposedText() & "\n--- END ---\n")
   showExplain("Explaining hunk " & $(currentHunk + 1) & "...")
   echoLine = "Agent: explaining hunk " & $(currentHunk + 1) & "..."
+
+proc askAboutHunk*(question: string) =
+  ## X: a follow-up question about the current hunk; the answer joins the explanation
+  ## shown in *explain* and recorded in the ledger.
+  if mode != "review": raise newException(ValueError, "No review is open")
+  if agentProcess != nil: raise newException(ValueError, "Agent already running")
+  let command = interp.env.values["agent-command"].asString
+  if strutils.strip(command).len == 0: raise newException(ValueError, "agent-command is empty")
+  let (removed, added) = reviewState.hunkText(currentHunk)
+  let sofar = if currentHunk < explanations.len: explanations[currentHunk] else: ""
+  agentBuf = b
+  reviewAsk = true
+  askQuestion = question
+  explainHunk = currentHunk
+  launchAgent(command,
+    "A reviewer is trying to understand one hunk of a proposed change to a text file and asks a question about it. " &
+    "Answer it directly and plainly, in the reviewer's language; define any domain term you use as `- term :: definition` " &
+    "lines at the end. No code fences, no headings.\n" &
+    "File path: " & (if b.path.len > 0: b.path else: "(unnamed)") & "\n" &
+    "Question: " & question & "\n" &
+    (if sofar.len > 0: "--- EXPLANATION GIVEN SO FAR ---\n" & sofar & "\n" else: "") &
+    "--- HUNK: LINES REMOVED ---\n" & removed & "--- HUNK: LINES ADDED ---\n" & added &
+    "--- WHOLE PROPOSED FILE (context) ---\n" & reviewState.proposedText() & "\n--- END ---\n")
+  showExplain((if sofar.len > 0: "Hunk " & $(currentHunk + 1) & "\n\n" & strutils.strip(sofar) & "\n\n" else: "") &
+    "Q: " & question & "\nA: ...")
+  echoLine = "Agent: answering about hunk " & $(currentHunk + 1) & "..."
+
+definePrompt(Prompt(kind: "review-ask", text: true, over: "review", onAccept: proc(value: string): bool =
+  if strutils.strip(value).len == 0: return false
+  try: askAboutHunk(value)
+  except CatchableError as e: echoLine = e.msg
+  true))
+interp.defPrimitive("review-ask", proc(args: seq[Value]): Value =
+  args.arity(1, 1)
+  askAboutHunk(args[0].asString)
+  nilValue())
 
 proc requestChanges*(instruction: string) =
   ## r: the reviewer's instruction for the current hunk goes to the agent with the
@@ -543,20 +642,108 @@ definePrompt(Prompt(kind: "understanding-debt", text: true, candidates: proc(): 
         except CatchableError as err: echoLine = err.msg
         break
     true))
-interp.defPrimitive("understanding-debt", proc(args: seq[Value]): Value =
-  ## The ledger's TODO entries (hunks taken without an explanation); Enter visits the spot.
-  args.arity(0, 0)
+proc listDebt(allBranches: bool) =
   let path = ledgerPath()
   if path.len == 0 or not fileExists(path):
     echoLine = "No understanding ledger yet (reviews write " & (if path.len > 0: shortPath(path) else: "none") & ")"
-    return nilValue()
+    return
   let text = readFile(path)
-  debtRows = debtEntries(text)
+  let branch = if allBranches: "" else: branchOf(currentRoot())
+  debtRows = debtEntries(text, branch)
   let (debt, understood) = debtCount(text)
+  let where = if branch.len > 0: " on " & branch else: ""
   if debtRows.len == 0:
-    echoLine = "No understanding debt: " & $understood & " hunks understood"
+    echoLine = "No understanding debt" & where & " (" & $debt & " open elsewhere, " & $understood & " understood)"
+    return
+  beginMini("understanding-debt", "Debt" & where & " (" & $debtRows.len & " open, " & $understood & " understood): ")
+
+interp.defPrimitive("understanding-debt", proc(args: seq[Value]): Value =
+  ## The ledger's TODO entries of the current branch (all outside git); Enter visits the spot.
+  args.arity(0, 0)
+  listDebt(false)
+  nilValue())
+interp.defPrimitive("understanding-debt-all", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  listDebt(true)
+  nilValue())
+
+# Branch debt: the files this branch changed from its base that no DONE entry of the
+# branch attests to (at the file's current commit); each opens a review against the base.
+var
+  branchRows: seq[string]
+  branchFiles: seq[tuple[rel, base: string]]
+  branchRoot: string
+
+proc baseBranch(root: string): string =
+  let v = interp.env.values["understanding-base-branch"]
+  if v.kind != vNil and v.asString.len > 0: return v.asString
+  for name in ["main", "master", "develop"]:
+    if git(root, "rev-parse --verify --quiet " & name).ok: return name
+  ""
+
+proc reviewBranchFile(rel, base: string) =
+  let path = branchRoot / rel
+  if not fileExists(path):
+    echoLine = rel & " was deleted on this branch"
+    return
+  visit(path)
+  let (output, ok) = git(branchRoot, "show " & quoteShell(base & ":" & rel))
+  if not ok:
+    echoLine = rel & ": new on this branch (no base version)"
+    beginComparison("", "branch base")
+    return
+  beginComparison(output.replace("\r\n", "\n") & "\n", "branch base")
+
+definePrompt(Prompt(kind: "branch-debt", text: true, candidates: proc(): seq[string] = branchRows,
+  onAccept: proc(value: string): bool =
+    let i = branchRows.find(value)
+    if i >= 0: reviewBranchFile(branchFiles[i].rel, branchFiles[i].base)
+    true))
+interp.defPrimitive("branch-debt", proc(args: seq[Value]): Value =
+  ## The work of this branch still to understand: files changed from the base branch
+  ## (merge base with main / master / understanding-base-branch) without a DONE entry
+  ## for this branch at the file's current commit, plus uncommitted changes.
+  args.arity(0, 0)
+  branchRoot = currentRoot()
+  if not (dirExists(branchRoot / ".git") or fileExists(branchRoot / ".git")):
+    echoLine = "Not in a git repository"
     return nilValue()
-  beginMini("understanding-debt", "Debt (" & $debt & " open, " & $understood & " understood): ")
+  let branch = branchOf(branchRoot)
+  let base = baseBranch(branchRoot)
+  if base.len == 0:
+    echoLine = "No base branch found (setq understanding-base-branch \"name\")"
+    return nilValue()
+  var mergeBase = base
+  if branch != base:
+    let (mb, ok) = git(branchRoot, "merge-base " & quoteShell(base) & " HEAD")
+    if ok and mb.len > 0: mergeBase = mb
+  let (names, ok) = git(branchRoot, "diff --name-only " & quoteShell(mergeBase))
+  if not ok:
+    echoLine = "git: " & names.splitLines()[0]
+    return nilValue()
+  var understood: seq[tuple[file, rev: string]]
+  let ledger = ledgerPath()
+  if ledger.len > 0 and fileExists(ledger): understood = understoodRevs(readFile(ledger), branch)
+  branchRows = @[]
+  branchFiles = @[]
+  var skipped = 0
+  for rel in names.splitLines:
+    if rel.len == 0: continue
+    let path = branchRoot / rel
+    let rev = fileRev(branchRoot, path)
+    let dirty = git(branchRoot, "diff --quiet -- " & quoteShell(rel)).ok == false
+    if (path, rev) in understood and not dirty:
+      inc skipped
+      continue
+    let (stat, _) = git(branchRoot, "diff --shortstat " & quoteShell(mergeBase) & " -- " & quoteShell(rel))
+    branchRows.add rel & "  " & stat.replace("1 file changed,", "").strip & (if dirty: "  (uncommitted)" else: "")
+    branchFiles.add (rel, mergeBase)
+  if branchRows.len == 0:
+    echoLine = if skipped > 0: "Branch " & branch & ": all " & $skipped & " changed files understood"
+               else: "Branch " & branch & ": no changes from " & base
+    return nilValue()
+  beginMini("branch-debt", "Branch " & branch & " vs " & base & " (" & $branchRows.len & " files to understand" &
+    (if skipped > 0: ", " & $skipped & " done" else: "") & "): ")
   nilValue())
 interp.defPrimitive("understanding-ledger", proc(args: seq[Value]): Value =
   ## Opens the ledger file itself (Org).
@@ -589,7 +776,7 @@ interp.defPrimitive("glossary", proc(args: seq[Value]): Value =
 proc dispatchReview*(c: string)  # forward: the review's keys, also driven from Lisp
 
 for (name, key) in [("review-take", "y"), ("review-keep", "k"), ("review-next", "n"), ("review-previous", "p"),
-                    ("review-finish", "q"), ("review-explain-hunk", "x")]:
+                    ("review-finish", "q"), ("review-explain-hunk", "x"), ("review-attest", "U")]:
   closureScope:
     let key = key
     interp.defPrimitive(name, proc(args: seq[Value]): Value =
@@ -609,6 +796,9 @@ definePrompt(Prompt(kind: "review-hunks", text: true, over: "review", candidates
     true))
 
 proc dispatchReview*(c: string) =
+  if reviewReadOnly and c in ["y", "k", "a", "A", "w", "r"]:
+    echoLine = "A comparison: nothing to take. x explains, X asks, U marks understood, q records"
+    return
   case c
   of "C-g":
     for hook in cancelHooks: hook()
@@ -635,6 +825,17 @@ proc dispatchReview*(c: string) =
     try: explainCurrentHunk()
     except CatchableError as e: echoLine = e.msg
     return
+  of "X":
+    if agentProcess != nil: echoLine = "Agent already running"
+    else: beginMini("review-ask", "Ask about hunk " & $(currentHunk + 1) & ": ")
+    return
+  of "U":
+    # Attested: the reviewer understands this hunk without an explanation.
+    if currentHunk < explained.len:
+      explained[currentHunk] = true
+      if explanations[currentHunk].len == 0: explanations[currentHunk] = "(understood by the reviewer)"
+    echoLine = "Hunk " & $(currentHunk + 1) & " marked understood"
+    currentHunk = min(currentHunk + 1, reviewState.hunks.high)
   of "l":
     hunkRows = @[]
     for i in 0..<reviewState.hunks.len: hunkRows.add reviewState.hunkLabel(i)
@@ -642,7 +843,8 @@ proc dispatchReview*(c: string) =
     return
   of "?":
     echoLine = "y: take the proposed hunk  k: keep the buffer's  u: undo the decision  " &
-      "n / p: move  l: list  x: explain this hunk  r: ask the agent to change it  w: apply so far, go on  " &
+      "n / p: move  l: list  x: explain this hunk  X: ask a question about it  U: I understand it  " &
+      "r: ask the agent to change it  w: apply so far, go on  " &
       "a / A: take / keep all pending and finish  q / Enter: apply decisions  C-g: cancel"
     return
   of "a":
@@ -777,6 +979,7 @@ argCommands.add "agent"
 defaults.add """
 (global-set-key "C-c a" 'agent-prompt)
 (setq understanding-ledger "~/.darger-understanding.org")
+(setq understanding-base-branch nil)
 (setq glossary-file "~/.darger-glossary.org")
 (global-set-key "C-c c" 'agent-chat)
 (setq agent-command "claude -p --output-format text")

@@ -21,6 +21,27 @@ proc expandId*(command, id: string): string =
       raise newException(ValueError, "Agent session id contains unexpected characters")
   command.replace("{id}", id)
 
+proc branchFromHead*(head: string): string =
+  ## "ref: refs/heads/NAME" -> NAME; a detached HEAD gives its short hash.
+  let s = head.strip
+  if s.startsWith("ref: refs/heads/"): s[16..^1]
+  elif s.startsWith("ref: "): s[5..^1]
+  elif s.len >= 7: s[0..<7]
+  else: ""
+
+proc branchOf*(root: string): string =
+  ## The branch checked out at root ("" outside git), without running git.
+  var gitDir = root / ".git"
+  try:
+    if fileExists(gitDir):  # a worktree: "gitdir: /path/to/.git/worktrees/name"
+      let line = readFile(gitDir).strip
+      if line.startsWith("gitdir:"):
+        gitDir = line[7..^1].strip
+        if not gitDir.isAbsolute: gitDir = root / gitDir
+    if not fileExists(gitDir / "HEAD"): return ""
+    branchFromHead(readFile(gitDir / "HEAD"))
+  except CatchableError: ""
+
 proc rootFromDir*(path: string): string =
   result = normalizedPath(absolutePath(path))
   var dir = result

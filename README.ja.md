@@ -356,9 +356,24 @@ x で今のハンクの説明をエージェントに求めます (何を変え�
 `* DONE … :understood:` に説明文。agenda や TODO の道具でそのまま「まだ理解していないもの」を追えます。
 `M-x understanding-debt` は未返済のエントリを一覧し、Enter でその場所へ (`M-x understanding-ledger` で
 台帳ファイル自体を開く)。説明に出た用語は `glossary-file` (既定 `~/.darger-glossary.org`、1 行 1 語の
-`- 用語 :: 定義`、既存の語は保持) に集まり、`M-x glossary` で引けます。レビューのキーはコマンドでも
-あります (`review-take`、`review-keep`、`review-next`、`review-previous`、`review-finish`、
-`review-explain-hunk`)。init ファイルやエージェントからレビューを操作できます。
+`- 用語 :: 定義`、既存の語は保持) に集まり、`M-x glossary` で引けます。X は自分の言葉でそのハンクについて質問するキーです
+(それまでの説明も一緒に送られます)。答えは `*explain*` の説明と台帳に追記されるので、短い対話で
+ハンクを理解していけます。U は「説明なしで理解した」と自己申告するキーで、同じく DONE で記録されます。何かを強制することはなく、台帳は「自分がまだ理解
+したいもの」を自分で付ける帳簿です。
+
+エントリには git のブランチ (`:BRANCH:`、タグにも) とそのファイルの最終変更コミット (`:REV:`) が
+入るので、負債はブランチごとに持てます。`M-x understanding-debt` は今のブランチの未返済分を一覧し
+(`understanding-debt-all` で全ブランチ)、`M-x branch-debt` はブランチ自身の仕事を負債にします:
+base ブランチ (`main` / `master` / `develop`、または `understanding-base-branch`) との merge base
+から変わったファイルのうち、今のコミットでこのブランチの DONE エントリがないものを `+/-` 行数と
+`(uncommitted)` 付きで一覧。Enter でそのファイルを base → ブランチの向きで読む比較を開きます (削除行が base、追加行が自分の
+変更。採用の操作はなし)。x で説明、X で質問、U で自己申告、q で全ハンク (理解済みか否か) を台帳に
+記録します。もう一度実行すると申告済みのファイルは
+消えます。マージ前の「自分がここでやったことで、まだ理解していないものは何か」に答える道具です。
+
+レビューのキーはコマンドでもあります (`review-take`、`review-keep`、`review-next`、
+`review-previous`、`review-finish`、`review-explain-hunk`、`review-attest`)。init ファイルや
+エージェントからレビューを操作できます。
 
 ## ファイラ (Dired)
 

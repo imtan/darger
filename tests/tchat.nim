@@ -106,4 +106,17 @@ try: discard renderOutput("\xff\n")
 except ValueError: invalid = true
 doAssert invalid
 
+doAssert branchFromHead("ref: refs/heads/feature/x\n") == "feature/x"
+doAssert branchFromHead("0123456789abcdef0123456789abcdef01234567\n") == "0123456"
+doAssert branchFromHead("") == ""
+block:
+  let dir = getTempDir() / "darger-tchat-branch"
+  removeDir(dir); createDir(dir / ".git")
+  writeFile(dir / ".git" / "HEAD", "ref: refs/heads/main\n")
+  doAssert branchOf(dir) == "main"
+  createDir(dir / "wt")
+  writeFile(dir / "wt" / ".git", "gitdir: " & (dir / ".git") & "\n")
+  doAssert branchOf(dir / "wt") == "main"
+  doAssert branchOf(dir / "nowhere") == ""
+  removeDir(dir)
 echo "chat ok"

@@ -128,7 +128,10 @@ M-x diff-buffer-with-file  ディスク上のファイルとの差分をレビ�
 M-x vc-review            git HEAD との差分をレビュー。M-x review-file は別ファイルとの比較
 M-x agent-changes        直前のチャットターンで変わったファイル一覧。Enter でレビュー
   x (レビュー中)         今のハンクの説明をエージェントに求める (*explain*)。説明なしで採用 → 理解負債
-M-x understanding-debt   理解台帳 (~/.darger-understanding.org) の未返済エントリ一覧。Enter でその場所へ
+  X (レビュー中)         今のハンクについて質問する。答えは説明に追記され台帳にも残る
+  U (レビュー中)         説明なしで「理解した」と自己申告 (DONE で記録)
+M-x understanding-debt   理解台帳 (~/.darger-understanding.org) の今のブランチの未返済一覧 (-all で全部)
+M-x branch-debt          このブランチで base から変わったファイルのうち未理解のもの。Enter で base と比較レビュー
 M-x glossary             説明から集めた用語集 (~/.darger-glossary.org) を引く
                          実行中は C-g で中止
                          差分: y:採用 k:見送り a:全採用

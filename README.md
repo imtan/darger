@@ -384,9 +384,28 @@ understood. `M-x understanding-debt` lists the open entries and Enter visits the
 spot (`M-x understanding-ledger` opens the file). The terms from explanations
 collect in `glossary-file` (default `~/.darger-glossary.org`, one `- term ::
 definition` per line, existing terms kept) and `M-x glossary` looks one up.
+X asks the agent a question of your own about the hunk (the explanation so far is
+sent along); the answer joins the explanation in `*explain*` and in the ledger, so a
+hunk can be understood through a short dialogue. U attests that you understand the
+hunk without an explanation; it is recorded as DONE too. Nothing is ever demanded: the ledger is a self-kept account of the work
+you still want to understand.
+
+Entries carry the git branch (`:BRANCH:`, also a tag) and the file's last-change
+commit (`:REV:`), so the debt is kept per branch: `M-x understanding-debt` lists the
+current branch's open entries (`understanding-debt-all` every branch's).
+`M-x branch-debt` turns the branch's own work into debt: the files changed since the
+merge base with the base branch (`main`, `master` or `develop`, or
+`understanding-base-branch`) that no DONE entry of this branch attests to at their
+current commit, with their `+/-` counts and `(uncommitted)`; Enter opens the file
+in a comparison read base to branch (removed lines are the base's, added ones
+yours), where nothing is taken: x explains, X asks, U attests, and q records every
+hunk (understood or not) in the ledger. Run it again and the attested files
+are gone; before a merge it answers "what did I do here that I do not yet
+understand?".
+
 The review's keys are also commands (`review-take`, `review-keep`, `review-next`,
-`review-previous`, `review-finish`, `review-explain-hunk`), so an init file or an
-agent can drive a review.
+`review-previous`, `review-finish`, `review-explain-hunk`, `review-attest`), so an
+init file or an agent can drive a review.
 
 ## Filer (Dired)
 

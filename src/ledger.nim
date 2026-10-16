@@ -8,7 +8,9 @@ type LedgerEntry* = object
   file*: string         ## the file the hunk changed
   line*: int            ## 1-based line in the file after the change
   project*: string      ## the project's directory name, as a tag
-  source*: string       ## "Agent", "file on disk", ...
+  source*: string       ## "Agent", "file on disk", "branch base", ...
+  branch*: string       ## the git branch the work was on ("" outside git)
+  rev*: string          ## the file's last-change commit when recorded ("" when unknown)
   removed*, added*: string
   explanation*: string  ## "" = debt
   at*: DateTime
@@ -24,10 +26,15 @@ proc orgEntry*(e: LedgerEntry): string =
   ## One ledger heading with properties, the hunk as a diff block, and the explanation.
   let keyword = if e.explanation.len > 0: "DONE" else: "TODO"
   let name = extractFilename(e.file)
-  result = "* " & keyword & " " & name & ":" & $e.line & "  " & (if e.explanation.len > 0: "understood" else: "taken without explanation") &
-    "  :" & (if e.explanation.len > 0: "understood" else: "debt") & ":" & tagOf(e.project) & ":\n"
-  result.add ":PROPERTIES:\n:FILE:     " & e.file & "\n:LINE:     " & $e.line & "\n:SOURCE:   " & e.source &
-    "\n:DATE:     " & e.at.format("yyyy-MM-dd HH:mm") & "\n:END:\n"
+  let state = if e.explanation.len > 0: "understood"
+    elif e.source == "branch base": "not yet understood" else: "taken without explanation"
+  result = "* " & keyword & " " & name & ":" & $e.line & "  " & state &
+    "  :" & (if e.explanation.len > 0: "understood" else: "debt") & ":" & tagOf(e.project) &
+    (if e.branch.len > 0: ":" & tagOf(e.branch) else: "") & ":\n"
+  result.add ":PROPERTIES:\n:FILE:     " & e.file & "\n:LINE:     " & $e.line & "\n:SOURCE:   " & e.source
+  if e.branch.len > 0: result.add "\n:BRANCH:   " & e.branch
+  if e.rev.len > 0: result.add "\n:REV:      " & e.rev
+  result.add "\n:DATE:     " & e.at.format("yyyy-MM-dd HH:mm") & "\n:END:\n"
   result.add "#+begin_src diff\n"
   for l in e.removed.splitLines(keepEol = true):
     if l.len > 0: result.add "-" & l
@@ -48,22 +55,46 @@ proc appendEntries*(path: string, entries: seq[LedgerEntry]) =
   for e in entries: text.add orgEntry(e)
   writeFile(path, text)
 
-proc debtEntries*(text: string): seq[tuple[label, file: string, line: int]] =
-  ## The TODO (debt) entries: heading text, and the FILE / LINE properties under it.
+type LedgerItem* = tuple[label, file: string, line: int, branch, rev: string, done: bool]
+
+proc entries*(text: string): seq[LedgerItem] =
+  ## Every entry: heading text and its FILE / LINE / BRANCH / REV properties.
   var i = 0
   let lines = text.splitLines
   while i < lines.len:
-    if lines[i].startsWith("* TODO "):
-      var entry = (label: lines[i][7..^1].strip, file: "", line: 1)
+    if lines[i].startsWith("* TODO ") or lines[i].startsWith("* DONE "):
+      var entry: LedgerItem = (label: lines[i][7..^1].strip, file: "", line: 1, branch: "", rev: "",
+        done: lines[i].startsWith("* DONE "))
       var j = i + 1
       while j < lines.len and not lines[j].startsWith("* "):
         let s = lines[j].strip
         if s.startsWith(":FILE:"): entry.file = s[6..^1].strip
         elif s.startsWith(":LINE:"): entry.line = max(1, try: parseInt(s[6..^1].strip) except ValueError: 1)
+        elif s.startsWith(":BRANCH:"): entry.branch = s[8..^1].strip
+        elif s.startsWith(":REV:"): entry.rev = s[5..^1].strip
         inc j
       if entry.file.len > 0: result.add entry
       i = j
     else: inc i
+
+proc debtEntries*(text: string, branch = ""): seq[tuple[label, file: string, line: int]] =
+  ## The TODO (debt) entries, those of one branch when given ("" = all).
+  for e in entries(text):
+    if not e.done and (branch.len == 0 or e.branch == branch): result.add (e.label, e.file, e.line)
+
+proc understoodRevs*(text, branch: string): seq[tuple[file, rev: string]] =
+  ## For branch debt: the (file, rev) pairs this branch's entries attest to: a DONE
+  ## entry and no TODO one left at that revision (a TODO flipped to DONE in the Org
+  ## file counts as repaid).
+  var todos: seq[tuple[file, rev: string]]
+  for e in entries(text):
+    if e.branch != branch or e.rev.len == 0: continue
+    if e.done:
+      if (e.file, e.rev) notin result: result.add (e.file, e.rev)
+    else: todos.add (e.file, e.rev)
+  for t in todos:
+    let i = result.find(t)
+    if i >= 0: result.delete(i)
 
 proc debtCount*(text: string): tuple[debt, understood: int] =
   ## How many entries of each kind the ledger text holds.

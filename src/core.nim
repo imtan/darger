@@ -1407,7 +1407,8 @@ for name in ["kill-emacs", "save-buffers-kill-terminal"]:
 interp.defPrimitive("exit-minibuffer", proc(args: seq[Value]): Value =
   ## Accepts the open prompt with what is typed, as Enter does; for scripts and agents.
   args.arity(0, 0)
-  if inMini() and mode in prompts: confirmMini()
+  if inMini() and mode in prompts:
+    if not candidateKey("enter"): confirmMini()  # the selected candidate, as the Enter key takes it
   nilValue())
 interp.defPrimitive("load-init", proc(args: seq[Value]): Value =
   args.arity(0, 0)
