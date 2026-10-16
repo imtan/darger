@@ -25,15 +25,15 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
 2. Org agenda, minimal: `M-x org-agenda` lists TODO / SCHEDULED items of
    `org-agenda-files` for today in a consult-style list.
 3. Windows: `C-x +` balance, `C-x ^` / `C-x }` resize, `C-x 4 b` other-window buffer.
-4. Add the monkey/fuzz tests (Buffer, SKK, Lisp, HTML) to `tests/` and the README list.
-5. Dashboard: a line for C-c j (today's journal) and C-c t (capture).
-6. Dictionary registration: Enter with text containing `;` annotations, and
+4. Dashboard: a line for C-c j (today's journal) and C-c t (capture).
+5. Dictionary registration: Enter with text containing `;` annotations, and
     `(concat ...)` evaluation when a candidate uses it.
 
 ## Log
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-16 tests/tmonkey.nim: fuzzers for Buffer, SKK, Lisp, HTML, terminal text/screen and pointAt; found and fixed two screen-model bugs (cursor restore after shrink, wide rune on a one-column screen)
 - 2026-10-16 journal: org-journal-condition-prompt, the one-key 体調 [1-5] ★ prompt after a new entry
 - 2026-10-16 terminal slice 3: several terminals (Terminal objects), wide runes take two cells, src/ext/claude.nim with C-c C c / C-c C t / C-c C n / C-c C r / C-c C f as in the user's Emacs
 - 2026-10-16 terminal slice 2c: M-x term shows the screen model in *terminal*, every key raw to the pty (keySequence tested), C-x / C-c stay the editor's; runeFilters hook in core
