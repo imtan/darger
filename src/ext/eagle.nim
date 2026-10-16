@@ -1,8 +1,8 @@
 ## Images from Eagle (eagle.cool), as the user's Emacs does: pick an item from the
 ## local API by keyword (C-M-e) or folder (C-c e) and insert an Org link to the
 ## library file itself, written ~/... so the link works on every machine that has the
-## library under HOME. Eagle must be running. No preview yet: the list shows the
-## name and the first tags.
+## library under HOME. Eagle must be running. The highlighted item's thumbnail is
+## previewed beside the list, as the user's consult preview did.
 import std/[os, strutils, osproc, tables]
 import ../[core, buffer, lisp, eagle]
 
@@ -48,8 +48,15 @@ definePrompt(Prompt(kind: "eagle-keyword", text: true, onAccept: proc(value: str
   try: pickFrom(listQuery(keyword = value))
   except CatchableError as e: echoLine = e.msg
   true))
+proc previewOf(value: string): string =
+  ## The highlighted item's thumbnail (its file when Eagle made none), shown beside the list.
+  let i = eagleRows.find(value)
+  if i < 0: return ""
+  let thumb = thumbnailPath(eagleItems[i], eagleLibrary)
+  if fileExists(thumb): thumb else: originalPath(eagleItems[i], eagleLibrary)
+
 definePrompt(Prompt(kind: "eagle-item", text: true, candidates: proc(): seq[string] = eagleRows,
-  onAccept: insertEagle))
+  onAccept: insertEagle, thumbnail: previewOf))
 definePrompt(Prompt(kind: "eagle-folder", text: true, candidates: proc(): seq[string] = folderRows,
   onAccept: proc(value: string): bool =
     let i = folderRows.find(value)

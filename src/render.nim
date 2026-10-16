@@ -1,7 +1,7 @@
-import std/[os, unicode, sets, tables, math, strutils]
+import std/[os, unicode, sets, tables, math, strutils, times]
 import windy, boxy, pixie, opengl
 import panes
-import buffer, syntax
+import buffer, syntax, pictures
 when not defined(windows) and not defined(macosx): import std/osproc
 
 type
@@ -662,6 +662,51 @@ proc addPicture*(r: Renderer, key: string, img: Image) =
 
 proc hasPicture*(r: Renderer, key: string): bool = r.gpu.contains(key)
 
+type LoadedPicture* = tuple[key: string, w, h: int, ok: bool]
+var loadedPictures: Table[string, tuple[stamp: times.Time, pic: LoadedPicture]]
+
+proc loadPicture*(r: Renderer, path: string): LoadedPicture =
+  ## The image file as a picture (key "picture:" & path), read again when its
+  ## modification time changes; very large files are downscaled. ok = false when
+  ## the file is missing or not an image.
+  var stamp: times.Time
+  try: stamp = getLastModificationTime(path)
+  except CatchableError: return ("", 0, 0, false)
+  if path in loadedPictures and loadedPictures[path].stamp == stamp: return loadedPictures[path].pic
+  result = ("picture:" & path, 0, 0, false)
+  try:
+    var img: Image
+    try: img = readImage(path)
+    except PixieError:
+      # Not a format pixie reads (WebP): the system converter's PNG, when it has one.
+      let converted = convertToPng(path)
+      if converted.len == 0: raise
+      img = readImage(converted)
+    while img.width > 2048 or img.height > 2048: img = img.minifyBy2()
+    r.addPicture(result.key, img)
+    result.w = img.width
+    result.h = img.height
+    result.ok = img.width > 0 and img.height > 0
+  except CatchableError: result.ok = false
+  loadedPictures[path] = (stamp, result)
+
+proc drawThumbnail(r: Renderer, key: string, anchor: Anchor) =
+  ## A preview picture at the text area's right, away from the popup (bottom when the
+  ## popup hangs from the top, else top), like Emacs' side window for the Eagle
+  ## picker: at most 45% of the width and height.
+  if key.len == 0 or key notin pictureSources or not r.gpu.contains(key): return
+  let src = pictureSources[key]
+  let maxW = r.areaW.float * 0.45
+  let areaH = (r.frameRows * r.cellH).float
+  let maxH = areaH * 0.45
+  let scale = min(1.0, min(maxW / src.width.float, maxH / src.height.float))
+  let (w, h) = (max(1.0, src.width.float * scale), max(1.0, src.height.float * scale))
+  let x = (r.pad + r.areaW).float - w - r.cellW.float
+  let y = if anchor == atTop: r.padTop.float + areaH - h - r.cellH.float
+          else: r.padTop.float + r.cellH.float
+  r.gpu.drawRect(rect(x - 4, y - 4, w + 8, h + 8), theme.border)
+  r.gpu.drawImage(key, rect(x, y, w, h))
+
 proc drawPicture(r: Renderer, pic: Picture, x, y, maxH: int) =
   ## The picture at (x, y), at most maxH pixels tall: a picture running off the
   ## pane's bottom is cropped (one cropped copy per picture is kept).
@@ -768,9 +813,11 @@ proc drawPane(r: Renderer, window: Window, p: var PaneView, composition: seq[Run
 proc draw*(r: Renderer, window: Window, panes: var seq[PaneView], bars: seq[tuple[x, y, h: int]],
            echo, mini: string, miniCursor = -1, inputSegment = "", prompt = "", popup = false,
            candidates: openArray[string] = [], selected = -1, listed = false,
-           anchor = atTop, title = "darger", hover = thNone, maximized = false) =
+           anchor = atTop, title = "darger", hover = thNone, maximized = false,
+           thumbnail = "") =
   ## A frame: the title bar, every pane with its mode line, the separators, then the
-  ## prompt popup or the echo line over the whole text area.
+  ## prompt popup or the echo line over the whole text area. `thumbnail`: a picture
+  ## key previewed beside the popup (the Eagle picker).
   let nativeIme = window.imeCompositionString.len > 0
   let composition = (if nativeIme: window.imeCompositionString else: inputSegment).toRunes
   let imeCursor = if nativeIme: imeRuneCol(composition, window.imeCursorIndex) else: composition.len
@@ -793,6 +840,7 @@ proc draw*(r: Renderer, window: Window, panes: var seq[PaneView], bars: seq[tupl
   r.setFrame()
   for bar in bars:
     for row in 0..<bar.h: r.glyph(Rune(0x2502), r.cellX(bar.x), r.rowY(bar.y + row), theme.border)
+  if miniCursor >= 0: r.drawThumbnail(thumbnail, anchor)
   let echoRow = r.frameRows
   let miniComp = if miniCursor >= 0: composition else: @[]
   let miniIme = if miniCursor >= 0: imeCursor else: 0

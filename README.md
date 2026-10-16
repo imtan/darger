@@ -82,6 +82,7 @@ nim r tests/tgrep.nim     # ripgrep / grep output parsing and a real search
 nim r tests/teagle.nim    # Eagle API parsing and link paths
 nim r tests/tproject.nim  # project file listing (git and plain) and known projects
 nim r tests/tmigemo.nim   # romaji -> kana -> dictionary words for migemo
+nim r tests/tpictures.nim # PNG conversion cache for pictures pixie cannot decode
 nim r tests/tmonkey.nim   # fuzz: random input into Buffer, SKK, Lisp, HTML, the terminal, panes
 tests/editormonkey/run.sh 1 16 300   # whole editor: random command sequences per seed (opens windows)
 ```
@@ -588,6 +589,9 @@ As in the user's Emacs, a romaji query also finds the Japanese it spells, in ise
 the SKK dictionary and romaji rules are used, loaded on first use. On by default
 (`(setq migemo-mode nil)` or M-x migemo-mode turns it off).
 
+`(exit-minibuffer)` accepts the open prompt with what is typed, as Enter does, so an
+init file or an agent can drive prompts.
+
 ## Projects
 
 Like Emacs' project.el: C-x p f (`project-find-file`) lists every file of the
@@ -688,7 +692,7 @@ C-M-y (`org-insert-clipboard-image`) saves the clipboard's image as
 `[[file:img/…]]`, like the user's Emacs command, with no pngpaste needed.
 
 Image links show inline, as org-display-inline-images: a line with `[[file:…png]]`
-(also jpg, gif, webp, bmp; `~` and paths relative to the file work) gets the picture
+(also jpg, gif, webp, bmp; `~` and paths relative to the file work; WebP through macOS' sips) gets the picture
 in the rows under it, scaled to the text width and at most `org-image-max-rows`
 rows (default 15). A picture running off the pane's bottom is cropped, and the
 wheel, C-v / M-v and recentring count its rows. Files are reloaded when they
@@ -702,7 +706,8 @@ the matching images from Eagle's local API as `name.ext  [tags]`; C-c e
 Enter inserts a link to the library file itself, `[[file:~/…/Library.library/images/
 ID.info/name.ext]]`, written with `~` so it resolves on every machine that keeps the
 library under HOME. Eagle must be running (`eagle-api-base`, default
-`http://localhost:41595`); nothing is copied, and there is no thumbnail preview yet.
+`http://localhost:41595`); nothing is copied. The highlighted item's thumbnail is
+previewed at the top right while the list is open.
 
 Folding works as in Emacs: TAB on a headline cycles FOLDED (the subtree hidden, the
 headline ending in `...`), CHILDREN (its text and its child headlines, folded) and

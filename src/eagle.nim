@@ -53,6 +53,11 @@ proc originalPath*(it: EagleItem, library: string): string =
   ## The item's file in the library: images/ID.info/NAME.EXT.
   library / "images" / (it.id & ".info") / (it.name & "." & it.ext)
 
+proc thumbnailPath*(it: EagleItem, library: string): string =
+  ## Eagle's small preview of the item: images/ID.info/NAME_thumbnail.png (not every
+  ## item has one; fall back to originalPath).
+  library / "images" / (it.id & ".info") / (it.name & "_thumbnail.png")
+
 proc abbreviateHome*(path, home: string): string =
   ## /Users/x/Dropbox/a -> ~/Dropbox/a, so the link works wherever the library sits under HOME.
   let h = home.strip(leading = false, trailing = true, chars = {'/'})  # getHomeDir() ends in "/"

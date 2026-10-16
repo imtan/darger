@@ -76,6 +76,7 @@ nim r tests/tgrep.nim     # rg / grep の出力解析と実検索
 nim r tests/teagle.nim    # Eagle API の解析とリンクパス
 nim r tests/tproject.nim  # プロジェクトのファイル列挙 (git / 素) と既知プロジェクト
 nim r tests/tmigemo.nim   # migemo のローマ字 → かな → 辞書語
+nim r tests/tpictures.nim # pixie が読めない画像の PNG 変換キャッシュ
 nim r tests/tmonkey.nim   # ファズ: Buffer、SKK、Lisp、HTML、端末、ペインにランダム入力
 tests/editormonkey/run.sh 1 16 300   # エディタ全体: seed ごとにランダムなコマンド列 (ウィンドウが開く)
 ```
@@ -551,6 +552,9 @@ consult-line、consult-ripgrep の絞り込み、すべての補完プロンプ�
 SKK の辞書とローマ字規則を初回利用時に読み込んで使います。既定でオン (`(setq migemo-mode nil)` か
 M-x migemo-mode でオフ)。
 
+`(exit-minibuffer)` は開いているプロンプトを入力中の内容で確定します (Enter と同じ)。init ファイルや
+エージェントからプロンプトを操作できます。
+
 ## プロジェクト
 
 Emacs の project.el と同様です。C-x p f (`project-find-file`) はプロジェクト (現在のファイルの上の
@@ -642,7 +646,7 @@ C-M-y (`org-insert-clipboard-image`) はクリップボードの画像をファ�
 Emacs のコマンドと同じで、pngpaste は要りません。
 
 画像リンクは org-display-inline-images のようにインライン表示されます。`[[file:…png]]` (jpg、gif、
-webp、bmp も。`~` やファイルからの相対パス可) のある行の下に、本文幅と `org-image-max-rows` 行
+webp、bmp も。`~` やファイルからの相対パス可。WebP は macOS の sips 経由) のある行の下に、本文幅と `org-image-max-rows` 行
 (既定 15) に収まるよう縮小した絵が入ります。ペイン下端にかかる絵は切り抜かれ、ホイール、C-v / M-v、
 リセンターは絵の行数も数えます。ファイルが変わると読み直し、絵をクリックするとその行末に
 ポイントが移ります。M-x org-toggle-inline-images で非表示 / 表示を切り替えます。
@@ -652,8 +656,8 @@ Eagle (eagle.cool) からの画像も Emacs と同じ手順で入れられます
 一覧し、C-c e (`org-insert-eagle-image-from-folder`) は先に Eagle のフォルダ (`親/子`) を選びます。
 Enter でライブラリ実体へのリンク `[[file:~/…/Library.library/images/ID.info/name.ext]]` を挿入
 します。`~` 表記なので、ライブラリを HOME 配下に置いているマシンならどこでも同じリンクで開けます。
-Eagle が起動している必要があり (`eagle-api-base`、既定 `http://localhost:41595`)、コピーはせず、
-サムネイルのプレビューはまだありません。
+Eagle が起動している必要があり (`eagle-api-base`、既定 `http://localhost:41595`)、コピーはしません。
+一覧を開いている間、選択中の項目のサムネイルが右上にプレビューされます。
 
 折りたたみは Emacs と同じように動きます。見出しで TAB を押すと FOLDED (サブツリーが隠れ、
 見出しの末尾に `...`)、CHILDREN (本文と、折りたたまれた子見出し)、SUBTREE を巡回します。

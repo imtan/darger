@@ -13,6 +13,7 @@ doAssert itemLabel(its[0]) == "cat.png  [cute, animal, a, b, c]" and itemLabel(i
 doAssert originalPath(its[0], "/Users/x/Dropbox/L.library") == "/Users/x/Dropbox/L.library/images/A1.info/cat.png"
 doAssert abbreviateHome("/Users/x/Dropbox/L.library/images/A1.info/cat.png", "/Users/x") == "~/Dropbox/L.library/images/A1.info/cat.png"
 doAssert abbreviateHome("/opt/img.png", "/Users/x") == "/opt/img.png"
+doAssert thumbnailPath(its[0], "/L") == "/L/images/A1.info/cat_thumbnail.png"
 doAssert abbreviateHome("/Users/x/a.png", "/Users/x/") == "~/a.png"  # getHomeDir() has a trailing slash
 import std/os
 doAssert abbreviateHome(getHomeDir() & "pic.png") == "~/pic.png"

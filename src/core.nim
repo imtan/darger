@@ -227,6 +227,7 @@ type
     over*: string                    # the overlay it floats over and returns to
     onAccept*: proc(value: string): bool  # false keeps the prompt open
     onCancel*: proc()
+    thumbnail*: proc(candidate: string): string  # an image file previewed for the selected candidate
 var
   modes*: Table[string, Mode]
   prompts*: Table[string, Prompt]
@@ -1393,6 +1394,11 @@ for name in ["kill-emacs", "save-buffers-kill-terminal"]:
     args.arity(0, 0)
     quitEditor()
     nilValue())
+interp.defPrimitive("exit-minibuffer", proc(args: seq[Value]): Value =
+  ## Accepts the open prompt with what is typed, as Enter does; for scripts and agents.
+  args.arity(0, 0)
+  if inMini() and mode in prompts: confirmMini()
+  nilValue())
 interp.defPrimitive("load-init", proc(args: seq[Value]): Value =
   args.arity(0, 0)
   loadInit(report = true)
@@ -1612,13 +1618,19 @@ proc redraw*(hover = thNone, maximized = false) =
         bgs: provided(backProviders, buf), marks: provided(markProviders, buf),
         modeLine: modeLineText(buf, reg.displayName(buf), p.cursor, langOf(buf).name, ""),
         matchStart: -1)
+  var thumbnail = ""
+  if inMini() and listed and candIndex >= 0 and mode in prompts and prompts[mode].thumbnail != nil:
+    let path = prompts[mode].thumbnail(cands[candIndex])
+    if path.len > 0:
+      let pic = renderer.loadPicture(path)
+      if pic.ok: thumbnail = pic.key
   renderer.draw(window, views, bars, message, mini.text,
     if inMini(): mini.cursor.col else: -1,
     if skkShown: inputMethod.preedit() else: "",
     prompt, popup,
     cands.toOpenArray(0, if listed: cands.high else: -1), candIndex, listed,
     if isConsult(mode): atBottom else: atTop,
-    "darger — " & name, hover, maximized)
+    "darger — " & name, hover, maximized, thumbnail)
   for i, p in leaves:  # the scroll each pane settled on, so its cursor stays in view
     if p == pane: (renderer.top = views[i].top; renderer.left = views[i].left)
     else: (p.top = views[i].top; p.left = views[i].left)

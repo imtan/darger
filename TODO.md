@@ -23,25 +23,24 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
 (2026-10-16: reordered after comparing ~/.emacs.d/config.org with darger. The user's
 rule: only add what is missing; never rebind or remove existing darger keys.)
 
-1. Eagle picker: a thumbnail preview of the highlighted item (the inline-image
-   machinery can draw it in a side pane or a box).
-2. org-roam: `C-c n c` capture a note with a prompt for the title, `C-c n t` add a tag
+1. org-roam: `C-c n c` capture a note with a prompt for the title, `C-c n t` add a tag
    (`#+filetags:`), backlinks buffer refresh, `C-c n g` graph (open in browser via dot?).
-3. Writing helpers through the agent (their Gemini/gptel map `C-c G`): translate,
+2. Writing helpers through the agent (their Gemini/gptel map `C-c G`): translate,
    proofread, summarize, keywords, blog draft on the region, through `agent-command`
    with prompt templates; result replaces the region or opens a buffer.
-4. magit, minimal: `C-x g` status buffer (branch, staged/unstaged files, untracked),
+3. magit, minimal: `C-x g` status buffer (branch, staged/unstaged files, untracked),
    `s`/`u` stage/unstage, `c c` commit with a message buffer, `P p` push, diff on Enter.
-5. Terminal: `C-c C-j` line mode as in Emacs term; a bold face (second font weight).
-6. Mode line polish (doom-modeline-ish): git branch, LSP state, SKK state grouped;
+4. Terminal: `C-c C-j` line mode as in Emacs term; a bold face (second font weight).
+5. Mode line polish (doom-modeline-ish): git branch, LSP state, SKK state grouped;
     olivetti-style centred writing width for Org (`M-x olivetti-mode`).
-7. Books viewer, skilltree / feynman menus, YouTube browse, nostr, elpher, calfw:
+6. Books viewer, skilltree / feynman menus, YouTube browse, nostr, elpher, calfw:
     personal Emacs tools; port only on request.
 
 ## Log
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-16 Eagle picker thumbnail preview (Prompt.thumbnail, renderer.loadPicture shared with inline images); exit-minibuffer primitive; WebP (Eagle thumbnails) via a sips PNG cache (src/pictures.nim)
 - 2026-10-16 Inline images: cropped at the pane bottom; wheel, C-v / M-v and recenter count image rows (stepShown moved to panes.nim, tested)
 - 2026-10-16 Org inline images: [[file:…png]] drawn under its line (rows reserved, click maps to the line, org-image-max-rows)
 - 2026-10-16 C-M-y pastes the clipboard image as img/日時.png + [[file:img/…]] (windy pasteboard + pixie, no pngpaste)
