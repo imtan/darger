@@ -72,6 +72,7 @@ nim r tests/tterm.nim     # シェル出力のテキスト化と pty (/bin/sh �
 nim r tests/tscreen.nim   # 端末の画面モデルとキー列
 nim r tests/tpanes.nim    # ウィンドウ配置
 nim r tests/tshader.nim   # 背景シェーダーのソース
+nim r tests/tgrep.nim     # rg / grep の出力解析と実検索
 nim r tests/tmonkey.nim   # ファズ: Buffer、SKK、Lisp、HTML、端末、ペインにランダム入力
 tests/editormonkey/run.sh 1 16 300   # エディタ全体: seed ごとにランダムなコマンド列 (ウィンドウが開く)
 ```
@@ -287,6 +288,7 @@ CJK と対応する絵文字範囲は 2 セルを占めます。結合文字、�
 | Org: 日報エントリ / capture | C-c j / C-c t |
 | org-roam: 検索 / リンク挿入 / バックリンク / 今日 | C-c n f / C-c n i / C-c n l / C-c n d |
 | org-roam: 今日のデイリーに時刻エントリ | C-c n j |
+| Org ディレクトリを全文検索 (consult-ripgrep) | C-c n s |
 
 検索は、すべて小文字のクエリでは大文字小文字を区別しません。入力すると現在の一致が
 伸び、バッファ端に当たった検索は `Failing I-search` を表示し、C-s/C-r を繰り返すと
@@ -521,6 +523,16 @@ vertico 風に入力の下に候補を並べます。最大 10 行 (低いウィ
   一覧し、テキストで絞り込む。選択を動かすとその行がセンタリングとハイライト付きで
   プレビューされる。Enter でそこに留まり、C-g で元の位置に戻る。一覧はモードラインの上、
   ウィンドウ下部に開くので、プレビュー中の行はその上に見えたままになる。
+
+## ファイル横断検索
+
+`M-x consult-ripgrep` は `Grep in <dir>: ` とクエリを尋ね、プロジェクト (ファイルの上の最寄りの
+`.git`、なければそのディレクトリ) を ripgrep (`rg --vimgrep --smart-case`、1 ファイル最大 200 件。
+rg がなければ `grep -rni`) で検索し、結果を `path:line: text` として consult 風に並べます。入力で
+絞り込み、選択を動かすとその場所をプレビュー、Enter でジャンプ (M-, で戻る)、C-g で元の位置に
+戻ります。`(consult-ripgrep "dir")` はそのディレクトリを、C-c n s (`consult-ripgrep-org`) は
+`org-roam-directory` を検索します (あなたの `my/consult-ripgrep-org` と同じ)。検索は一覧が開く前に
+完了まで走ります。
 
 ## 言語サーバー
 

@@ -23,34 +23,33 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
 (2026-10-16: reordered after comparing ~/.emacs.d/config.org with darger. The user's
 rule: only add what is missing; never rebind or remove existing darger keys.)
 
-1. `consult-ripgrep`: grep a directory (default the project root, `C-c n s` the Org
-   directory) with `rg` (else `grep -rn`), results as a consult list with preview.
-2. Org TODO keywords: `(setq org-todo-keywords '("TODO" "NEXT" "WAITING" "|" "DONE"))`
+1. Org TODO keywords: `(setq org-todo-keywords '("TODO" "NEXT" "WAITING" "|" "DONE"))`
    drives C-c C-t cycling, highlighting (NEXT orange, WAITING blue as the user's faces),
    agenda selection; one-letter choice after C-c C-t as in Emacs' fast selection.
-3. Project files: `C-x p f` / `s-p f` style finder over the git root (projectile-find-file),
+2. Project files: `C-x p f` / `s-p f` style finder over the git root (projectile-find-file),
    `C-x p p` to switch project, `C-x p b` project buffers.
-4. migemo: romaji matches Japanese in isearch, consult-line and the completion prompts,
+3. migemo: romaji matches Japanese in isearch, consult-line and the completion prompts,
    using cmigemo's dictionary when installed (the user has migemo in Emacs).
-5. Org images: `C-M-y` pastes the clipboard image into `images/` next to the file and
+4. Org images: `C-M-y` pastes the clipboard image into `images/` next to the file and
    inserts `[[file:...]]` (macOS pbpaste/pngpaste); inline image display later.
-6. org-roam: `C-c n c` capture a note with a prompt for the title, `C-c n t` add a tag
+5. org-roam: `C-c n c` capture a note with a prompt for the title, `C-c n t` add a tag
    (`#+filetags:`), backlinks buffer refresh, `C-c n g` graph (open in browser via dot?).
-7. Writing helpers through the agent (their Gemini/gptel map `C-c G`): translate,
+6. Writing helpers through the agent (their Gemini/gptel map `C-c G`): translate,
    proofread, summarize, keywords, blog draft on the region, through `agent-command`
    with prompt templates; result replaces the region or opens a buffer.
-8. magit, minimal: `C-x g` status buffer (branch, staged/unstaged files, untracked),
+7. magit, minimal: `C-x g` status buffer (branch, staged/unstaged files, untracked),
    `s`/`u` stage/unstage, `c c` commit with a message buffer, `P p` push, diff on Enter.
-9. Terminal: `C-c C-j` line mode as in Emacs term; a bold face (second font weight).
-10. Mode line polish (doom-modeline-ish): git branch, LSP state, SKK state grouped;
+8. Terminal: `C-c C-j` line mode as in Emacs term; a bold face (second font weight).
+9. Mode line polish (doom-modeline-ish): git branch, LSP state, SKK state grouped;
     olivetti-style centred writing width for Org (`M-x olivetti-mode`).
-11. Books viewer, skilltree / feynman menus, YouTube browse, nostr, elpher, calfw:
+10. Books viewer, skilltree / feynman menus, YouTube browse, nostr, elpher, calfw:
     personal Emacs tools; port only on request.
 
 ## Log
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-16 consult-ripgrep (rg, grep fallback; src/grep.nim tested), C-c n s over org-roam-directory
 - 2026-10-16 windmove C-c arrows (panes.neighbour tested), C-c n j org-roam-dailies-capture-today
 - 2026-10-16 terminal: mouse reporting (?1000/1002/1003, SGR ?1006) through a core mouseFilters hook, wheel as arrows on the alternate screen, no gutter in terminal buffers (fixes the width mismatch)
 - 2026-10-16 exploration: tests/editormonkey (random command sequences through ~/.darger.el in a throwaway HOME; 16 seeds x 300 commands, no crash); (ignore-errors ...) added to the Lisp

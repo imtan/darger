@@ -78,6 +78,7 @@ nim r tests/tterm.nim     # shell output text and the pty (needs /bin/sh)
 nim r tests/tscreen.nim   # the terminal screen model and key sequences
 nim r tests/tpanes.nim    # window layout
 nim r tests/tshader.nim   # background shader sources
+nim r tests/tgrep.nim     # ripgrep / grep output parsing and a real search
 nim r tests/tmonkey.nim   # fuzz: random input into Buffer, SKK, Lisp, HTML, the terminal, panes
 tests/editormonkey/run.sh 1 16 300   # whole editor: random command sequences per seed (opens windows)
 ```
@@ -302,6 +303,7 @@ fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK
 | Org: journal entry / capture | C-c j / C-c t |
 | org-roam: find / insert link / backlinks / today | C-c n f / C-c n i / C-c n l / C-c n d |
 | org-roam: today's daily with a time entry | C-c n j |
+| Grep the Org directory (consult-ripgrep) | C-c n s |
 
 Search ignores case for all-lowercase queries. Typing extends the current match; a
 search that hits the buffer edge shows `Failing I-search`, and repeating C-s/C-r
@@ -555,6 +557,17 @@ start with the first term come first, otherwise the source order is kept.
   centred and highlighted; Enter stays there, C-g returns to where it started.
   Its list opens at the bottom of the window, above the mode line, so the
   previewed line stays visible above it.
+
+## Searching files
+
+`M-x consult-ripgrep` asks `Grep in <dir>: ` for a query and searches the project
+(the nearest `.git` above the file, else its directory) with ripgrep (`rg --vimgrep
+--smart-case`, 200 matches per file at most; `grep -rni` without rg), then lists
+the matches as `path:line: text`, consult-style: typing narrows them, moving the
+selection previews the spot, Enter jumps there (M-, comes back) and C-g returns.
+`(consult-ripgrep "dir")` searches that directory, and C-c n s
+(`consult-ripgrep-org`) the `org-roam-directory`, like the user's
+`my/consult-ripgrep-org`. The search runs to completion before the list opens.
 
 ## Language servers
 
