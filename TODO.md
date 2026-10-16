@@ -10,7 +10,8 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
   own module with a test in `tests/`. Mention when a change grows `core.nim`.
 - Emacs behaviour is the reference when darger differs without a reason.
 - Every change: build, run the affected tests, `nimble app`, commit with a clear
-  message. Never leave the tree dirty between rounds.
+  message, and push to origin/master (darger-update pulls from GitHub). Never leave
+  the tree dirty between rounds.
 - No synthetic keystrokes into the user's session. GUI checks use a temporary HOME
   with a `.darger.el` that drives commands, `open -a` / direct launch, and a
   screenshot of darger's own window. Never touch `~/Dropbox/Org` or `~/.darger.el`.
