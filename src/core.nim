@@ -1533,9 +1533,10 @@ proc redraw*(hover = thNone, maximized = false) =
   if shownMarks.len == 0: shownMarks = provided(markProviders, b)
   # From the 5th candidate SKK's page hangs from the cursor like a completion popup
   # (in a prompt, where no box fits, it is the echo line above).
-  let skkPage = if skkShown and not inMini(): inputMethod.pageItems else: (keys: @[], words: @[], selected: 0)
+  let skkPage = if skkShown and not inMini(): inputMethod.pageItems
+    else: (keys: newSeq[string](), words: newSeq[string](), notes: newSeq[string](), selected: 0)
   let box = if skkPage.words.len > 0:
-      CursorBox(lines: skkPage.words, tags: skkPage.keys, selected: skkPage.selected,
+      CursorBox(lines: skkPage.words, tags: skkPage.keys, details: skkPage.notes, selected: skkPage.selected,
         line: b.cursor.line, cell: b.cellCol(b.cursor), maxRows: 7)
     elif boxHook != nil: boxHook() else: CursorBox()
   # isearch marks its match; consult-line marks the previewed line.

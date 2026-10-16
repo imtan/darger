@@ -781,8 +781,12 @@ one undo step).
 - Each commit from ▼ moves the choice to the front and rewrites `~/.darger-skk-jisyo`
   (UTF-8 SKK format, searched first, keys sorted rather than by recency). Emacs'
   `~/.skk-jisyo` is never touched.
+- Dictionary candidates keep their annotations (`仮名;note`): ▼ and kakutei use the word,
+  the candidate box shows the note beside it. `(concat "a\057b")` candidates (SKK's way
+  to write `/` or `;`) are evaluated, so `a/b` is shown and inserted; a registered word
+  containing `/` or `;` is written that way, and `word;note` registers with its note.
 - Not implemented: `l`-prefixed small kana (`l` is the latin-mode key, as in DDSKK: use
-  `x`), okuri `[…]` blocks and `(concat …)` evaluation.
+  `x`) and okuri `[…]` blocks.
 
 Windy 0.5.0 forwards repeated Windows WM_KEYDOWN events to `onButtonPress`, so
 held command keys use native OS repeat. `onRune` handles printable text only.

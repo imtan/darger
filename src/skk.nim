@@ -126,6 +126,70 @@ proc toKana(hiragana: string, mode: KanaMode): string =
 proc okuriAri(key: string): bool =
   key.len > 1 and key[0].ord >= 0x80 and key[^1] in {'a'..'z'}
 
+proc evalConcat*(s: string): string =
+  ## `(concat "a\057b")`, the SKK way to write "/" or ";" in a candidate: the string
+  ## literals joined, with octal and the usual backslash escapes applied. Anything else
+  ## comes back unchanged.
+  if not (s.startsWith("(concat") and s.endsWith(")")): return s
+  var i = 7
+  var inString = false
+  while i < s.len - 1:
+    let c = s[i]
+    if not inString:
+      if c == '"': inString = true
+      inc i
+      continue
+    if c == '"':
+      inString = false
+      inc i
+    elif c == '\\' and i + 1 < s.len - 1:
+      let e = s[i+1]
+      if e in '0'..'7':
+        var code = 0
+        var j = i + 1
+        while j < s.len - 1 and j < i + 4 and s[j] in '0'..'7':
+          code = code * 8 + ord(s[j]) - ord('0')
+          inc j
+        result.add char(code)
+        i = j
+      else:
+        result.add (case e
+          of 'n': '\n'
+          of 't': '\t'
+          else: e)
+        i += 2
+    else:
+      result.add c
+      inc i
+
+proc splitAnnotation(c: string): tuple[word, note: string] =
+  ## The word and its ";note": the first ";" outside double quotes separates them.
+  var inString = false
+  for i, ch in c:
+    if ch == '"': inString = not inString
+    elif ch == ';' and not inString: return (c[0..<i], c[i+1..^1])
+  (c, "")
+
+proc candidateText*(c: string): string =
+  ## What a dictionary candidate inserts: the word without its annotation, concat evaluated.
+  evalConcat(splitAnnotation(c).word)
+
+proc annotation*(c: string): string = splitAnnotation(c).note
+
+proc encodeCandidate*(word: string): string =
+  ## A word for the dictionary: "/" and ";" cannot appear literally, so such a word is
+  ## written as (concat "...") with octal escapes, as DDSKK registers it.
+  if '/' notin word and ';' notin word and '\\' notin word and '"' notin word: return word
+  result = "(concat \""
+  for ch in word:
+    case ch
+    of '/': result.add "\\057"
+    of ';': result.add "\\073"
+    of '"': result.add "\\\""
+    of '\\': result.add "\\\\"
+    else: result.add ch
+  result.add "\")"
+
 proc parseDictionary*(data: string): Dictionary =
   for line in data.splitLines:
     if line.len == 0 or line[0] == ';': continue
@@ -135,11 +199,10 @@ proc parseDictionary*(data: string): Dictionary =
     let ari = okuriAri(key)
     var candidates: seq[string]
     for entry in line[sep+2..^1].split('/'):
-      # ponytail: okuri-specific "[..]" blocks are ignored; "(concat ...)" stays raw.
+      # Candidates stay as written, annotation (";note") and "(concat ...)" included:
+      # candidateText / annotation read them. ponytail: okuri "[..]" blocks are ignored.
       if ari and entry.startsWith('['): break
-      let semi = entry.find(';')
-      let candidate = if semi >= 0: entry[0..<semi] else: entry
-      if candidate.len > 0 and candidate notin candidates: candidates.add candidate
+      if entry.len > 0 and entry notin candidates: candidates.add entry
     if candidates.len > 0: result[key] = candidates
 
 proc serializeDictionary*(dictionary: Dictionary): string =
@@ -233,19 +296,21 @@ proc preedit*(s: Skk): string =
   of Reading:
     "▽" & toKana(s.reading, s.mode) &
       (if s.okuriActive: "*" & toKana(s.okuri, s.mode) else: "") & s.pending
-  of Choosing: "▼" & s.candidates[s.index] & toKana(s.okuri, s.mode)
+  of Choosing: "▼" & candidateText(s.candidates[s.index]) & toKana(s.okuri, s.mode)
 
 proc pageBase(s: Skk): int =
   ## The first candidate of the 7-candidate page the selection is on; -1 before the 5th.
   if s.index < 4: -1 else: 4 + (s.index - 4) div 7 * 7
 
-proc pageItems*(s: Skk): tuple[keys, words: seq[string], selected: int] =
-  ## The page shown from the 5th candidate on: pick keys, words, and which is selected.
+proc pageItems*(s: Skk): tuple[keys, words, notes: seq[string], selected: int] =
+  ## The page shown from the 5th candidate on: pick keys, words, their annotations, and
+  ## which is selected.
   let base = s.pageBase
   if s.stage != Choosing or base < 0: return
   for i in base ..< min(base + 7, s.candidates.len):
     result.keys.add $"asdfjkl"[i - base]
-    result.words.add s.candidates[i]
+    result.words.add candidateText(s.candidates[i])
+    result.notes.add annotation(s.candidates[i])
   result.selected = s.index - base
 
 proc page*(s: Skk): string =
@@ -315,13 +380,16 @@ proc registerWord*(s: Skk, word: string): string =
   ## The word typed at the registration prompt goes into the user dictionary and is
   ## the text to insert (with the okurigana), as DDSKK does after 辞書登録.
   let key = s.saved.reading & (if s.saved.okuriActive and s.saved.okuri.len > 0: s.saved.okuriPrefix else: "")
-  var entries = @[word]
+  # "word;note" keeps its annotation; a word with "/" or ";" is written as (concat ...)
+  let (text, note) = splitAnnotation(word)
+  let stored = encodeCandidate(text) & (if note.len > 0: ";" & note else: "")
+  var entries = @[stored]
   for candidate in s.user.getOrDefault(key):
-    if candidate != word: entries.add candidate
+    if candidate != stored: entries.add candidate
   s.user[key] = entries
   try: s.saveUserDictionary()
   except CatchableError: discard
-  result = word & toKana(s.saved.okuri, s.mode)
+  result = text & toKana(s.saved.okuri, s.mode)
   s.saved = ("", "", "", false, false)
 
 proc cancelRegister*(s: Skk) =
@@ -353,7 +421,7 @@ proc commitCandidate(s: Skk, res: var SkkResult) =
   ## ▼ kakutei: insert, move the choice to the front of the user entry, save.
   let chosen = s.candidates[s.index]
   let key = s.reading & s.okuriKey
-  res.text.add chosen & toKana(s.okuri, s.mode)
+  res.text.add candidateText(chosen) & toKana(s.okuri, s.mode)
   var entries = @[chosen]
   for candidate in s.user.getOrDefault(key):
     if candidate != chosen: entries.add candidate

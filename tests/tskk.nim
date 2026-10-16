@@ -270,7 +270,31 @@ block noDictionary:
   t.cancelRegister()
   doAssert t.preedit == "▽ほげ"
 
-doAssert parseDictionary(dict)["かな"] == @["仮名", "(concat \"a\\057b\")"]
+doAssert parseDictionary(dict)["かな"] == @["仮名;note", "(concat \"a\\057b\")"]
+doAssert candidateText("仮名;note") == "仮名" and annotation("仮名;note") == "note"
+doAssert candidateText("(concat \"a\\057b\")") == "a/b" and evalConcat("(concat \"x\\073y\" \"z\")") == "x;yz"
+doAssert evalConcat("plain") == "plain" and candidateText("(concat \"a\\057b\");note") == "a/b"
+doAssert encodeCandidate("a/b") == "(concat \"a\\057b\")" and encodeCandidate("plain") == "plain"
+doAssert candidateText(encodeCandidate("x;y\"z")) == "x;y\"z"
+
+block annotations:  # ▼ shows the word, the page keeps the note aside, kakutei inserts the word
+  let s = engine()
+  discard s.typeText("Kana")
+  doAssert s.feed(skSpace).preedit == "▼仮名"
+  doAssert s.feed(skSpace).preedit == "▼a/b"
+  doAssert s.feed(skEnter).text == "a/b" and s.user["かな"][0] == "(concat \"a\\057b\")"  # learnt as written
+  discard s.typeText("Kana")
+  discard s.feed(skSpace)
+  doAssert s.feed(skEnter).text == "a/b"  # the learnt candidate comes first and still evaluates
+  discard s.typeText("Nai")
+  discard s.feed(skSpace)
+  doAssert s.registerWord("無い;ない") == "無い" and s.user["ない"] == @["無い;ない"]
+  discard s.typeText("Nai")
+  doAssert s.feed(skSpace).preedit == "▼無い"
+  discard s.feed(skCtrlG); discard s.feed(skCtrlG)
+  discard s.typeText("Sura")
+  discard s.feed(skSpace)
+  doAssert s.registerWord("a/b") == "a/b" and s.user["すら"] == @["(concat \"a\\057b\")"]
 doAssert decodeDictionary("かな /仮名/\n") == "かな /仮名/\n"
 
 block realDictionary:
@@ -281,7 +305,7 @@ block realDictionary:
     s.loadDictionary(path)
     echo "SKK-JISYO: ", s.dictionary.len, " entries, ",
       (getMonoTime() - started).inMilliseconds, " ms"
-    doAssert s.dictionary.len > 100_000 and s.lookup("かんじ")[0] == "漢字"
-    doAssert s.lookup("おく", "r")[0] == "送"
+    doAssert s.dictionary.len > 100_000 and candidateText(s.lookup("かんじ")[0]) == "漢字"
+    doAssert candidateText(s.lookup("おく", "r")[0]) == "送"  # the real entry carries an annotation
 
 echo "All SKK checks passed"
