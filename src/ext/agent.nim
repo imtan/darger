@@ -34,6 +34,7 @@ var
   reviewState*: Review
   reviewBuf*: Buffer
   reviewColors*: seq[int8]
+  reviewBgs*: seq[seq[int8]]
   currentHunk*, savedTop*, savedLeft*: int
   agentBuf*: Buffer
   agentChat*: ChatSession
@@ -46,14 +47,16 @@ else:
 var reviewSource = "Agent"  # what the proposed text is: the agent, the file on disk, git HEAD, a file
 
 proc reviewMessage*(): string =
+  let (removed, added) = reviewState.stats(currentHunk)
   "Review " & reviewSource & ": hunk " & $(currentHunk + 1) & "/" & $reviewState.hunks.len &
-    "  y:take k:keep u:undo n/p:move a:all q:done ?:help"
+    " (-" & $removed & " +" & $added & ")  y:take k:keep u:undo n/p l:list a:all q:done ?:help"
 
 proc rebuildReview*() =
   let display = reviewState.view(currentHunk)
   reviewBuf = newBuffer(display.text)
   reviewBuf.path = b.path
   reviewColors = display.colors
+  reviewBgs = display.bgs
   reviewBuf.cursor = (min(display.starts[currentHunk], reviewBuf.lines.high), 0)
   renderer.top = reviewBuf.cursor.line
   renderer.left = 0
@@ -95,6 +98,7 @@ proc finishReview*(cancel = false) =
   mode = ""
   reviewBuf = nil
   reviewColors = @[]
+  reviewBgs = @[]
   reviewState = Review()
   renderer.top = savedTop
   renderer.left = savedLeft
@@ -302,6 +306,15 @@ proc pollAgent*(): bool =
     agentChat = nil
     cleanAgentFiles()
 
+var hunkRows: seq[string]
+definePrompt(Prompt(kind: "review-hunks", text: true, over: "review", candidates: proc(): seq[string] = hunkRows,
+  onAccept: proc(value: string): bool =
+    let i = hunkRows.find(value)
+    if i >= 0 and i < reviewState.hunks.len:
+      currentHunk = i
+      rebuildReview()
+    true))
+
 proc dispatchReview*(c: string) =
   case c
   of "C-g":
@@ -313,9 +326,14 @@ proc dispatchReview*(c: string) =
     reviewState.decisions[currentHunk] = if c == "y": accepted else: rejected
     currentHunk = min(currentHunk + 1, reviewState.hunks.high)
   of "u": reviewState.decisions[currentHunk] = pending
+  of "l":
+    hunkRows = @[]
+    for i in 0..<reviewState.hunks.len: hunkRows.add reviewState.hunkLabel(i)
+    beginMini("review-hunks", "Hunk: ")
+    return
   of "?":
     echoLine = "y: take the proposed hunk  k: keep the buffer's  u: undo the decision  " &
-      "n / p: next / previous hunk  a: take all pending and finish  q / Enter: apply decisions  C-g: cancel"
+      "n / p: next / previous hunk  l: list the hunks  a: take all pending and finish  q / Enter: apply decisions  C-g: cancel"
     return
   of "a":
     for decision in reviewState.decisions.mitems:
@@ -402,7 +420,7 @@ interp.defPrimitive("vc-review", proc(args: seq[Value]): Value =
   nilValue())
 
 defineMode(core.Mode(name: "review", tag: "[Review]", editing: true, buffer: proc(): Buffer = reviewBuf,
-  colors: proc(): seq[int8] = reviewColors,
+  colors: proc(): seq[int8] = reviewColors, bgs: proc(): seq[seq[int8]] = reviewBgs,
   message: proc(): string = reviewMessage() & (if echoLine != reviewMessage(): "  " & echoLine else: ""),
   onKey: dispatchReview, onClose: proc() = finishReview(true)))
 

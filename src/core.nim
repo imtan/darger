@@ -211,6 +211,7 @@ type
     buffer*: proc(): Buffer          # what it shows
     faces*: proc(): seq[seq[Face]]   # its colours; nil = plain
     colors*: proc(): seq[int8]       # line backgrounds (review); nil = none
+    bgs*: proc(): seq[seq[int8]]     # per-rune backgrounds (a review's refined parts); nil = none
     message*: proc(): string         # the echo line while it takes keys; nil = the echo line
     onKey*: proc(c: string)
     onClose*: proc()                 # closeOverlay(): a review or quitting replaces it
@@ -1607,7 +1608,8 @@ proc redraw*(hover = thNone, maximized = false) =
       views.add PaneView(b: displayed, x: p.x, y: p.y, w: p.w, h: p.h,
         top: renderer.top, left: renderer.left, cursor: displayed.cursor, active: true,
         faces: displayFaces, marks: if displayed == b: shownMarks else: @[],
-        bgs: if displayed == b: provided(backProviders, b) else: @[],
+        bgs: if displayed == b: provided(backProviders, b)
+             elif view != nil and view.bgs != nil: view.bgs() else: @[],
         fold: if displayed == b: folds(b) else: @[],
         extra: if displayed == b: shownPictures.extra else: @[],
         pictures: if displayed == b: shownPictures.pictures else: @[],

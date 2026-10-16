@@ -26,8 +26,7 @@ human gate for agent edits, so it grows before the other items:
 
 R1. (done) Reviews from any source: diff-buffer-with-file, vc-review (git HEAD), review-file;
     the supersede prompt's `r`; u / ? keys.
-R2. Word-level refine highlighting inside changed lines (theme has the colours);
-    per-hunk +/- counts in the echo line; a hunk list (consult-style) to jump with `l`.
+R2. (done) Word-level refine highlighting, per-hunk +/- counts, `l` hunk list.
 R3. `e`: edit the proposed hunk in place before taking it; `A`: keep all; `w`: apply
     the decisions so far and keep reviewing.
 R4. `r`: request changes: an instruction for this hunk goes back to the agent with the
@@ -56,6 +55,7 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-16 review R2: refine highlighting of the changed part of paired lines (bgs 9-12), -/+ counts in the echo line, `l` hunk list
 - 2026-10-16 review R1: diff-buffer-with-file, vc-review, review-file, supersede `r`, u / ? keys, source in the echo line
 - 2026-10-16 term line mode (user request): C-c C-j / C-c C-k, Enter sends the input typed after the screen, [Line]/[Char] in the mode line
 - 2026-10-16 org-roam-graph (C-c n g): self-contained HTML force graph in the browser, current note red (roam.graphHtml tested)

@@ -335,9 +335,12 @@ flattened edits favor small files.
 A review shows the buffer with another version's changes as hunks, the way the
 agent's edits are reviewed: removed lines in red, added in green, the current hunk
 brighter. Keys: y takes the proposed version of the hunk, k keeps the buffer's,
-u undoes the decision, n / p move, a takes every pending hunk and finishes, q or
-Enter applies the decisions (pending hunks stay as they are), C-g cancels, ? lists
-the keys. The echo line names the source and the hunk. Besides the agent (C-c a),
+u undoes the decision, n / p move, l lists the hunks (`3  -1 +2  [taken]  first
+line`) to jump to one, a takes every pending hunk and finishes, q or Enter applies
+the decisions (pending hunks stay as they are), C-g cancels, ? lists the keys. Within
+a pending hunk, the k-th removed and added lines are compared and the part that
+differs is highlighted brighter, like diff-refine-hunk. The echo line names the
+source, the hunk and its `-removed +added` line counts. Besides the agent (C-c a),
 these open a review:
 
 - `M-x diff-buffer-with-file`: the buffer against its file on disk, so an agent's

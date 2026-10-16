@@ -1,4 +1,4 @@
-import std/unicode
+import std/[unicode, strutils]
 import ../src/[review, buffer]
 
 proc check(original, proposed: string, count: int) =
@@ -66,5 +66,22 @@ block undo:
   doAssert b.modified and b.text == "a\n変更\nz"
   discard b.command("undo")
   doAssert b.text == "a\n日本語\nz" and b.cursor == (1, 1) and not b.modified
+
+block refine:
+  doAssert changedSpan("line one".toRunes, "line two".toRunes) == (5 ..< 8, 5 ..< 8)
+  doAssert changedSpan("abc".toRunes, "abXc".toRunes) == (2 ..< 2, 2 ..< 3)      # pure insertion: empty on the left
+  doAssert changedSpan("same".toRunes, "same".toRunes) == (4 ..< 4, 4 ..< 4)
+  doAssert changedSpan("日本語の文".toRunes, "日本の文".toRunes) == (2 ..< 3, 2 ..< 2)
+  var r = newReview("keep\nline one\nline two\n", "keep\nline ONE\nline two\nadded\n")
+  doAssert r.hunks.len == 2 and r.stats(0) == (1, 1) and r.stats(1) == (0, 1)
+  doAssert r.hunkLabel(0) == "1  -1 +1  line ONE" and r.hunkLabel(1) == "2  -0 +1  added"
+  let v = r.view(0)
+  doAssert v.text.splitLines()[1] == "-line one" and v.text.splitLines()[2] == "+line ONE"
+  doAssert v.bgs[1] == @[0'i8, 0, 0, 0, 0, 0, 11, 11, 11] and v.bgs[2] == @[0'i8, 0, 0, 0, 0, 0, 12, 12, 12]  # "one" / "ONE", current hunk
+  doAssert v.bgs[3].len == 0                   # "added" has no partner
+  let w = r.view(1)
+  doAssert w.bgs[1][6] == 9 and w.bgs[2][6] == 10  # not the current hunk
+  r.decisions[0] = accepted
+  doAssert r.view(0).bgs[1].len == 0 and r.hunkLabel(0).endsWith("[taken]  line ONE")
 
 echo "All review checks passed"
