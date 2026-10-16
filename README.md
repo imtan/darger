@@ -152,9 +152,11 @@ types special characters on many keys there, so on macOS the command key is Meta
 `(setq meta-modifier "alt")` in `~/.darger.el` makes Option Meta, as elsewhere. C-x C-c quits. On Windows the build is a GUI program (`--app:gui` in
 `config.nims`), so no console opens behind it and messages on stderr are not shown.
 
-Without a file, the editor opens `*scratch*` with a dashboard shown over it: up to
-12 recent files labelled 1-9 and a-c (HOME shown as `~`, long paths cut from the
-left). C-n / C-p / arrows move between entries, Enter or an entry's label opens it
+Without a file, the editor opens `*scratch*` with a dashboard shown over it: a
+"Today" list of one-key commands, `j` today's journal entry, `t` capture a task, `a`
+the agenda, `s` the shell, then up to 10 recent files labelled 1-9 and 0 (HOME shown
+as `~`, long paths cut from the left). C-n / C-p / arrows move between entries,
+Enter or an entry's label opens it
 (a file that no longer exists is reported and the dashboard stays), q, C-g or Escape
 close it to `*scratch*`, C-x C-f prompts for a file, F1 switches to the manual and
 C-x C-c quits. `M-x dashboard` opens it and a key bound to `dashboard` also closes
