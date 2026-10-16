@@ -23,8 +23,8 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
 (2026-10-16: reordered after comparing ~/.emacs.d/config.org with darger. The user's
 rule: only add what is missing; never rebind or remove existing darger keys.)
 
-1. org-roam: `C-c n c` capture a note with a prompt for the title, `C-c n t` add a tag
-   (`#+filetags:`), backlinks buffer refresh, `C-c n g` graph (open in browser via dot?).
+1. org-roam graph (`C-c n g`): the id-link graph as SVG/HTML opened in the browser
+   (dot when installed, else a simple force layout in the page).
 2. Writing helpers through the agent (their Gemini/gptel map `C-c G`): translate,
    proofread, summarize, keywords, blog draft on the region, through `agent-command`
    with prompt templates; result replaces the region or opens a buffer.
@@ -40,6 +40,7 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-16 org-roam-capture (C-c n c, templates with one-key choice) and org-roam-tag-add (C-c n t), tested in torg
 - 2026-10-16 Eagle picker thumbnail preview (Prompt.thumbnail, renderer.loadPicture shared with inline images); exit-minibuffer primitive; WebP (Eagle thumbnails) via a sips PNG cache (src/pictures.nim)
 - 2026-10-16 Inline images: cropped at the pane bottom; wheel, C-v / M-v and recenter count image rows (stepShown moved to panes.nim, tested)
 - 2026-10-16 Org inline images: [[file:…png]] drawn under its line (rows reserved, click maps to the line, org-image-max-rows)

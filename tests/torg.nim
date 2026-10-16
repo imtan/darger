@@ -107,6 +107,25 @@ doAssert newNotePath("/r", "A b", day).replace('\\', '/') == "/r/20261007000000-
 doAssert dailyPath("/r", day).replace('\\', '/') == "/r/daily/2026-10-07.org"
 doAssert linkText("i", "T") == "[[id:i][T]]"
 
+# tags and capture templates
+doAssert parseTags(":SF6:キャラ対:") == @["SF6", "キャラ対"] and parseTags("a b a") == @["a", "b"] and parseTags("") == @[]
+doAssert parseNode("/n/t.org", ":PROPERTIES:\n:ID: 1\n:END:\n#+title: T\n#+filetags: :WIKI:\n").tags == @["WIKI"]
+doAssert withTag(@[":PROPERTIES:", ":ID: 1", ":END:", "#+title: T", "#+filetags: :A:B:", ""], "C") == (4, "#+filetags: :A:B:C:", false)
+doAssert withTag(@["#+title: T", "#+filetags:"], ":C:") == (1, "#+filetags: :C:", false)
+doAssert withTag(@["#+title: T", "#+filetags: a b"], "c") == (1, "#+filetags: a b c", false)
+doAssert withTag(@[":PROPERTIES:", ":ID: 1", ":END:", "#+title: T", "", "* H"], "C") == (4, "#+filetags: :C:", true)
+doAssert withTag(@[":PROPERTIES:", ":ID: 1", ":END:", "text"], "C") == (3, "#+filetags: :C:", true)
+doAssert withTag(@["plain"], "C") == (0, "#+filetags: :C:", true)
+let capAt = dateTime(2026, mOct, 16, 16, 30, 5)
+doAssert expandTemplate("%<%Y%m%d%H%M%S>.org", "My Note", "i", capAt) == "20261016163005.org"
+doAssert expandTemplate("#+title:📝${title}\n#+filetags: :WIKI:\n%?", "Wiki", "i", capAt) == "#+title:📝Wiki\n#+filetags: :WIKI:\n"
+doAssert expandTemplate("\n#+date: %T\n#+title:${title}\n#+filetags:\n", "Z", "i", capAt) == "\n#+date: <2026-10-16 Fri 16:30>\n#+title:Z\n#+filetags:\n"
+let zettel = CaptureTemplate(key: "z", description: "Zettelkasten", file: "%<%Y%m%d%H%M%S>.org", head: "#+title:${title}\n")
+doAssert captureNoteText(zettel, "Z", "ID1", capAt) == ":PROPERTIES:\n:ID:       ID1\n:END:\n#+title:Z\n"
+doAssert captureNoteText(CaptureTemplate(head: ":PROPERTIES:\n:ID: ${id}\n:END:\n#+title: ${title}"), "T", "ID2", capAt) == ":PROPERTIES:\n:ID: ID2\n:END:\n#+title: T\n"
+doAssert captureNotePath("/r", zettel, "Z", "i", capAt).replace('\\', '/') == "/r/20261016163005.org"
+doAssert captureNotePath("/r", CaptureTemplate(), "A b", "i", capAt).replace('\\', '/') == "/r/20261016163005-a_b.org"
+
 # a directory of notes
 let dir = getTempDir() / "darger-roam-test"
 removeDir(dir)
@@ -118,6 +137,7 @@ writeFile(dir / "plain.org", "* no id\n")
 writeFile(dir / ".hidden" / "h.org", newNoteText("idh", "Hidden"))
 let nodes = scanNodes(dir)
 doAssert nodes.len == 2 and nodes[0].title == "Alpha" and nodes[1].title == "Beta"
+doAssert allTags(@[RoamNode(tags: @["b", "A"]), RoamNode(tags: @["a", "b"])]) == @["A", "a", "b"]
 doAssert nodes.byId("idb") == 1 and nodes.byId("nope") == -1
 doAssert nodes.byTitle("Beta") == 1
 let back = backlinks(nodes, "ida")

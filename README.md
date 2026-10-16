@@ -309,6 +309,7 @@ fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK
 | Org: paste the clipboard image | C-M-y |
 | org-roam: find / insert link / backlinks / today | C-c n f / C-c n i / C-c n l / C-c n d |
 | org-roam: today's daily with a time entry | C-c n j |
+| org-roam: capture a note / add a file tag | C-c n c / C-c n t |
 | Grep the Org directory (consult-ripgrep) | C-c n s |
 | Project: find file / switch project / project buffers | C-x p f / C-x p p / C-x p b |
 
@@ -589,8 +590,9 @@ As in the user's Emacs, a romaji query also finds the Japanese it spells, in ise
 the SKK dictionary and romaji rules are used, loaded on first use. On by default
 (`(setq migemo-mode nil)` or M-x migemo-mode turns it off).
 
-`(exit-minibuffer)` accepts the open prompt with what is typed, as Enter does, so an
-init file or an agent can drive prompts.
+While a prompt is open, `(insert "text")` types into the minibuffer (a one-key
+prompt takes the first character) and `(exit-minibuffer)` accepts it as Enter does,
+so an init file or an agent can drive prompts.
 
 ## Projects
 
@@ -686,6 +688,17 @@ agenda, and headlines colour them (active words red, yellow, blue, magenta, cyan
 turn, done words dimmed). With selection keys like `(t)`, C-c C-t instead asks
 `TODO: [t] TODO [n] NEXT …` and takes one key, SPC for none, as Emacs' fast TODO
 selection does.
+
+C-c n c (`org-roam-capture`) asks for a title and makes the note in
+`org-roam-directory` from `org-roam-capture-templates`, a list of
+`(key description file head)`: with several templates one key picks one, as in
+Emacs' capture. `file` and `head` may use `${title}`, `${slug}`, `${id}`,
+`%<FORMAT>` and `%T`; the ID drawer is added when the head has none. For example
+`(setq org-roam-capture-templates '(("z" "🌱 Zettelkasten" "%<%Y%m%d%H%M%S>.org"
+"\n#+date: %T\n#+title:${title}\n#+filetags:\n") ("w" "📝 Wiki"
+"%<%Y%m%d%H%M%S>.org" "#+title:📝${title}\n#+filetags: :WIKI:\n")))`. C-c n t
+(`org-roam-tag-add`) adds a tag to the file's `#+filetags:` (the notes' existing
+tags are offered; the line is created after `#+title:` when missing).
 
 C-M-y (`org-insert-clipboard-image`) saves the clipboard's image as
 `img/YYYY-mm-dd-HH-MM-SS.png` next to the file (the buffer must have one) and inserts

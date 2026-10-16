@@ -6,11 +6,80 @@ import orgmode
 type
   RoamNode* = object
     id*, title*, path*: string
+    tags*: seq[string]  ## from #+filetags: :A:B:
     refs*: seq[tuple[id: string, line: int, text: string]]  # id links out of the file
   Backlink* = object
     title*, path*: string  # the linking note
     line*: int             # the line of the link there
     text*: string          # that line, trimmed
+
+proc slug*(title: string): string =
+  ## org-roam's file name slug: letters and digits lowercased, runs of anything else '_'.
+  var gap = false
+  for r in title.runes:
+    if r.isAlpha or int(r) in ord('0')..ord('9'):
+      if gap and result.len > 0: result.add '_'
+      gap = false
+      result.add $r.toLower
+    else: gap = true
+
+proc parseTags*(value: string): seq[string] =
+  ## The tags in a #+filetags value, ":A:B:" or "A B".
+  for t in value.split({':', ' ', '\t'}):
+    if t.len > 0 and t notin result: result.add t
+
+proc allTags*(nodes: seq[RoamNode]): seq[string] =
+  ## Every tag any node has, sorted, case kept.
+  for n in nodes:
+    for t in n.tags:
+      if t notin result: result.add t
+  result.sort(proc(a, b: string): int = cmpIgnoreCase(a, b))
+
+proc withTag*(lines: seq[string], tag: string): tuple[line: int, text: string, inserted: bool] =
+  ## Where org-roam-tag-add puts the tag: the #+filetags: line with it appended
+  ## (text replaces that line), or a new ":tag:" line after #+title: (else after
+  ## the properties drawer, else at the top: inserted = true).
+  let clean = tag.strip(chars = {':', ' '})
+  var titleAt, endAt = -1
+  for n, l in lines:
+    let low = l.toLowerAscii
+    if low.startsWith("#+filetags:"):
+      let value = l[11..^1].strip
+      let text = if value.len == 0: "#+filetags: :" & clean & ":"
+        elif value.endsWith(":"): "#+filetags: " & value & clean & ":"
+        else: "#+filetags: " & value & " " & clean
+      return (n, text, false)
+    if low.startsWith("#+title:") and titleAt < 0: titleAt = n
+    if low.strip == ":end:" and endAt < 0: endAt = n
+  let at = if titleAt >= 0: titleAt + 1 elif endAt >= 0: endAt + 1 else: 0
+  (at, "#+filetags: :" & clean & ":", true)
+
+type CaptureTemplate* = object
+  ## One of org-roam-capture-templates: `(key description file head)`, where file
+  ## and head may use ${title}, ${slug}, ${id}, %<FORMAT> and %T.
+  key*, description*, file*, head*: string
+
+proc expandTemplate*(tmpl, title, id: string, now: DateTime): string =
+  ## ${title} ${slug} ${id}, %<FMT> through strftime, %T an active timestamp, %? dropped.
+  var s = tmpl.replace("${title}", title).replace("${slug}", slug(title)).replace("${id}", id)
+  s = s.replace("%?", "")
+  s = s.replace("%T", now.format("'<'yyyy-MM-dd ddd HH:mm'>'"))
+  while true:
+    let a = s.find("%<")
+    if a < 0: break
+    let z = s.find(">", a)
+    if z < 0: break
+    s = s[0..<a] & strftime(s[a+2..<z], now) & s[z+1..^1]
+  s
+
+proc captureNoteText*(t: CaptureTemplate, title, id: string, now: DateTime): string =
+  ## The new note: the ID drawer org-roam adds, then the template's head.
+  var head = expandTemplate(t.head, title, id, now)
+  if head.len > 0 and not head.endsWith("\n"): head.add "\n"
+  if ":ID:" in head: head else: ":PROPERTIES:\n:ID:       " & id & "\n:END:\n" & head
+
+proc captureNotePath*(dir: string, t: CaptureTemplate, title, id: string, now: DateTime): string =
+  dir / expandTemplate(if t.file.len > 0: t.file else: "%<%Y%m%d%H%M%S>-${slug}.org", title, id, now)
 
 proc parseNode*(path, text: string): RoamNode =
   result.path = path
@@ -19,6 +88,7 @@ proc parseNode*(path, text: string): RoamNode =
   result.id = property(lines, "ID")
   result.title = keyword(lines, "title")
   if result.title.len == 0: result.title = splitFile(path).name
+  result.tags = parseTags(keyword(lines, "filetags"))
   for n, l in lines:
     let s = $l
     var i = 0
@@ -56,15 +126,6 @@ proc backlinks*(nodes: seq[RoamNode], id: string): seq[Backlink] =
     for r in n.refs:
       if r.id == id: result.add Backlink(title: n.title, path: n.path, line: r.line, text: r.text)
 
-proc slug*(title: string): string =
-  ## org-roam's file name slug: letters and digits lowercased, runs of anything else '_'.
-  var gap = false
-  for r in title.runes:
-    if r.isAlpha or int(r) in ord('0')..ord('9'):
-      if gap and result.len > 0: result.add '_'
-      gap = false
-      result.add $r.toLower
-    else: gap = true
 
 proc newId*(): string =
   ## A random UUID, as org-id makes.

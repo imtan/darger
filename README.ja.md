@@ -294,6 +294,7 @@ CJK と対応する絵文字範囲は 2 セルを占めます。結合文字、�
 | Org: クリップボードの画像を貼り付け | C-M-y |
 | org-roam: 検索 / リンク挿入 / バックリンク / 今日 | C-c n f / C-c n i / C-c n l / C-c n d |
 | org-roam: 今日のデイリーに時刻エントリ | C-c n j |
+| org-roam: ノートを capture / ファイルタグを追加 | C-c n c / C-c n t |
 | Org ディレクトリを全文検索 (consult-ripgrep) | C-c n s |
 | プロジェクト: ファイル / 切替 / バッファ | C-x p f / C-x p p / C-x p b |
 
@@ -552,8 +553,9 @@ consult-line、consult-ripgrep の絞り込み、すべての補完プロンプ�
 SKK の辞書とローマ字規則を初回利用時に読み込んで使います。既定でオン (`(setq migemo-mode nil)` か
 M-x migemo-mode でオフ)。
 
-`(exit-minibuffer)` は開いているプロンプトを入力中の内容で確定します (Enter と同じ)。init ファイルや
-エージェントからプロンプトを操作できます。
+プロンプトが開いている間、`(insert "文字列")` はミニバッファに入力し (1 キーのプロンプトは先頭の
+1 文字を取る)、`(exit-minibuffer)` は Enter と同じく確定します。init ファイルやエージェントから
+プロンプトを操作できます。
 
 ## プロジェクト
 
@@ -640,6 +642,15 @@ M-Left / M-Right は見出しを昇格・降格し、M-Up / M-Down はそのサ�
 最後の語) は agenda で完了扱い、見出しでは色が付きます (進行中の語は赤・黄・青・マゼンタ・シアンの順、
 完了語は薄く)。`(t)` のような選択キーがあるときの C-c C-t は巡回ではなく `TODO: [t] TODO [n] NEXT …`
 と尋ねて 1 キーで決めます (SPC でなし)。Emacs の高速 TODO 選択と同じです。
+
+C-c n c (`org-roam-capture`) は題名を尋ね、`org-roam-capture-templates` (`(キー 説明 ファイル名 ヘッダ)`
+のリスト) から `org-roam-directory` にノートを作ります。テンプレートが複数なら Emacs の capture と同じく
+1 キーで選びます。ファイル名とヘッダでは `${title}`、`${slug}`、`${id}`、`%<書式>`、`%T` が使え、ヘッダに
+ID がなければ ID ドロワーを付けます。例: `(setq org-roam-capture-templates '(("z" "🌱 Zettelkasten"
+"%<%Y%m%d%H%M%S>.org" "\n#+date: %T\n#+title:${title}\n#+filetags:\n") ("w" "📝 Wiki"
+"%<%Y%m%d%H%M%S>.org" "#+title:📝${title}\n#+filetags: :WIKI:\n")))`。C-c n t (`org-roam-tag-add`) は
+ファイルの `#+filetags:` にタグを足します (既存ノートのタグを候補に出し、行がなければ `#+title:` の
+後に作ります)。
 
 C-M-y (`org-insert-clipboard-image`) はクリップボードの画像をファイルの隣の
 `img/YYYY-mm-dd-HH-MM-SS.png` に保存して (バッファにファイルが必要) `[[file:img/…]]` を挿入します。

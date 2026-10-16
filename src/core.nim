@@ -819,8 +819,16 @@ interp.defPrimitive("global-set-key", proc(args: seq[Value]): Value =
   for i in 1..<tokens.len: prefixKeys.incl tokens[0..<i].join(" ")  # "C-c n f": C-c, then C-c n
   args[1])
 interp.defPrimitive("insert", proc(args: seq[Value]): Value =
+  ## Into the buffer, or, while a prompt is open, into the minibuffer as typing would
+  ## (a one-key prompt takes the first rune), so scripts and agents can answer prompts.
   args.arity(1, 1)
-  b.insert(args[0].asString)
+  if inMini():
+    for r in args[0].asString.runes:
+      if filterRune(r): continue
+      if not inMini(): break
+      mini.insert($r, true)
+    if inMini(): (if mode == "search": search() else: refreshCandidates())
+  else: b.insert(args[0].asString)
   nilValue())
 interp.defPrimitive("message", proc(args: seq[Value]): Value =
   args.arity(1, 1)

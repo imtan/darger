@@ -461,6 +461,92 @@ interp.defPrimitive("org-roam-buffer-toggle", proc(args: seq[Value]): Value =
     refRows.add l.title & "  " & l.text
   beginMini("backlinks", "Backlinks: ")
   nilValue())
+# org-roam-capture (C-c n c) and org-roam-tag-add (C-c n t)
+
+var
+  captureTitle = ""
+  captureTemplates: seq[CaptureTemplate]
+  tagRows: seq[string]
+
+proc roamTemplates(): seq[CaptureTemplate] =
+  ## org-roam-capture-templates: a list of (key description file head) lists.
+  let v = interp.env.values["org-roam-capture-templates"]
+  if v.kind == vNil: return @[CaptureTemplate(key: "d", description: "default", head: "#+title: ${title}\n")]
+  for item in v.asList:
+    let parts = item.asList.mapIt(it.asString)
+    if parts.len >= 2:
+      result.add CaptureTemplate(key: parts[0], description: parts[1],
+        file: (if parts.len > 2: parts[2] else: ""), head: (if parts.len > 3: parts[3] else: ""))
+
+proc captureNote(t: CaptureTemplate) =
+  ## The new note from the template, visited with point at its end; an existing file is only visited.
+  let id = newId()
+  let path = captureNotePath(roamDir(), t, captureTitle, id, now())
+  if not fileExists(path):
+    createDir(parentDir(path))
+    writeFile(path, captureNoteText(t, captureTitle, id, now()))
+  visit(path)
+  b.cursor = (b.lines.high, b.lines[^1].len)
+  echoLine = "Captured " & shortPath(path)
+
+proc pickTemplate(key: char) =
+  for t in captureTemplates:
+    if t.key.len > 0 and t.key[0] == key: captureNote(t)
+
+definePrompt(Prompt(kind: "roam-capture-title", text: true, onAccept: proc(value: string): bool =
+  if value.strip.len == 0: return false
+  captureTitle = value.strip
+  captureTemplates = roamTemplates()
+  if captureTemplates.len <= 1:
+    captureNote(if captureTemplates.len == 1: captureTemplates[0] else: CaptureTemplate(head: "#+title: ${title}\n"))
+  else:
+    var label = "Template: "
+    for t in captureTemplates: label.add "[" & t.key & "] " & t.description & "  "
+    beginMini("roam-capture-template", label)
+  true))
+definePrompt(Prompt(kind: "roam-capture-template", onAccept: proc(value: string): bool =
+  if value.len > 0: pickTemplate(value[0])
+  true))
+runeFilters.add proc(r: Rune): bool =
+  if mode != "roam-capture-template": return false
+  mode = ""
+  prompt = ""
+  echoLine = ""
+  if r.int < 128: pickTemplate(char(r.int))
+  true
+
+interp.defPrimitive("org-roam-capture", proc(args: seq[Value]): Value =
+  ## C-c n c: a title, then (with several templates) one key for the template.
+  args.arity(0, 0)
+  beginMini("roam-capture-title", "Title: ")
+  nilValue())
+
+definePrompt(Prompt(kind: "roam-tag", text: true, candidates: proc(): seq[string] = tagRows,
+  onAccept: proc(value: string): bool =
+    let tag = value.strip(chars = {':', ' '})
+    if tag.len == 0: return false
+    var lines: seq[string]
+    for l in b.lines: lines.add $l
+    let change = withTag(lines, tag)
+    if change.inserted:
+      let cur = b.cursor
+      b.snapshot()
+      let at = if change.line <= b.lines.high: b.offset((change.line, 0)) else: b.text.runeLen
+      b.splice(at, at, change.text & (if change.line <= b.lines.high: "\n" else: ""))
+      b.last = "edit"
+      let line = if cur.line >= change.line: cur.line + 1 else: cur.line
+      b.cursor = (line, cur.col)
+    else: setLine(change.line, change.text)
+    echoLine = "Tag " & tag & " added"
+    true))
+interp.defPrimitive("org-roam-tag-add", proc(args: seq[Value]): Value =
+  ## C-c n t: a tag (the notes' existing tags offered) added to this file's #+filetags.
+  args.arity(0, 0)
+  if not orgBuffer(): return nilValue()
+  tagRows = allTags(scanNodes(roamDir()))
+  beginMini("roam-tag", "Tag: ")
+  nilValue())
+
 proc openDaily(): string =
   ## Today's org-roam daily note, created when missing; returns its path.
   result = dailyPath(roamDir(), now())
@@ -558,4 +644,7 @@ defaults.add """
 (global-set-key "C-c n l" 'org-roam-buffer-toggle)
 (global-set-key "C-c n d" 'org-roam-dailies-today)
 (global-set-key "C-c n j" 'org-roam-dailies-capture-today)
+(global-set-key "C-c n c" 'org-roam-capture)
+(global-set-key "C-c n t" 'org-roam-tag-add)
+(setq org-roam-capture-templates nil)
 """
