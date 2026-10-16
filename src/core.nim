@@ -230,6 +230,7 @@ var
   modifiedIgnore*: seq[proc(buf: Buffer): bool]  # buffers whose edits never block quitting
   keyFilters*: seq[proc(c: string): bool]  # before dispatch; true consumes the key (popups)
   runeHooks*: seq[proc()]            # before a typed rune is inserted
+  runeFilters*: seq[proc(r: Rune): bool]  # before that: true takes the rune (a terminal)
   insertHooks*: seq[proc(r: Rune)]   # after a self-inserted rune
   imeHooks*: seq[proc()]             # when a native IME composition starts
   escapeHooks*: seq[proc(): bool]    # true: Escape has a popup to close
@@ -272,6 +273,9 @@ proc filterKey*(c: string): bool =
     if hook(c): return true
 var moveDirection* = 0  # the last buffer command's direction over hidden lines: 1, -1 or 0
 
+proc filterRune*(r: Rune): bool =
+  for filter in runeFilters:
+    if filter(r): return true
 proc beforeRune*() =
   moveDirection = 0
   for hook in runeHooks: hook()

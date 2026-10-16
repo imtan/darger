@@ -168,6 +168,7 @@ C-c t                    capture。入力を org-capture-file の org-capture-he
 
 [シェル]
 C-c s                    *shell* を開く (comint 風。Enter で送信、C-c C-c 割り込み、C-d で EOF)
+M-x term                 *terminal*: 全画面対応の端末 (全キーをプログラムへ。C-x / C-c は darger)
 
 [背景シェーダー]  （.glsl バッファで。(background-shader "path") を ~/.darger.el に）
 C-c C-c                  このバッファを背景シェーダーとして適用（保存・外部変更でも再適用）

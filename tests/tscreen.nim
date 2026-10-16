@@ -101,4 +101,12 @@ block splitSequences:
   s.feed("\x07c")
   doAssert s.lines[0] == "abc"
 
+block keys:
+  doAssert keySequence("enter") == "\r" and keySequence("backspace") == "\x7f"
+  doAssert keySequence("C-a") == "\x01" and keySequence("C-z") == "\x1a" and keySequence("C-SPC") == "\0"
+  doAssert keySequence("up") == "\x1b[A" and keySequence("f5") == "\x1b[15~" and keySequence("escape") == "\x1b"
+  doAssert keySequence("M-f") == "\x1bf" and keySequence("M-backspace") == "\x1b\x7f"
+  doAssert keySequence("tab") == "\t" and keySequence("tab", shift = true) == "\x1b[Z"
+  doAssert keySequence("C-x") == "\x18" and keySequence("nothing") == ""
+
 echo "screen ok"

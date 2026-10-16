@@ -345,8 +345,19 @@ command sends end-of-file. The process learns the size of the window showing
 `*shell*` (`$COLUMNS`, `$LINES`) and follows splits, resizes and zooms. The output
 keeps about 400 KB. The buffer never needs saving; killing it, or quitting, hangs
 the shell up, and C-c s after the shell exited (`Process shell finished`) starts a
-new one. Still line mode: full-screen programs (and their cursor addressing) are
-not interpreted yet.
+new one.
+
+`M-x term` is the other kind of terminal, like Emacs' `term` in char mode: `*terminal*`
+shows a real screen (`src/termscreen.nim`: cursor addressing, erasing, scrolling
+regions, the alternate screen, colours, with the lines that scrolled off above it) of
+the size of its window, running the shell, or `(term "command args")` that program,
+with `TERM=xterm-256color`, so full-screen programs such as `claude`, `top` or `vim`
+work. Every key goes to the program as a terminal would send it (Enter, arrows,
+function keys, C-a … C-z, M-x as ESC x, Escape, Shift-Tab), and typed characters
+too, so SKK is out of the way there; only the editor's prefixes C-x and C-c (and M-x,
+M-:, C-g) stay with darger, so C-x o, C-x b and C-c s still work, and C-c C-c sends
+a C-c to the program. The buffer's cursor is the terminal's. One terminal at a time;
+killing the buffer or quitting hangs the program up.
 
 ## Background shader
 

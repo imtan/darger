@@ -169,6 +169,7 @@ window.onRune = proc(rune: Rune) =
     if prefix.len > 0:
       dispatch($Rune(scalar))
       return
+    if filterRune(Rune(scalar)): return  # a terminal buffer takes every typed rune
     beforeRune()
     if skkOn():
       if applySkk(if scalar == 32: inputMethod.feed(skSpace)

@@ -274,3 +274,26 @@ proc resize*(s: var Screen, cols, rows: int) =
   s.bottom = rows - 1
   s.wrapPending = false
   s.clampCursor()
+
+proc keySequence*(chord: string, shift = false): string =
+  ## The bytes a terminal sends a program for an editor key chord ("enter", "C-a",
+  ## "M-f", "up", "f5" ...), xterm style; "" for keys the editor keeps.
+  const named = {"enter": "\r", "C-m": "\r", "backspace": "\x7f", "C-h": "\x08", "tab": "\t",
+    "C-i": "\t", "escape": "\x1b", "delete": "\x1b[3~", "insert": "\x1b[2~", "home": "\x1b[H",
+    "end": "\x1b[F", "pageup": "\x1b[5~", "pagedown": "\x1b[6~", "up": "\x1b[A", "down": "\x1b[B",
+    "right": "\x1b[C", "left": "\x1b[D", "f1": "\x1bOP", "f2": "\x1bOQ", "f3": "\x1bOR",
+    "f4": "\x1bOS", "f5": "\x1b[15~", "f6": "\x1b[17~", "f7": "\x1b[18~", "f8": "\x1b[19~",
+    "f9": "\x1b[20~", "f10": "\x1b[21~", "f11": "\x1b[23~", "f12": "\x1b[24~",
+    "C-SPC": "\0", "C-@": "\0", "C-[": "\x1b", "C-\\": "\x1c", "C-]": "\x1d", "C-_": "\x1f",
+    "C-/": "\x1f", "SPC": " "}
+  if chord == "tab" and shift: return "\x1b[Z"
+  for (name, bytes) in named:
+    if chord == name: return bytes
+  if chord.len == 3 and chord.startsWith("C-") and chord[2] in 'a'..'z':
+    return $char(ord(chord[2]) - ord('a') + 1)
+  if chord.startsWith("M-") and chord.len > 2:
+    let rest = chord[2..^1]
+    if rest.len == 1: return "\x1b" & rest
+    let inner = keySequence(rest, shift)
+    if inner.len > 0: return "\x1b" & inner
+  ""
