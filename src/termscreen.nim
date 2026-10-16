@@ -7,12 +7,15 @@ import buffer  # runeWidth
 type
   Cell* = object
     r*: Rune
-    color*: int8   ## 0 = default, 1..8 = ANSI black .. white
+    color*: int8   ## foreground: 0 = default, 1..8 = ANSI black .. white
+    bg*: int8      ## background: 0 = none, 1..8
+    attr*: uint8   ## bit 0 bold, bit 1 underline, bit 2 inverse
   Screen* = object
     cols*, rows*: int
     cells: seq[seq[Cell]]       ## rows x cols
     row*, col*: int             ## the cursor
-    color: int8
+    color, bg: int8             ## the current SGR colours
+    attr: uint8
     top, bottom: int            ## the scrolling region (DECSTBM), inclusive
     wrapPending: bool           ## the cursor sits past the last column until the next rune
     pending: string             ## an incomplete escape or UTF-8 sequence
@@ -55,14 +58,33 @@ proc lines*(s: Screen): seq[string] =
   ## The screen rows as text, trailing blanks trimmed.
   for r in s.cells: result.add rowText(r)
 
-proc colors*(s: Screen): seq[seq[int8]] =
+proc shownFg(c: Cell): int8 =
+  ## Inverse video swaps the colours: default-on-default becomes black on white.
+  if (c.attr and 4) != 0: (if c.bg > 0: c.bg else: 1'i8) else: c.color
+
+proc shownBg(c: Cell): int8 =
+  if (c.attr and 4) != 0: (if c.color > 0: c.color else: 8'i8) else: c.bg
+
+proc perRune(s: Screen, pick: proc(c: Cell): int8): seq[seq[int8]] =
   for r in s.cells:
     var row: seq[int8]
     let count = rowText(r).runeLen
     for c in r:
       if row.len >= count: break
-      if c.r != filler: row.add c.color
+      if c.r != filler: row.add pick(c)
     result.add row
+
+proc colors*(s: Screen): seq[seq[int8]] =
+  ## The foreground colour of every shown rune, per row (0 = default, 1..8).
+  s.perRune(shownFg)
+
+proc backgrounds*(s: Screen): seq[seq[int8]] =
+  ## The background colour of every shown rune, per row (0 = none, 1..8).
+  s.perRune(shownBg)
+
+proc underlines*(s: Screen): seq[seq[int8]] =
+  ## 5 under every underlined rune (the renderer's plain underline mark), else 0.
+  s.perRune(proc(c: Cell): int8 = (if (c.attr and 2) != 0: 5'i8 else: 0'i8))
 
 proc scrollbackLines*(s: Screen): seq[string] =
   for r in s.scrollback: result.add rowText(r)
@@ -100,9 +122,9 @@ proc put(s: var Screen, r: Rune) =
     s.col = 0
     s.lineFeed()
     s.wrapPending = false
-  s.cells[s.row][s.col] = Cell(r: r, color: s.color)
+  s.cells[s.row][s.col] = Cell(r: r, color: s.color, bg: s.bg, attr: s.attr)
   if wide:
-    s.cells[s.row][s.col + 1] = Cell(r: filler, color: s.color)
+    s.cells[s.row][s.col + 1] = Cell(r: filler, color: s.color, bg: s.bg, attr: s.attr)
     s.col += 2
     if s.col >= s.cols:
       s.col = s.cols - 1
@@ -114,18 +136,33 @@ proc erase(s: var Screen, row, a, z: int) =
   for c in max(0, a)..min(s.cols - 1, z): s.cells[row][c] = blank
 
 proc sgr(s: var Screen, codes: seq[int]) =
+  ## Colours (30-37 / 90-97, 40-47 / 100-107, 38;5;n / 48;5;n for the first 16, true
+  ## colour as default), bold (1), underline (4), inverse (7) and their resets.
   var i = 0
   while i < codes.len:
     let c = codes[i]
-    if c == 0 or c == 39: s.color = 0
-    elif c in 30..37: s.color = int8(c - 30 + 1)
-    elif c in 90..97: s.color = int8(c - 90 + 1)
-    elif c == 38 and i + 2 < codes.len and codes[i+1] == 5:
-      if codes[i+2] in 0..15: s.color = int8(codes[i+2] mod 8 + 1) else: s.color = 0
-      i += 2
-    elif c == 38 and i + 4 < codes.len and codes[i+1] == 2:
-      s.color = 0
-      i += 4
+    case c
+    of 0: (s.color = 0; s.bg = 0; s.attr = 0)
+    of 1: s.attr = s.attr or 1
+    of 4: s.attr = s.attr or 2
+    of 7: s.attr = s.attr or 4
+    of 22: s.attr = s.attr and not 1'u8
+    of 24: s.attr = s.attr and not 2'u8
+    of 27: s.attr = s.attr and not 4'u8
+    of 39: s.color = 0
+    of 49: s.bg = 0
+    of 30..37: s.color = int8(c - 30 + 1)
+    of 90..97: s.color = int8(c - 90 + 1)
+    of 40..47: s.bg = int8(c - 40 + 1)
+    of 100..107: s.bg = int8(c - 100 + 1)
+    of 38, 48:
+      var value = 0'i8
+      if i + 2 < codes.len and codes[i+1] == 5:
+        if codes[i+2] in 0..15: value = int8(codes[i+2] mod 8 + 1)
+        i += 2
+      elif i + 4 < codes.len and codes[i+1] == 2: i += 4
+      if c == 38: s.color = value else: s.bg = value
+    else: discard
     inc i
 
 proc csi(s: var Screen, params: string, final: char) =

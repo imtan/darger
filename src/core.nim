@@ -241,6 +241,9 @@ var
   modeLineHook*: proc(): string      # appended to the language name in the mode line
   faceProviders*: seq[proc(buf: Buffer): seq[seq[Face]]]  # a non-empty result replaces the
                                                              # language highlighting (a terminal's colours)
+  backProviders*: seq[proc(buf: Buffer): seq[seq[int8]]]   # per-rune background colours (1-8), any pane
+  markProviders*: seq[proc(buf: Buffer): seq[seq[int8]]]   # per-rune underlines (5) when the buffer has
+                                                             # no diagnostics
   foldHook*: proc(buf: Buffer): seq[int8]  # per line: 0 shown, 1 hidden, 2 a headline hiding
                                            # the lines after it (drawn with "..."); empty = none
   revealHook*: proc(buf: Buffer, line: int)  # show a hidden line: open the folds over it
@@ -1472,7 +1475,12 @@ proc redraw*(hover = thNone, maximized = false) =
   let displayFaces = if view == nil: faces elif view.faces != nil: view.faces() else: @[]
   let listed = inMini() and hasCandidates(mode)
   settleFolds()
-  let shownMarks = if marksHook != nil: marksHook() else: @[]
+  var shownMarks = if marksHook != nil: marksHook() else: @[]
+  proc provided(providers: seq[proc(buf: Buffer): seq[seq[int8]]], buf: Buffer): seq[seq[int8]] =
+    for provider in providers:
+      result = provider(buf)
+      if result.len > 0: return
+  if shownMarks.len == 0: shownMarks = provided(markProviders, b)
   # From the 5th candidate SKK's page hangs from the cursor like a completion popup
   # (in a prompt, where no box fits, it is the echo line above).
   let skkPage = if skkShown and not inMini(): inputMethod.pageItems else: (keys: @[], words: @[], selected: 0)
@@ -1499,6 +1507,7 @@ proc redraw*(hover = thNone, maximized = false) =
       views.add PaneView(b: displayed, x: p.x, y: p.y, w: p.w, h: p.h,
         top: renderer.top, left: renderer.left, cursor: displayed.cursor, active: true,
         faces: displayFaces, marks: if displayed == b: shownMarks else: @[],
+        bgs: if displayed == b: provided(backProviders, b) else: @[],
         fold: if displayed == b: folds(b) else: @[],
         lineColors: if view != nil and view.colors != nil: view.colors() else: @[],
         lineNumbers: displayed == b,
@@ -1511,6 +1520,7 @@ proc redraw*(hover = thNone, maximized = false) =
       p.cursor = (line, min(p.cursor.col, buf.lines[line].len))
       views.add PaneView(b: buf, x: p.x, y: p.y, w: p.w, h: p.h, top: p.top, left: p.left,
         cursor: p.cursor, active: false, faces: facesOf(buf), fold: folds(buf), lineNumbers: true,
+        bgs: provided(backProviders, buf), marks: provided(markProviders, buf),
         modeLine: modeLineText(buf, reg.displayName(buf), p.cursor, langOf(buf).name, ""),
         matchStart: -1)
   renderer.draw(window, views, bars, message, mini.text,

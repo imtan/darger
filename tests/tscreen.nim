@@ -80,6 +80,15 @@ block colours:
   s.feed("\x1b[31mre\x1b[0md\x1b[92mg")
   doAssert s.colors[0] == @[2'i8, 2, 0, 3]
   doAssert s.cellAt(0, 0).color == 2
+  var a = initScreen(10, 1)
+  a.feed("\x1b[44mB\x1b[49mn\x1b[4mu\x1b[24m\x1b[7mi\x1b[27m\x1b[1;31;107mx\x1b[0m.")
+  doAssert a.backgrounds[0] == @[5'i8, 0, 0, 8, 8, 0]   # blue bg; inverse of default = white bg
+  doAssert a.colors[0] == @[0'i8, 0, 0, 1, 2, 0]        # inverse of default fg = black; bright white bg + red fg
+  doAssert a.underlines[0] == @[0'i8, 0, 5, 0, 0, 0]
+  doAssert (a.cellAt(0, 4).attr and 1) != 0            # bold is recorded
+  var inv = initScreen(4, 1)
+  inv.feed("\x1b[32;7mG")                             # inverse swaps the colours
+  doAssert inv.colors[0] == @[1'i8] and inv.backgrounds[0] == @[3'i8]
 
 block resizing:
   var s = initScreen(6, 3)

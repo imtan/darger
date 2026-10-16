@@ -376,7 +376,7 @@ proc drawLine(r: Renderer, line: seq[Rune], row, scroll: int, cursor = -1,
               selectionStart = -1, selectionEnd = -1, matchStart = -1, matchEnd = -1,
               composition: seq[Rune] = @[], imeCursor = 0,
               x0 = 0, width = -1, tint = theme.fg, faces: seq[Face] = @[],
-              marks: seq[int8] = @[], paren = [-1, -1]) =
+              marks: seq[int8] = @[], paren = [-1, -1], bgs: seq[int8] = @[]) =
   let visible = if width < 0: r.pw else: width
   let rs = displayLine(line, composition, cursor)
   let caret = if composition.len > 0 and cursor >= 0: cursor + imeCursor else: cursor
@@ -399,6 +399,8 @@ proc drawLine(r: Renderer, line: seq[Rune], row, scroll: int, cursor = -1,
         else: at >= scroll and at + size <= scroll + visible
       if shown:
         if pass == 0:
+          let bg = if composing or original >= bgs.len: 0'i8 else: bgs[original]
+          if bg in 1'i8..8'i8: r.fill(x0+at-scroll, row, size, theme.ansi[bg - 1])
           if selected or composing: r.fill(x0+at-scroll, row, size, theme.region)
           if matched: r.fill(x0+at-scroll, row, size, theme.search)
           if not composing and original in paren: r.fill(x0+at-scroll, row, size, theme.paren)
@@ -407,10 +409,10 @@ proc drawLine(r: Renderer, line: seq[Rune], row, scroll: int, cursor = -1,
           r.glyph(rune, r.cellX(x0+at-scroll), r.rowY(row),
             if underCursor: theme.bg elif matched: theme.searchFg else: faceColor(face, tint))
           let mark = if composing or original >= marks.len: 0'i8 else: marks[original]
-          if mark in 1'i8..4'i8:  # a diagnostic: 2 px underline at the bottom of the cell
+          if mark in 1'i8..5'i8:  # a diagnostic (1-4) or a plain underline (5): 2 px at the bottom
             r.gpu.drawRect(rect(r.cellX(x0+at-scroll).float32,
               (r.rowY(row+1) - 2).float32, (size*r.cellW).float32, 2),
-              [theme.err, theme.warn, theme.info, theme.hint][mark - 1])
+              if mark == 5: faceColor(face, tint) else: [theme.err, theme.warn, theme.info, theme.hint][mark - 1])
       cell += width
     if pass == 0 and caret >= 0: r.fill(x0+span.cell-scroll, row, span.width, theme.cursor)
 
@@ -612,7 +614,8 @@ type PaneView* = object
   cursor*: Point
   active*: bool
   faces*: seq[seq[Face]]
-  marks*: seq[seq[int8]]
+  marks*: seq[seq[int8]]   # per rune: 1-4 diagnostic underlines, 5 a plain underline
+  bgs*: seq[seq[int8]]     # per rune: 1-8 an ANSI background colour
   fold*: seq[int8]
   lineColors*: seq[int8]
   lineNumbers*: bool
@@ -683,7 +686,7 @@ proc drawPane(r: Renderer, window: Window, p: var PaneView, composition: seq[Run
       if at >= 0: comp else: @[], imeCursor,
       faces = if line < p.faces.len: p.faces[line] else: @[],
       marks = if line < p.marks.len: p.marks[line] else: @[], paren = paren,
-      x0 = gutter, width = cols)
+      x0 = gutter, width = cols, bgs = if line < p.bgs.len: p.bgs[line] else: @[])
     offset += b.lines[line].len + 1
     inc row
   if p.box.lines.len > 0 and p.box.line >= top and rowOf(p.box.line) < r.rows:

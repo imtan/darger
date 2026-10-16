@@ -20,8 +20,8 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
 
 ## Open
 
-1. Terminal: background colours and bold / underline in the screen model; mouse
-   reporting for programs that ask for it; `C-c C-j` line mode as in Emacs term.
+1. Terminal: mouse reporting for programs that ask for it (?1000 / ?1006), `C-c C-j`
+   line mode as in Emacs term, a bold face (a second font weight) for bold text.
 2. Org agenda, minimal: `M-x org-agenda` lists TODO / SCHEDULED items of
    `org-agenda-files` for today in a consult-style list.
 3. Windows: `C-x +` balance, `C-x ^` / `C-x }` resize, `C-x 4 b` other-window buffer.
@@ -33,6 +33,7 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-16 terminal: background colours, underline and inverse video in the screen model and renderer (backProviders / markProviders hooks)
 - 2026-10-16 tests/tmonkey.nim: fuzzers for Buffer, SKK, Lisp, HTML, terminal text/screen and pointAt; found and fixed two screen-model bugs (cursor restore after shrink, wide rune on a one-column screen)
 - 2026-10-16 journal: org-journal-condition-prompt, the one-key 体調 [1-5] ★ prompt after a new entry
 - 2026-10-16 terminal slice 3: several terminals (Terminal objects), wide runes take two cells, src/ext/claude.nim with C-c C c / C-c C t / C-c C n / C-c C r / C-c C f as in the user's Emacs

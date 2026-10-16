@@ -242,17 +242,31 @@ when not defined(windows):
     true
   escapeHooks.add proc(): bool = activeTerminal() != nil  # Escape reaches the program
 
-  faceProviders.add proc(buf: Buffer): seq[seq[Face]] =
+  proc screenRows(buf: Buffer, values: seq[seq[int8]]): seq[seq[int8]] =
+    ## Per-rune values of the screen laid under the buffer's lines (the scrollback has none).
     let t = terminalOf(buf)
     if t == nil or buf.lines.len == 0: return
     let back = t.screen.scrollbackLines.len
-    let colors = t.screen.colors
     for n, line in buf.lines:
-      var row = newSeq[Face](line.len)
-      if n >= back and n - back < colors.len:
-        for i in 0..<min(line.len, colors[n - back].len):
-          if colors[n - back][i] > 0: row[i] = Face(ord(fAnsi0) + colors[n - back][i] - 1)
+      var row = newSeq[int8](line.len)
+      if n >= back and n - back < values.len:
+        for i in 0..<min(line.len, values[n - back].len): row[i] = values[n - back][i]
       result.add row
+
+  faceProviders.add proc(buf: Buffer): seq[seq[Face]] =
+    let t = terminalOf(buf)
+    if t == nil: return
+    for row in screenRows(buf, t.screen.colors):
+      var faces = newSeq[Face](row.len)
+      for i, c in row:
+        if c > 0: faces[i] = Face(ord(fAnsi0) + c - 1)
+      result.add faces
+  backProviders.add proc(buf: Buffer): seq[seq[int8]] =
+    let t = terminalOf(buf)
+    if t != nil: result = screenRows(buf, t.screen.backgrounds)
+  markProviders.add proc(buf: Buffer): seq[seq[int8]] =
+    let t = terminalOf(buf)
+    if t != nil: result = screenRows(buf, t.screen.underlines)
 
   killHooks.add proc(buf: Buffer) =
     let t = terminalOf(buf)

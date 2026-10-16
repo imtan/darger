@@ -364,7 +364,9 @@ function keys, C-a … C-z, M-x as ESC x, Escape, Shift-Tab), and typed characte
 too, so SKK is out of the way there; only the editor's prefixes C-x and C-c (and M-x,
 M-:, C-g) stay with darger, so C-x o, C-x b and C-c s still work, and C-c C-c sends
 a C-c to the program. The buffer's cursor is the terminal's; wide (CJK) runes take two
-cells. Killing the buffer or quitting hangs the program up.
+cells; the eight ANSI colours show as foreground and background, underline as an
+underline, inverse video by swapping the two (bold is recorded but drawn as regular
+text). Killing the buffer or quitting hangs the program up.
 
 Claude Code runs in such a terminal with the bindings of the user's Emacs setup:
 C-c C c (`claude-code`) starts `claude-command` (default `claude`) in the project root
