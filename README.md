@@ -679,13 +679,15 @@ one undo step).
   っ, `x` + vowel / `xtu` / `xya` / `xwa` for small kana, `-` ー, `~` 〜, `! ? : [ ]`
   full-width, `z/ z. z, z- zh zj zk zl z[ z]` → `・ … ‥ 〜 ← ↓ ↑ → 『 』`. `.`, `,`,
   digits and space stay ASCII. `(` inserts （） with the cursor inside; `)` steps
-  over a following ）. `q` toggles katakana, `l` switches to latin, C-j returns to
-  hiragana.
+  over a following ）. `q` toggles katakana, `l` switches to latin, `L` to full-width
+  ASCII (`[全英]`: `Abc 1` → `Ａｂｃ　１`), C-j returns to hiragana from either.
 - ▽: an uppercase letter or `;` starts a reading; a second uppercase letter (or `;`)
   marks the okurigana (`OkuRi` → 送り, converted as soon as the kana is complete).
   SPC converts, Enter / C-j commits the reading without a newline, `q` commits it as
   katakana, Backspace deletes the last kana, C-g cancels. Enter, Backspace and Tab
-  mean the same as C-m, C-h and C-i here. Tab completes the reading like skk-comp:
+  mean the same as C-m, C-h and C-i here. `(setq skk-egg-like-newline nil)` makes
+  Enter in ▽ / ▼ commit and then insert the newline, as DDSKK does by default; the
+  default `t` only commits. Tab completes the reading like skk-comp:
   it becomes the next dictionary key starting with what was typed (user dictionary
   entries first, then the main one, alphabetically; okuri-ari keys skipped), another
   Tab the next, and after the last Tab brings the typed text back; typing continues
@@ -718,8 +720,8 @@ one undo step).
 - Each commit from ▼ moves the choice to the front and rewrites `~/.darger-skk-jisyo`
   (UTF-8 SKK format, searched first, keys sorted rather than by recency). Emacs'
   `~/.skk-jisyo` is never touched.
-- Not implemented: zenkaku latin (`L`), `l`-prefixed small kana (use `x`), okuri `[…]`
-  blocks and `(concat …)` evaluation.
+- Not implemented: `l`-prefixed small kana (`l` is the latin-mode key, as in DDSKK: use
+  `x`), okuri `[…]` blocks and `(concat …)` evaluation.
 
 Windy 0.5.0 forwards repeated Windows WM_KEYDOWN events to `onButtonPress`, so
 held command keys use native OS repeat. `onRune` handles printable text only.

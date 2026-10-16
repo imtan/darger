@@ -115,7 +115,8 @@ C-x C-j / C-\            SKK の入れ / 切り
                          候補なし: 辞書登録プロンプト (空 Enter / C-g で ▽ に戻る)
                          ▽で Tab: 読みを辞書の見出し語で補完 (繰り返しで次)
                          /: abbrev (英字の読み。/dog SPC → 犬 など)
-                         q:カナ切替 l:英数 C-j:かなに戻る 他のコマンドは確定してから実行
+                         q:カナ切替 l:英数 L:全角英数 C-j:かなに戻る 他のコマンドは確定してから実行
+                         (setq skk-egg-like-newline nil) で Enter が確定 + 改行
 
 [エージェント]
 C-c a                    agent-command に指示を送る

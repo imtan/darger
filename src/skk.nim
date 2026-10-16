@@ -8,7 +8,7 @@ import fileio
 
 type
   SkkKey* = enum skSpace, skEnter, skBackspace, skCtrlJ, skCtrlG, skTab, skNext, skPrev
-  KanaMode* = enum Hiragana, Katakana, Latin
+  KanaMode* = enum Hiragana, Katakana, Latin, Zenkaku  ## Zenkaku: full-width ASCII (DDSKK's L)
   Stage* = enum Direct, Reading, Choosing  ## Reading = ▽, Choosing = ▼
   Dictionary* = Table[string, seq[string]]
   SkkResult* = object
@@ -35,10 +35,11 @@ type
     index*: int  ## current candidate; from 4 on, the first one of a 7-candidate page
     dictionary*, user*: Dictionary
     userPath*: string  ## user dictionary rewritten on every kakutei when set
+    eggLikeNewline*: bool = true  ## Enter in ▽ / ▼ only commits; false (DDSKK's default) also inserts the newline
     saved: tuple[reading, okuri, okuriPrefix: string, okuriActive, abbrev: bool]  ## the ▽ a registration came from
 
 const
-  tags: array[KanaMode, string] = ["[かな]", "[カナ]", "[SKK]"]
+  tags: array[KanaMode, string] = ["[かな]", "[カナ]", "[SKK]", "[全英]"]
   # ponytail: "l" is the latin-mode key (as in DDSKK), so l-prefixed small kana are omitted.
   kanaRows = """
 _ あ い う え お
@@ -375,7 +376,7 @@ proc direct(s: Skk, c: char, next: Rune, res: var SkkResult) =
   of '/':  # abbrev: an ASCII reading ("/dog" SPC -> 犬, from entries keyed "dog")
     s.stage = Reading
     s.abbrev = true
-  of 'L': discard  # ponytail: no zenkaku-latin mode
+  of 'L': s.mode = Zenkaku  # full-width ASCII until C-j
   of 'A'..'K', 'M'..'Z':
     s.stage = Reading
     s.typeKana(c.toLowerAscii, res)
@@ -455,7 +456,9 @@ proc feedKey(s: Skk, key: SkkKey, res: var SkkResult) =
         s.reset()
         res.consumed = false
       else: s.convert(res)
-    of skEnter, skCtrlJ: res.text = s.commitReading(s.mode)  # egg-like: no newline
+    of skEnter, skCtrlJ:
+      res.text = s.commitReading(s.mode)
+      if key == skEnter and not s.eggLikeNewline: res.consumed = false  # the newline follows
     of skNext, skPrev:  # cursor movement: kakutei as typed, then the movement
       res.text = s.commitReading(s.mode)
       res.consumed = false
@@ -481,19 +484,33 @@ proc feedKey(s: Skk, key: SkkKey, res: var SkkResult) =
     of skPrev:  # C-p / up: back one; before the first, back to ▽
       if s.index == 0: s.stage = Reading
       else: dec s.index
-    of skEnter, skCtrlJ: s.commitCandidate(res)
+    of skEnter, skCtrlJ:
+      s.commitCandidate(res)
+      if key == skEnter and not s.eggLikeNewline: res.consumed = false
     of skBackspace, skCtrlG: s.stage = Reading  # keeps the reading
     of skTab: discard
 
+proc toZenkaku*(r: Rune): Rune =
+  ## ASCII to its full-width form: "a" -> "ａ", " " -> "　"; other runes unchanged.
+  if r.int == 32: Rune(0x3000)
+  elif r.int in 0x21..0x7E: Rune(r.int + 0xFEE0)
+  else: r
+
 proc feed*(s: Skk, r: Rune, next = Rune(0)): SkkResult =
   ## A printable key; `next` is the character after the cursor (for ")").
-  if s.enabled and s.mode != Latin: s.feedRune(r, next, result)
+  if s.enabled and s.mode == Zenkaku:
+    result.text = $toZenkaku(r)
+    result.consumed = true
+  elif s.enabled and s.mode != Latin: s.feedRune(r, next, result)
   s.finish(result)
 
 proc feed*(s: Skk, key: SkkKey): SkkResult =
-  if s.enabled and s.mode == Latin:
-    if key == skCtrlJ:
+  if s.enabled and s.mode in [Latin, Zenkaku]:
+    if key == skCtrlJ:  # back to kana
       s.mode = Hiragana
+      result.consumed = true
+    elif key == skSpace and s.mode == Zenkaku:
+      result.text = "　"
       result.consumed = true
   elif s.enabled: s.feedKey(key, result)
   s.finish(result)
@@ -510,7 +527,7 @@ proc commit*(s: Skk): SkkResult =
 
 proc composing*(s: Skk): bool =
   ## Something is in progress: pending romaji, a ▽ reading or a ▼ candidate.
-  s.enabled and s.mode != Latin and (s.stage != Direct or s.pending.len > 0)
+  s.enabled and s.mode notin [Latin, Zenkaku] and (s.stage != Direct or s.pending.len > 0)
 
 proc toggle*(s: Skk): SkkResult =
   ## C-x C-j. Turning off commits whatever is in progress.

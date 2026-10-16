@@ -22,22 +22,21 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
 1. Terminal buffer — slice 2: a `term` raw-key mode (every key to the pty, cursor
    addressing / screen model for full-screen programs) and ANSI colours; slice 3:
    `claude` in it with C-c C c-style bindings (send region / file, side window).
-2. SKK: `skk-egg-like-newline` variable (Enter inserts a newline after kakutei when
-   nil, as DDSKK's default); zenkaku latin `L`; `l`-prefixed small kana.
-3. Org journal: insert `templates/journal-daily.org` (org-journal-daily-template-file)
+2. Org journal: insert `templates/journal-daily.org` (org-journal-daily-template-file)
    when the day's first entry is created, as the user's Emacs does.
-4. Org agenda, minimal: `M-x org-agenda` lists TODO / SCHEDULED items of
+3. Org agenda, minimal: `M-x org-agenda` lists TODO / SCHEDULED items of
    `org-agenda-files` for today in a consult-style list.
-5. Windows: `C-x +` balance, `C-x ^` / `C-x }` resize, `C-x 4 b` other-window buffer.
-6. Add the monkey/fuzz tests (Buffer, SKK, Lisp, HTML) to `tests/` and the README list.
-7. Dashboard: a line for C-c j (today's journal) and C-c t (capture).
-8. Dictionary registration: Enter with text containing `;` annotations, and
+4. Windows: `C-x +` balance, `C-x ^` / `C-x }` resize, `C-x 4 b` other-window buffer.
+5. Add the monkey/fuzz tests (Buffer, SKK, Lisp, HTML) to `tests/` and the README list.
+6. Dashboard: a line for C-c j (today's journal) and C-c t (capture).
+7. Dictionary registration: Enter with text containing `;` annotations, and
     `(concat ...)` evaluation when a candidate uses it.
 
 ## Log
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-16 SKK: skk-egg-like-newline variable, zenkaku latin L; l-prefixed small kana dropped (l is DDSKK's latin key)
 - 2026-10-16 mouse: click places the cursor (and selects the pane), wheel scrolls the pane under the pointer (panes.pointAt tested)
 - 2026-10-16 terminal slice 1: M-x shell / C-c s comint-style *shell* on a pty (src/pty.nim, src/termtext.nim, src/ext/term.nim), Enter sends, C-c C-c interrupts, C-d EOF
 - 2026-10-16 background shader (user request): GLSL under the text, C-c C-c / C-c C-o / C-c C-k in GLSL buffers, live re-apply, errors to *shader* (src/ext/shader.nim, src/shadersrc.nim)
