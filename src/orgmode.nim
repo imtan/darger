@@ -394,6 +394,11 @@ proc fillTemplate*(tmpl, text: string, t: DateTime): string =
     of '%': result.add '%'
     else: result.add '%' & c
 
+proc clipboardImageName*(t: DateTime): string =
+  ## Where a pasted image goes, relative to the Org file: img/YYYY-mm-dd-HH-MM-SS.png,
+  ## as the user's Emacs command names them.
+  "img/" & t.format("yyyy-MM-dd-HH-mm-ss") & ".png"
+
 proc newJournalText*(header, dateLine, dayTemplate: string, id = ""): string =
   ## A new journal file as org-journal makes it: an ID drawer when asked (org-roam's
   ## node), the file header, the date headline, then the day's template under it.

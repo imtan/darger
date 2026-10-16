@@ -173,6 +173,7 @@ C-c j                    日報 (org-journal)。org-journal-dir の今日のフ�
                          org-journal-condition-prompt t なら体調 [1-5] を 1 キーで聞く (★)
 C-c t                    capture。入力を org-capture-file の org-capture-headline の下に追記
 C-M-e / C-c e            Eagle の画像をキーワード / フォルダから選んで [[file:~/…]] を挿入
+C-M-y                    クリップボードの画像を img/日時.png に保存して [[file:img/…]] を挿入
 M-x org-agenda           org-agenda-files の今日の予定・期限・TODO を一覧 (Enter で移動、C-g で戻る)
 
 [シェル]

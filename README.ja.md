@@ -290,6 +290,7 @@ CJK と対応する絵文字範囲は 2 セルを占めます。結合文字、�
 | Org: 見出しを折りたたむ / ファイル全体 | TAB / Shift-TAB |
 | Org: 日報エントリ / capture | C-c j / C-c t |
 | Org: Eagle から画像 (キーワード / フォルダ) | C-M-e / C-c e |
+| Org: クリップボードの画像を貼り付け | C-M-y |
 | org-roam: 検索 / リンク挿入 / バックリンク / 今日 | C-c n f / C-c n i / C-c n l / C-c n d |
 | org-roam: 今日のデイリーに時刻エントリ | C-c n j |
 | Org ディレクトリを全文検索 (consult-ripgrep) | C-c n s |
@@ -635,6 +636,10 @@ M-Left / M-Right は見出しを昇格・降格し、M-Up / M-Down はそのサ�
 最後の語) は agenda で完了扱い、見出しでは色が付きます (進行中の語は赤・黄・青・マゼンタ・シアンの順、
 完了語は薄く)。`(t)` のような選択キーがあるときの C-c C-t は巡回ではなく `TODO: [t] TODO [n] NEXT …`
 と尋ねて 1 キーで決めます (SPC でなし)。Emacs の高速 TODO 選択と同じです。
+
+C-M-y (`org-insert-clipboard-image`) はクリップボードの画像をファイルの隣の
+`img/YYYY-mm-dd-HH-MM-SS.png` に保存して (バッファにファイルが必要) `[[file:img/…]]` を挿入します。
+Emacs のコマンドと同じで、pngpaste は要りません。画像のインライン表示はまだです。
 
 Eagle (eagle.cool) からの画像も Emacs と同じ手順で入れられます。C-M-e (`org-insert-eagle-image`) は
 キーワード (空なら新しい順) を尋ね、Eagle のローカル API から該当する画像を `name.ext  [タグ]` で

@@ -305,6 +305,7 @@ fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK
 | Org: fold the headline / the whole file | TAB / Shift-TAB |
 | Org: journal entry / capture | C-c j / C-c t |
 | Org: image from Eagle by keyword / by folder | C-M-e / C-c e |
+| Org: paste the clipboard image | C-M-y |
 | org-roam: find / insert link / backlinks / today | C-c n f / C-c n i / C-c n l / C-c n d |
 | org-roam: today's daily with a time entry | C-c n j |
 | Grep the Org directory (consult-ripgrep) | C-c n s |
@@ -681,6 +682,11 @@ agenda, and headlines colour them (active words red, yellow, blue, magenta, cyan
 turn, done words dimmed). With selection keys like `(t)`, C-c C-t instead asks
 `TODO: [t] TODO [n] NEXT …` and takes one key, SPC for none, as Emacs' fast TODO
 selection does.
+
+C-M-y (`org-insert-clipboard-image`) saves the clipboard's image as
+`img/YYYY-mm-dd-HH-MM-SS.png` next to the file (the buffer must have one) and inserts
+`[[file:img/…]]`, like the user's Emacs command, with no pngpaste needed. Images are
+not yet shown inline.
 
 Images from Eagle (eagle.cool), as the user's Emacs does: C-M-e
 (`org-insert-eagle-image`) asks for a keyword (empty for the newest items) and lists

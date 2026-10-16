@@ -22,6 +22,8 @@ doAssert $cycleTodo(rs"* TODO") == "* DONE"
 doAssert $cycleTodo(rs"* DONE") == "* "
 doAssert $cycleTodo(rs"plain") == "plain"
 
+doAssert clipboardImageName(dateTime(2026, mOct, 16, 15, 7, 9)) == "img/2026-10-16-15-07-09.png"
+
 # the keyword sequence from org-todo-keywords
 setTodoKeywords(@["TODO(t)", "NEXT(n)", "WAITING(w)", "|", "DONE(d)"])
 doAssert todoKeywords == @["TODO", "NEXT", "WAITING", "DONE"] and doneKeywords == @["DONE"]
