@@ -381,7 +381,14 @@ work. Every key goes to the program as a terminal would send it (Enter, arrows,
 function keys, C-a … C-z, M-x as ESC x, Escape, Shift-Tab), and typed characters
 too, so SKK is out of the way there; only the editor's prefixes C-x and C-c (and M-x,
 M-:, C-g) stay with darger, so C-x o, C-x b and C-c s still work, and C-c C-c sends
-a C-c to the program. The buffer's cursor is the terminal's; wide (CJK) runes take two
+a C-c to the program. C-c C-j (`term-line-mode`) switches to line mode as in Emacs
+term: the buffer is ordinary text, so every editing key and SKK work and the
+scrollback can be searched and copied; what is typed after the screen's text is kept
+across new output and Enter sends it to the program (which echoes it). C-c C-k
+(`term-char-mode`) gives the keys back to the program, dropping unsent input; the
+mode line shows `[Line]` or `[Char]`, and `(term-send-input)` sends the typed
+input from Lisp. An init file that opens a file or a terminal is no longer covered
+by the dashboard. The buffer's cursor is the terminal's; wide (CJK) runes take two
 cells; the eight ANSI colours show as foreground and background, underline as an
 underline, inverse video by swapping the two (bold is recorded but drawn as regular
 text). The terminal has no line-number gutter, so the program owns every column of

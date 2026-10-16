@@ -131,6 +131,8 @@ when not defined(windows):
     pty*: Pty
     screen*: Screen
     size: tuple[cols, rows: int]
+    lineMode*: bool    ## C-c C-j: the buffer is edited as text and Enter sends the input
+    shown: string      ## the text the screen last put in the buffer (line mode keeps typing after it)
 
   var terminals*: seq[Terminal]
 
@@ -147,14 +149,35 @@ when not defined(windows):
     t.size
 
   proc showScreen(t: Terminal) =
-    ## The buffer = scrollback above the screen; the buffer cursor is the terminal's.
+    ## The buffer = scrollback above the screen; the buffer cursor is the terminal's. In
+    ## line mode the input typed after the screen's text survives new output, after it.
     let back = t.screen.scrollbackLines
-    let text = (back & t.screen.lines).join("\n")
-    t.buf.splice(0, t.buf.text.runeLen, text)
-    let line = min(back.len + t.screen.row, t.buf.lines.high)
-    t.buf.cursor = (line, min(t.screen.runeIndex(t.screen.row, t.screen.col), t.buf.lines[line].len))
+    # Line mode shows the screen only down to its cursor row (trailing padding dropped),
+    # so the input is typed right after the prompt, as in Emacs' term line mode.
+    var rows = t.screen.lines
+    if t.lineMode and t.screen.row < rows.len:
+      rows.setLen(t.screen.row + 1)
+      rows[^1] = rows[^1].strip(leading = false)
+    let text = (back & rows).join("\n")
+    let pending = if t.lineMode: inputAfter(t.shown, t.buf.text) else: ""
+    t.buf.splice(0, t.buf.text.runeLen, text & pending)
+    t.shown = text
+    if pending.len > 0:
+      t.buf.cursor = (t.buf.lines.high, t.buf.lines[^1].len)
+    else:
+      let line = min(back.len + t.screen.row, t.buf.lines.high)
+      t.buf.cursor = (line, min(t.screen.runeIndex(t.screen.row, t.screen.col), t.buf.lines[line].len))
     t.buf.modified = false
     if core.b == t.buf: renderer.top = max(renderer.top, back.len - max(0, renderer.rows - t.screen.rows))
+
+  proc setLineMode(t: Terminal, on: bool) =
+    ## Line mode (C-c C-j): the buffer is ordinary text, SKK and every editing key
+    ## work, Enter sends what was typed after the screen's text; char mode (C-c C-k)
+    ## gives the keys back to the program and drops any unsent input.
+    t.lineMode = on
+    t.showScreen()
+    echoLine = if on: "Line mode: edit, Enter sends the line (C-c C-k for char mode)"
+               else: "Char mode: keys go to the program (C-c C-j for line mode)"
 
   proc startTerminal*(name, command, dir: string): Terminal =
     ## A terminal buffer called `name` running `command` in `dir` (an existing live one is reused).
@@ -215,11 +238,36 @@ when not defined(windows):
         t.pty = nil
         result = true
 
-  proc activeTerminal(): Terminal =
-    ## The terminal taking the keys: the current buffer's, with a live program, outside prompts.
+  proc liveTerminal(): Terminal =
+    ## The current buffer's terminal with a live program, outside prompts, in either mode.
     if mode.len > 0: return nil
     result = terminalOf(core.b)
     if result != nil and (result.pty == nil or result.pty.exited): result = nil
+
+  proc activeTerminal(): Terminal =
+    ## The terminal taking the keys: a live one in char mode.
+    result = liveTerminal()
+    if result != nil and result.lineMode: result = nil
+
+  proc sendInput(t: Terminal) =
+    ## Line mode's Enter (term-send-input): the input typed after the screen's text
+    ## goes to the program with a newline; the program echoes it.
+    let input = inputAfter(t.shown, t.buf.text)
+    t.buf.splice(t.shown.runeLen, t.buf.text.runeLen, "")
+    t.pty.write(input & "\r")
+
+  keyFilters.add proc(c: string): bool =
+    # Both modes: C-c C-j / C-c C-k switch, as term-mode-map has them. Line mode: Enter sends.
+    let t = liveTerminal()
+    if t == nil: return false
+    if prefix == "C-c" and c in ["C-j", "C-k"]:
+      prefix = ""
+      t.setLineMode(c == "C-j")
+      return true
+    if t.lineMode and prefix.len == 0 and c in ["enter", "C-m"]:
+      t.sendInput()
+      return true
+    false
 
   runeFilters.add proc(r: Rune): bool =
     let t = activeTerminal()
@@ -277,6 +325,12 @@ when not defined(windows):
     for t in terminals:
       if t.pty != nil: t.pty.close()
   modifiedIgnore.add proc(buf: Buffer): bool = terminalOf(buf) != nil
+  block:
+    let previous = modeLineHook
+    modeLineHook = proc(): string =
+      result = if previous != nil: previous() else: ""
+      let t = terminalOf(core.b)
+      if t != nil: result.add(if t.lineMode: " [Line]" else: " [Char]")
   noGutter.add proc(buf: Buffer): bool = terminalOf(buf) != nil  # the program owns every column
 
   mouseFilters.add proc(p: Pane, cx, cy, button: int, pressed: bool): bool =
@@ -284,7 +338,7 @@ when not defined(windows):
     ## cells; on the alternate screen without reports the wheel becomes arrow keys.
     let buf = if p == pane: core.b else: p.buf
     let t = terminalOf(buf)
-    if t == nil or t.pty == nil or t.pty.exited: return false
+    if t == nil or t.pty == nil or t.pty.exited or t.lineMode: return false
     let top = if p == pane: renderer.top else: p.top
     let row = top + (cy - p.y) - t.screen.scrollbackLines.len
     let col = cx - p.x
@@ -302,6 +356,25 @@ when not defined(windows):
     ## (term) runs the shell, (term "command args") that program, in *terminal*.
     args.arity(0, 1)
     openTerm(if args.len == 1: args[0].asString else: "")
+    nilValue())
+
+  interp.defPrimitive("term-send-input", proc(args: seq[Value]): Value =
+    args.arity(0, 0)
+    let t = liveTerminal()
+    if t == nil: echoLine = "Not a running terminal buffer"
+    else: t.sendInput()
+    nilValue())
+  proc switchMode(on: bool) =
+    let t = terminalOf(core.b)
+    if t == nil: echoLine = "Not a terminal buffer"
+    else: t.setLineMode(on)
+  interp.defPrimitive("term-line-mode", proc(args: seq[Value]): Value =
+    args.arity(0, 0)
+    switchMode(true)
+    nilValue())
+  interp.defPrimitive("term-char-mode", proc(args: seq[Value]): Value =
+    args.arity(0, 0)
+    switchMode(false)
     nilValue())
 
   interp.defPrimitive("shell", proc(args: seq[Value]): Value =

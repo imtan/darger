@@ -234,12 +234,14 @@ if args.len >= 1:
   if firstPath.len > 0 and dirExists(firstPath):
     try: visit(firstPath)  # a directory opens in dired
     except CatchableError as e: echoLine = e.msg
+let startBuffer = core.b
 loadInit()
 
 proc draw() = redraw(hover, isMaximized())
 window.onResize = draw
 removeStaleExe()
-if not openSystemFiles(launchFiles) and args.len == 0 and startScreen != nil: startScreen()  # the dashboard over an empty *scratch*
+# The dashboard over an empty *scratch*; not when the init file already showed something else.
+if not openSystemFiles(launchFiles) and args.len == 0 and startScreen != nil and core.b == startBuffer: startScreen()
 var lastDraw = 0.0
 var wheel = 0.0  # fractional wheel lines carried between frames
 while running and not window.closed:

@@ -157,4 +157,6 @@ block keys:
   doAssert keySequence("tab") == "\t" and keySequence("tab", shift = true) == "\x1b[Z"
   doAssert keySequence("C-x") == "\x18" and keySequence("nothing") == ""
 
+doAssert inputAfter("$ ", "$ ls -l") == "ls -l" and inputAfter("$ ", "$ ") == "" and inputAfter("$ x", "$ ") == ""
+doAssert inputAfter("", "日本語") == "日本語"
 echo "screen ok"

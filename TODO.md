@@ -28,7 +28,7 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
    with prompt templates; result replaces the region or opens a buffer.
 2. magit, minimal: `C-x g` status buffer (branch, staged/unstaged files, untracked),
    `s`/`u` stage/unstage, `c c` commit with a message buffer, `P p` push, diff on Enter.
-3. Terminal: `C-c C-j` line mode as in Emacs term; a bold face (second font weight).
+3. Terminal: a bold face (second font weight).
 4. Mode line polish (doom-modeline-ish): git branch, LSP state, SKK state grouped;
     olivetti-style centred writing width for Org (`M-x olivetti-mode`).
 5. Books viewer, skilltree / feynman menus, YouTube browse, nostr, elpher, calfw:
@@ -38,6 +38,7 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-16 term line mode (user request): C-c C-j / C-c C-k, Enter sends the input typed after the screen, [Line]/[Char] in the mode line
 - 2026-10-16 org-roam-graph (C-c n g): self-contained HTML force graph in the browser, current note red (roam.graphHtml tested)
 - 2026-10-16 org-roam-capture (C-c n c, templates with one-key choice) and org-roam-tag-add (C-c n t), tested in torg
 - 2026-10-16 Eagle picker thumbnail preview (Prompt.thumbnail, renderer.loadPicture shared with inline images); exit-minibuffer primitive; WebP (Eagle thumbnails) via a sips PNG cache (src/pictures.nim)

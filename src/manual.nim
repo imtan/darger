@@ -181,6 +181,7 @@ M-x org-agenda           org-agenda-files の今日の予定・期限・TODO を
 [シェル]
 C-c s                    *shell* を開く (comint 風。Enter で送信、C-c C-c 割り込み、C-d で EOF)
 M-x term                 *terminal*: 全画面対応の端末 (全キーをプログラムへ。C-x / C-c は darger)
+  C-c C-j / C-c C-k      行モード (普通に編集し Enter で送る。SKK 可) / 文字モードに戻す
 C-c C c / C-c C t        Claude Code を右のウィンドウで起動・フォーカス / 隠す・出す
 C-c C n / C-c C r / C-c C f  新セッション / リージョンを送る / このファイルを見てと送る
 

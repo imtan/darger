@@ -339,6 +339,11 @@ proc resize*(s: var Screen, cols, rows: int) =
   s.wrapPending = false
   s.clampCursor()
 
+proc inputAfter*(shown, current: string): string =
+  ## Line mode: what the user typed into the terminal buffer beyond the text the
+  ## screen last put there ("" when the buffer was changed elsewhere).
+  if current.startsWith(shown): current[shown.len..^1] else: ""
+
 proc keySequence*(chord: string, shift = false): string =
   ## The bytes a terminal sends a program for an editor key chord ("enter", "C-a",
   ## "M-f", "up", "f5" ...), xterm style; "" for keys the editor keeps.

@@ -353,7 +353,11 @@ C-c C-c で割り込み (`SIGINT`)、空のコマンドでの C-d で EOF を送
 追従します。出力は約 400 KB を保ちます。バッファは保存を求めず、kill するか終了するとシェルは
 HUP され、シェルが終わった後 (`Process shell finished`) の C-c s は新しいシェルを起動します。
 
-`M-x term` はもう一つの端末で、Emacs の `term` の char モードに当たります。`*terminal*` は
+`M-x term` はもう一つの端末で、Emacs の `term` の char モードに当たります。C-c C-j (`term-line-mode`) で
+Emacs の term と同じ行モードに切り替わります。バッファが普通のテキストになるので編集キーも SKK も使え、
+スクロールバックの検索やコピーもできます。画面の文字列の後に打った入力は新しい出力が来ても残り、Enter で
+プログラムに送ります (エコーはプログラムが返す)。C-c C-k (`term-char-mode`) でキーをプログラムに戻し
+(未送信の入力は捨てる)、モードラインに `[Line]` / `[Char]` が出ます。`*terminal*` は
 本物の画面 (`src/termscreen.nim`: カーソル移動、消去、スクロール領域、代替画面、色。上に流れた
 行はその上に残る) をウィンドウの大きさで表示し、シェル、または `(term "command args")` で
 そのプログラムを `TERM=xterm-256color` で動かすので、`claude`、`top`、`vim` のような全画面
