@@ -231,6 +231,19 @@ block:
   v = b.version
   discard b.command("undo")
   doAssert b.version > v and b.text == "ab"
+block:  # migemo-style alternatives: any of them matches and sets matchLen; repeat skips the match found
+  let b = newBuffer("検索 kensaku 検索")
+  var s: ISearch
+  s.state.matchStart = -1
+  s.state.direction = 1
+  b.searchStep(s, "kensaku", alternatives = @["けんさく", "検索"])
+  doAssert s.state.matchStart == 0 and s.state.matchLen == 2 and not s.state.failing
+  b.searchStep(s, "kensaku", repeat = true, alternatives = @["けんさく", "検索"])
+  doAssert s.state.matchStart == 3 and s.state.matchLen == 7
+  b.searchStep(s, "kensaku", repeat = true, alternatives = @["けんさく", "検索"])
+  doAssert s.state.matchStart == 11 and s.state.matchLen == 2
+  doAssert b.findMatchAny(@["x", "索"], 0, 1) == (at: 1, len: 1)
+  doAssert b.findMatchAny(@["zzz"], 0, 1).at == -1 and b.findMatchAny(@[""], 5, 1) == (at: 5, len: 0)
 echo "All buffer checks passed"
 
 block revert:  # the file changed on disk: revert follows it, undo brings the old text back

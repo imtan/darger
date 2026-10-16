@@ -53,4 +53,10 @@ block files:
   when defined(windows): doAssert splitInput("~/").dir == "~/"
   else: doAssert splitInput("~/").dir == getHomeDir()
   removeDir(dir)
+# a term also matches through the expander (migemo)
+expander = proc(term: string): seq[string] = (if term == "kensaku": @["けんさく", "検索"] else: @[])
+doAssert matches("kensaku", "全文検索") and matches("kensaku x", "検索 x") and not matches("kensaku", "入力")
+doAssert filter("kensaku", ["入力", "検索", "kensaku.txt"]) == @["kensaku.txt", "検索"]
+expander = nil
+doAssert not matches("kensaku", "全文検索")
 echo "tcomplete ok"

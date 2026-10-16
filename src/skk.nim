@@ -121,6 +121,19 @@ proc toKana(hiragana: string, mode: KanaMode): string =
   for r in hiragana.runes:
     result.add(if r.int in 0x3041..0x3096: Rune(r.int + 0x60) else: r)
 
+proc toKatakana*(hiragana: string): string = toKana(hiragana, Katakana)
+
+proc romajiToHiragana*(romaji: string): tuple[kana, pending: string] =
+  ## The hiragana the romaji spells with SKK's rules ("kensaku" -> けんさく) and the
+  ## letters still waiting for a vowel ("kens" -> けん, "s").
+  var pending: string
+  for c in romaji:
+    result.kana.add step(pending, c)
+  if pending == "n":
+    result.kana.add "ん"
+    pending = ""
+  result.pending = pending
+
 # Dictionaries
 
 proc okuriAri(key: string): bool =

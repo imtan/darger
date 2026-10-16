@@ -3,11 +3,24 @@ import std/[os, strutils, unicode, algorithm]
 
 proc lower(s: string): string = unicode.toLower(s)
 
+type Expander* = proc(term: string): seq[string]
+  ## Other strings a term may stand for (migemo: the Japanese a romaji term spells)
+
+var expander*: Expander  ## nil: terms match as typed
+
 proc matches*(query, candidate: string): bool =
-  ## Every space-separated term of query occurs in candidate, in any order, ignoring case.
+  ## Every space-separated term of query occurs in candidate, in any order, ignoring
+  ## case; a term also counts when one of the strings the expander gives for it does.
   let hay = lower(candidate)
   for term in strutils.splitWhitespace(query):
-    if lower(term) notin hay: return false
+    if lower(term) in hay: continue
+    var found = false
+    if expander != nil:
+      for alt in expander(term):
+        if lower(alt) in hay:
+          found = true
+          break
+    if not found: return false
   true
 
 proc filter*(query: string, all: openArray[string]): seq[string] =

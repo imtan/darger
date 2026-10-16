@@ -792,9 +792,14 @@ proc syncSearch*() =
   prompt = (if state.failing: "Failing " elif state.wrapped: "Wrapped " else: "") &
     (if state.direction > 0: "I-search: " else: "I-search backward: ")
 
+var searchExpanders*: seq[proc(query: string): seq[string]]
+  ## Extensions add what a search query may also stand for (migemo).
+
 proc search*(next = false, direction = 0) =
   let query = if next and mini.text.len == 0: lastSearch else: mini.text
-  b.searchStep(isearch, query, next, direction)
+  var alternatives: seq[string]
+  for expand in searchExpanders: alternatives.add expand(query)
+  b.searchStep(isearch, query, next, direction, alternatives)
   syncSearch()
 
 proc runCommand*(name: string): Value =
@@ -1577,7 +1582,7 @@ proc redraw*(hover = thNone, maximized = false) =
         line: b.cursor.line, cell: b.cellCol(b.cursor), maxRows: 7)
     elif boxHook != nil: boxHook() else: CursorBox()
   # isearch marks its match; consult-line marks the previewed line.
-  let highlight = if mode == "search": (start: matchStart, len: mini.text.runeLen)
+  let highlight = if mode == "search": (start: matchStart, len: isearch.state.matchLen)
     elif isConsult(mode) and candIndex >= 0:
       (start: b.offset((b.cursor.line, 0)), len: max(1, b.lines[b.cursor.line].len))
     else: (start: -1, len: 0)

@@ -75,6 +75,7 @@ nim r tests/tshader.nim   # 背景シェーダーのソース
 nim r tests/tgrep.nim     # rg / grep の出力解析と実検索
 nim r tests/teagle.nim    # Eagle API の解析とリンクパス
 nim r tests/tproject.nim  # プロジェクトのファイル列挙 (git / 素) と既知プロジェクト
+nim r tests/tmigemo.nim   # migemo のローマ字 → かな → 辞書語
 nim r tests/tmonkey.nim   # ファズ: Buffer、SKK、Lisp、HTML、端末、ペインにランダム入力
 tests/editormonkey/run.sh 1 16 300   # エディタ全体: seed ごとにランダムなコマンド列 (ウィンドウが開く)
 ```
@@ -539,6 +540,15 @@ rg がなければ `grep -rni`) で検索し、結果を `path:line: text` と�
 戻ります。`(consult-ripgrep "dir")` はそのディレクトリを、C-c n s (`consult-ripgrep-org`) は
 `org-roam-directory` を検索します (あなたの `my/consult-ripgrep-org` と同じ)。検索は一覧が開く前に
 完了まで走ります。
+
+## Migemo
+
+Emacs と同じく、ローマ字の検索語でそれが表す日本語も見つかります。isearch (C-s / C-r)、
+consult-line、consult-ripgrep の絞り込み、すべての補完プロンプトが対象です。`kensaku` は
+`kensaku` 自身のほか `けんさく`、`ケンサク`、SKK 辞書でその読みの語 (検索、研削、…。読みの前方一致
+なので `kens` でも検索が見つかる) に一致し、見つかった語の長さがハイライトされます。cmigemo は不要で、
+SKK の辞書とローマ字規則を初回利用時に読み込んで使います。既定でオン (`(setq migemo-mode nil)` か
+M-x migemo-mode でオフ)。
 
 ## プロジェクト
 

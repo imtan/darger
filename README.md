@@ -81,6 +81,7 @@ nim r tests/tshader.nim   # background shader sources
 nim r tests/tgrep.nim     # ripgrep / grep output parsing and a real search
 nim r tests/teagle.nim    # Eagle API parsing and link paths
 nim r tests/tproject.nim  # project file listing (git and plain) and known projects
+nim r tests/tmigemo.nim   # romaji -> kana -> dictionary words for migemo
 nim r tests/tmonkey.nim   # fuzz: random input into Buffer, SKK, Lisp, HTML, the terminal, panes
 tests/editormonkey/run.sh 1 16 300   # whole editor: random command sequences per seed (opens windows)
 ```
@@ -575,6 +576,16 @@ selection previews the spot, Enter jumps there (M-, comes back) and C-g returns.
 `(consult-ripgrep "dir")` searches that directory, and C-c n s
 (`consult-ripgrep-org`) the `org-roam-directory`, like the user's
 `my/consult-ripgrep-org`. The search runs to completion before the list opens.
+
+## Migemo
+
+As in the user's Emacs, a romaji query also finds the Japanese it spells, in isearch
+(C-s / C-r), consult-line, consult-ripgrep's narrowing and every completion prompt:
+`kensaku` matches `けんさく`, `ケンサク` and the SKK dictionary's words read that way
+(検索, 研削, …; a reading prefix counts, so `kens` already finds 検索), besides
+`kensaku` itself. The match found sets the highlighted length. It needs no cmigemo:
+the SKK dictionary and romaji rules are used, loaded on first use. On by default
+(`(setq migemo-mode nil)` or M-x migemo-mode turns it off).
 
 ## Projects
 

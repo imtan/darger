@@ -19,6 +19,7 @@ type
   SearchState* = object
     query*: string
     matchStart*: int
+    matchLen*: int   ## runes matched: the query's, or an alternative's (migemo)
     cursor*: Point
     direction*: int
     failing*, wrapped*: bool
@@ -199,31 +200,43 @@ proc kill(b: Buffer, a, z: int, backward = false, copyOnly = false): string =
   b.yankIndex = 0
   b.goal = -1
 
-proc findMatch*(b: Buffer, query: string, start, direction: int, wrap = false): int =
+proc findMatchAny*(b: Buffer, queries: seq[string], start, direction: int, wrap = false): tuple[at, len: int] =
+  ## The nearest place from `start` where any of the queries occurs (case-insensitive
+  ## unless a query has capitals), with the length matched; at = -1 when none does.
   let source = b.text.toRunes
-  let needle = query.toRunes
-  if needle.len == 0: return clamp(start, 0, source.len)
-  if needle.len > source.len: return -1
-  let sensitive = query != unicode.toLower(query)
-  let count = source.len - needle.len + 1
+  var needles: seq[tuple[runes: seq[Rune], sensitive: bool]]
+  for q in queries:
+    if q.len > 0 and q.runeLen <= source.len: needles.add (q.toRunes, q != unicode.toLower(q))
+  if needles.len == 0:
+    let empty = queries.len > 0 and queries[0].len == 0
+    return (at: (if empty: clamp(start, 0, source.len) else: -1), len: 0)
+  let count = source.len
   var n = if direction > 0: max(0, start) else: min(start, count-1)
   for step in 0..<count:
     if n notin 0..<count:
       if not wrap: break
       n = if direction > 0: 0 else: count-1
-    var matches = true
-    for j, r in needle:
-      if (if sensitive: source[n+j] != r else: source[n+j].toLower != r.toLower):
-        matches = false
-        break
-    if matches: return n
+    for needle in needles:
+      if n + needle.runes.len > count: continue
+      var matches = true
+      for j, r in needle.runes:
+        if (if needle.sensitive: source[n+j] != r else: source[n+j].toLower != r.toLower):
+          matches = false
+          break
+      if matches: return (n, needle.runes.len)
     n += direction
-  -1
+  (-1, 0)
+
+proc findMatch*(b: Buffer, query: string, start, direction: int, wrap = false): int =
+  b.findMatchAny(@[query], start, direction, wrap).at
 
 proc startSearch*(b: Buffer, direction: int): ISearch =
   ISearch(origin: b.cursor, state: SearchState(matchStart: -1, cursor: b.cursor, direction: direction))
 
-proc searchStep*(b: Buffer, search: var ISearch, query: string, repeat = false, direction = 0) =
+proc searchStep*(b: Buffer, search: var ISearch, query: string, repeat = false, direction = 0,
+                 alternatives: seq[string] = @[]) =
+  ## `alternatives`: other strings that count as the query (migemo); the one found
+  ## sets matchLen.
   let old = search.state
   search.history.add old
   var state = old
@@ -232,6 +245,7 @@ proc searchStep*(b: Buffer, search: var ISearch, query: string, repeat = false, 
   if query.len == 0:
     state.cursor = search.origin
     state.matchStart = -1
+    state.matchLen = 0
     state.failing = false
   else:
     var start = if old.matchStart >= 0: old.matchStart
@@ -241,12 +255,16 @@ proc searchStep*(b: Buffer, search: var ISearch, query: string, repeat = false, 
       if old.failing:
         start = if state.direction > 0: 0 else: b.text.runeLen
         state.wrapped = true
-      elif old.matchStart >= 0: start += state.direction * query.runeLen
-    let found = b.findMatch(query, start, state.direction)
+      elif old.matchStart >= 0: start += state.direction * max(1, old.matchLen)
+    var queries = @[query]
+    for a in alternatives:
+      if a notin queries: queries.add a
+    let (found, len) = b.findMatchAny(queries, start, state.direction)
     state.failing = found < 0
     if found >= 0:
       state.matchStart = found
-      state.cursor = b.point(found + (if state.direction > 0: query.runeLen else: 0))
+      state.matchLen = len
+      state.cursor = b.point(found + (if state.direction > 0: len else: 0))
   search.state = state
   b.cursor = state.cursor
 
