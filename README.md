@@ -83,6 +83,7 @@ nim r tests/teagle.nim    # Eagle API parsing and link paths
 nim r tests/tproject.nim  # project file listing (git and plain) and known projects
 nim r tests/tmigemo.nim   # romaji -> kana -> dictionary words for migemo
 nim r tests/tpictures.nim # PNG conversion cache for pictures pixie cannot decode
+nim r tests/tchanges.nim  # files changed under a project between two snapshots
 nim r tests/tmonkey.nim   # fuzz: random input into Buffer, SKK, Lisp, HTML, the terminal, panes
 tests/editormonkey/run.sh 1 16 300   # whole editor: random command sequences per seed (opens windows)
 ```
@@ -358,6 +359,14 @@ these open a review:
   taking a hunk reverts it to the committed version.
 - `(review-file "other.txt")`, or `M-x review-file` with a prompt: the buffer against
   another file, like ediff-buffers.
+- When a file changed on disk while its buffer has edits, the echo line says so once
+  and offers that review; with `(setq auto-revert-review t)` the review opens by
+  itself when that buffer is current and nothing else is open. Buffers without
+  edits still follow the file.
+- After an agent chat turn (C-c c), the files it changed under the chat's root are
+  counted in the echo line, and `M-x agent-changes` lists them: Enter opens the file
+  in a review against the buffer's own text when it differs from the disk, else
+  against git HEAD, so an agent's edits across the project are gated the same way.
 
 ## Filer (Dired)
 

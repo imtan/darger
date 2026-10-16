@@ -2,7 +2,7 @@
 ## chat per project root with a live transcript (C-c c, chat.nim).
 import std/[os, osproc, tempfiles, strutils, unicode, times, tables]
 from windy import closeIme
-import ../[core, buffer, buffers, render, lisp, review, chat, syntax, lsp]
+import ../[core, buffer, buffers, render, lisp, review, chat, syntax, lsp, changes]
 
 when defined(windows):
   import std/[winlean, streams]
@@ -38,6 +38,9 @@ var
   currentHunk*, savedTop*, savedLeft*: int
   agentBuf*: Buffer
   agentChat*: ChatSession
+  chatBefore: Snapshot      # the chat root's files when the turn started
+  agentChanged*: seq[string]  # files the last chat turn changed, relative to its root
+  agentChangedRoot*: string
   chatRoot*: string
 when defined(windows):
   var agentJob*: Handle
@@ -237,6 +240,7 @@ proc sendChat*(message: string) =
   if strutils.strip(command).len == 0: raise newException(ValueError, variable & " is empty")
   if session == nil:
     session = ChatSession(root: chatRoot, id: sessionId(), buf: newBuffer())
+  chatBefore = snapshot(session.root)
   launchAgent(expandId(command, session.id), message, session.root)
   agentChat = session
   chats[chatRoot] = session
@@ -323,7 +327,26 @@ proc pollAgent*(): bool =
     discard closeHandle(agentJob)
     agentJob = 0
   try:
-    if agentChat != nil: discard updateChat(code)
+    if agentChat != nil:
+      let root = agentChat.root
+      discard updateChat(code)
+      agentChanged = changedSince(chatBefore, root)
+      agentChangedRoot = root
+      chatBefore = Snapshot()
+      if agentChanged.len > 0:
+        let summary = "Agent changed " & $agentChanged.len & (if agentChanged.len == 1: " file" else: " files") &
+          ": " & agentChanged[0..min(2, agentChanged.high)].join(", ") &
+          (if agentChanged.len > 3: ", ..." else: "")
+        echoLine = summary & "  (M-x agent-changes to review)"
+        # Also in the transcript, where it stays after the echo line moves on.
+        let transcript = agentChat.buf
+        if transcript in reg:
+          let point = transcript.cursor
+          let text = strutils.strip(transcript.text, leading = false) & "\n\n> " & summary &
+            " (M-x agent-changes to review)\n"
+          transcript.splice(0, transcript.text.runeLen, text)
+          transcript.modified = false
+          transcript.cursor = (min(point.line, transcript.lines.high), 0)
     elif agentCancelled:
       reviewRequest = false
       echoLine = "Agent cancelled"
@@ -384,6 +407,32 @@ definePrompt(Prompt(kind: "review-request", text: true, over: "review", onAccept
 interp.defPrimitive("review-request-changes", proc(args: seq[Value]): Value =
   args.arity(1, 1)
   requestChanges(args[0].asString)
+  nilValue())
+
+proc reviewChanged(rel: string) =
+  ## A file the agent changed: against the buffer's own text when it differs from the
+  ## disk, else against git HEAD, else just visited.
+  let path = agentChangedRoot / rel
+  if not fileExists(path):
+    echoLine = rel & " was deleted"
+    return
+  visit(path)
+  if loadBuffer(path).text != b.text: beginReview(loadBuffer(path).text, "file on disk")
+  else:
+    let (output, code) = execCmdEx("git -C " & quoteShell(agentChangedRoot) & " show HEAD:" & quoteShell(rel),
+      options = {poUsePath})
+    if code == 0: beginReview(output.replace("\r\n", "\n"), "git HEAD")
+    else: echoLine = rel & ": new file (nothing to compare)"
+
+definePrompt(Prompt(kind: "agent-changes", text: true, candidates: proc(): seq[string] = agentChanged,
+  onAccept: proc(value: string): bool =
+    if value in agentChanged: reviewChanged(value)
+    true))
+interp.defPrimitive("agent-changes", proc(args: seq[Value]): Value =
+  ## The files the last chat turn changed; Enter opens the file in a review.
+  args.arity(0, 0)
+  if agentChanged.len == 0: echoLine = "The last agent chat turn changed no files"
+  else: beginMini("agent-changes", "Agent changed (" & extractFilename(agentChangedRoot) & "): ")
   nilValue())
 
 var hunkRows: seq[string]

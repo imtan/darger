@@ -10,6 +10,7 @@ type Stamp = tuple[time: Time, size: int64]
 var
   stamps: Table[Buffer, Stamp]  # the file as the buffer last read or wrote it
   checked: float
+  offered: Table[Buffer, Stamp]  # edited buffers already told about a change on disk
 
 proc stampOf(path: string): Stamp =
   try: (getLastModificationTime(path), getFileSize(path))
@@ -28,7 +29,13 @@ proc revertBuffer*(buf: Buffer) =
 
 visitHooks.add proc() = record(b)
 saveHooks.add proc() = record(b)
-killHooks.add proc(buf: Buffer) = stamps.del buf
+killHooks.add proc(buf: Buffer) =
+  stamps.del buf
+  offered.del buf
+
+defaults.add """
+(setq auto-revert-review nil)
+"""
 
 tickHooks.add proc(): bool =
   # Once a second: buffers without edits follow their files; edited ones wait for the save guard.
@@ -39,7 +46,21 @@ tickHooks.add proc(): bool =
     if buf notin stamps and buf.path.len > 0:
       record(buf)  # opened before this extension saw it (the command line)
       continue
-    if buf.modified or not changedOnDisk(buf): continue
+    if not changedOnDisk(buf): continue
+    if buf.modified:
+      # An edited buffer: the disk's changes are offered as a review, once per change
+      # (auto-revert-review t opens it for the current buffer when nothing else is open).
+      let stamp = stampOf(buf.path)
+      if offered.getOrDefault(buf) == stamp: continue
+      offered[buf] = stamp
+      if buf == b and mode.len == 0 and reviewHook != nil and
+          interp.env.values["auto-revert-review"].kind != vNil:
+        try: reviewHook(loadBuffer(buf.path).text, "file on disk")
+        except CatchableError as e: echoLine = e.msg
+      else:
+        echoLine = reg.displayName(buf) & " changed on disk while edited (M-x diff-buffer-with-file to review)"
+      result = true
+      continue
     revertBuffer(buf)
     echoLine = "Reverted " & reg.displayName(buf)
     result = true

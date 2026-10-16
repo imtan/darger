@@ -77,6 +77,7 @@ nim r tests/teagle.nim    # Eagle API の解析とリンクパス
 nim r tests/tproject.nim  # プロジェクトのファイル列挙 (git / 素) と既知プロジェクト
 nim r tests/tmigemo.nim   # migemo のローマ字 → かな → 辞書語
 nim r tests/tpictures.nim # pixie が読めない画像の PNG 変換キャッシュ
+nim r tests/tchanges.nim  # 2 時点のスナップショット間で変わったプロジェクトのファイル
 nim r tests/tmonkey.nim   # ファズ: Buffer、SKK、Lisp、HTML、端末、ペインにランダム入力
 tests/editormonkey/run.sh 1 16 300   # エディタ全体: seed ごとにランダムなコマンド列 (ウィンドウが開く)
 ```
@@ -335,6 +336,13 @@ Lisp から行います。未判断のハンクでは k 番目の削除行と追
   内容に戻ります。
 - `(review-file "other.txt")` または `M-x review-file` (プロンプトで指定): 別のファイルとの比較。
   ediff-buffers に相当します。
+- 編集中のバッファのファイルがディスクで変わると、エコー行で一度だけ知らせてこのレビューを勧めます。
+  `(setq auto-revert-review t)` なら、そのバッファが表示中で他に何も開いていないときレビューが
+  自動で開きます。未編集のバッファは従来どおりファイルに追従します。
+- エージェントのチャット 1 ターン (C-c c) の後、チャットのルート配下で変わったファイル数がエコー行に
+  出て、`M-x agent-changes` で一覧できます。Enter でそのファイルを開き、バッファがディスクと違えば
+  その差分、同じなら git HEAD との差分をレビューします。プロジェクト全体へのエージェントの編集も
+  同じゲートを通ります。
 
 ## ファイラ (Dired)
 

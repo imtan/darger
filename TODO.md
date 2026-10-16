@@ -30,10 +30,8 @@ R2. (done) Word-level refine highlighting, per-hunk +/- counts, `l` hunk list.
 R3. `e`: edit the proposed hunk in place before taking it (needs a multi-line edit
     buffer over the review). (`A` keep all and `w` apply-and-continue are done.)
 R4. (done) `r`: request changes to the hunk through the agent; the reply replaces the proposal.
-R5. Agent writes to open files: when a file changed on disk and the buffer has edits,
-    offer the review automatically (auto-revert-review setting); a `*review*` summary
-    of all files an agent changed in a chat turn (git diff of the root), each opening
-    its review.
+R5. (done) Edited buffer changed on disk: offered once / auto-revert-review opens it;
+    agent-changes lists the files a chat turn changed, Enter reviews each.
 R6. Side-by-side layout toggle (`|`) using two panes.
 
 (2026-10-16: reordered after comparing ~/.emacs.d/config.org with darger. The user's
@@ -54,6 +52,7 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-16 review R5: changed-on-disk offer + auto-revert-review; agent-changes (src/changes.nim snapshots, tested) with per-file reviews
 - 2026-10-16 review R4 + part of R3: `r` sends a hunk request to the agent and the reply replaces the proposal (checked with a fake agent); `w` applies so far and continues; `A` keeps all
 - 2026-10-16 review R2: refine highlighting of the changed part of paired lines (bgs 9-12), -/+ counts in the echo line, `l` hunk list
 - 2026-10-16 review R1: diff-buffer-with-file, vc-review, review-file, supersede `r`, u / ? keys, source in the echo line

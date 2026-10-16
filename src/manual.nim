@@ -126,6 +126,7 @@ C-c a                    agent-command に指示を送る (結果はレビュー
   r (レビュー中)         今のハンクへの修正指示をエージェントに送り、再提案を受け取る
 M-x diff-buffer-with-file  ディスク上のファイルとの差分をレビュー (保存時の確認でも r)
 M-x vc-review            git HEAD との差分をレビュー。M-x review-file は別ファイルとの比較
+M-x agent-changes        直前のチャットターンで変わったファイル一覧。Enter でレビュー
                          実行中は C-g で中止
                          差分: y:採用 k:見送り a:全採用
                          n / p:次 / 前の差分 q:終了 C-g:破棄
