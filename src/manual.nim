@@ -127,6 +127,9 @@ C-c a                    agent-command に指示を送る (結果はレビュー
 M-x diff-buffer-with-file  ディスク上のファイルとの差分をレビュー (保存時の確認でも r)
 M-x vc-review            git HEAD との差分をレビュー。M-x review-file は別ファイルとの比較
 M-x agent-changes        直前のチャットターンで変わったファイル一覧。Enter でレビュー
+  x (レビュー中)         今のハンクの説明をエージェントに求める (*explain*)。説明なしで採用 → 理解負債
+M-x understanding-debt   理解台帳 (~/.darger-understanding.org) の未返済エントリ一覧。Enter でその場所へ
+M-x glossary             説明から集めた用語集 (~/.darger-glossary.org) を引く
                          実行中は C-g で中止
                          差分: y:採用 k:見送り a:全採用
                          n / p:次 / 前の差分 q:終了 C-g:破棄

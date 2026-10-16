@@ -456,7 +456,7 @@ proc resizePane*(below: bool, delta: int) =
     return
   layoutPanes()
 
-proc otherPaneFor(): Pane =
+proc otherPaneFor*(): Pane =
   ## C-x 4: the next pane, made by splitting when there is only one.
   if layout.leaves.len == 1: splitPane(false)
   layout.next(pane, 1)

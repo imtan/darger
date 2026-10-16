@@ -33,6 +33,12 @@ R4. (done) `r`: request changes to the hunk through the agent; the reply replace
 R5. (done) Edited buffer changed on disk: offered once / auto-revert-review opens it;
     agent-changes lists the files a chat turn changed, Enter reviews each.
 R6. Side-by-side layout toggle (`|`) using two panes.
+R7. (done, first slice) Understanding ledger (user: "ドメイン知識も含めた理解負債を解消する仕組み"):
+    x explains a hunk, taken hunks go to ~/.darger-understanding.org as TODO (debt) /
+    DONE (understood), understanding-debt lists them, glossary collects `- term :: def`.
+    Next: repay from a normal buffer (explain the region / the entry's lines now, flip
+    the entry to DONE); glossary lookup of the word at point; a debt count in the
+    mode line or dashboard; quiz mode (the agent asks, the user answers).
 
 (2026-10-16: reordered after comparing ~/.emacs.d/config.org with darger. The user's
 rule: only add what is missing; never rebind or remove existing darger keys.)
@@ -52,6 +58,7 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-16 understanding ledger R7 slice 1: x explain in *explain*, ledger TODO/DONE entries on review end, understanding-debt, glossary (src/ledger.nim tested)
 - 2026-10-16 review R5: changed-on-disk offer + auto-revert-review; agent-changes (src/changes.nim snapshots, tested) with per-file reviews
 - 2026-10-16 review R4 + part of R3: `r` sends a hunk request to the agent and the reply replaces the proposal (checked with a fake agent); `w` applies so far and continues; `A` keeps all
 - 2026-10-16 review R2: refine highlighting of the changed part of paired lines (bgs 9-12), -/+ counts in the echo line, `l` hunk list

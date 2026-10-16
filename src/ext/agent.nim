@@ -1,8 +1,8 @@
 ## Agents: a one-shot edit reviewed hunk by hunk (C-c a, review.nim), and a multi-turn
 ## chat per project root with a live transcript (C-c c, chat.nim).
-import std/[os, osproc, tempfiles, strutils, unicode, times, tables]
+import std/[os, osproc, tempfiles, strutils, unicode, times, tables, sequtils]
 from windy import closeIme
-import ../[core, buffer, buffers, render, lisp, review, chat, syntax, lsp, changes]
+import ../[core, buffer, buffers, render, lisp, review, chat, syntax, lsp, changes, ledger]
 
 when defined(windows):
   import std/[winlean, streams]
@@ -50,6 +50,56 @@ else:
 var
   reviewSource = "Agent"  # what the proposed text is: the agent, the file on disk, git HEAD, a file
   reviewRequest = false   # the running agent answers a request for changes to the open review
+  reviewExplain = false   # the running agent explains a hunk (x)
+  explainHunk = -1
+  explained: seq[bool]        # per hunk: an explanation was read
+  explanations: seq[string]   # per hunk: the explanation
+  explainBuf: Buffer          # *explain*, shown beside the review
+
+proc resetUnderstanding() =
+  explained = newSeq[bool](reviewState.hunks.len)
+  explanations = newSeq[string](reviewState.hunks.len)
+
+proc ledgerPath(): string =
+  let v = interp.env.values["understanding-ledger"]
+  if v.kind == vNil: "" else: expandTilde(v.asString)
+
+proc glossaryPath(): string =
+  let v = interp.env.values["glossary-file"]
+  if v.kind == vNil: "" else: expandTilde(v.asString)
+
+proc showExplain(text: string) =
+  ## *explain* in the other pane (made by splitting when there is one), the review pane kept.
+  if explainBuf == nil or explainBuf notin reg:
+    explainBuf = newBuffer()
+    reg.add(explainBuf, "*explain*")
+  explainBuf.splice(0, explainBuf.text.runeLen, text)
+  explainBuf.modified = false
+  explainBuf.cursor = (0, 0)
+  let other = otherPaneFor()
+  if other != nil and other != pane:
+    other.buf = explainBuf
+    other.top = 0
+    other.cursor = (0, 0)
+
+proc recordUnderstanding() =
+  ## The hunks taken go to the ledger: debt (TODO) unless explained (DONE). Reviews
+  ## against git HEAD or another file are comparisons, not new code, and are skipped.
+  let path = ledgerPath()
+  if path.len == 0 or reviewSource notin ["Agent", "file on disk"]: return
+  var entries: seq[LedgerEntry]
+  var shift = 0
+  for i, h in reviewState.hunks:
+    if reviewState.decisions[i] == accepted:
+      let (removed, added) = reviewState.hunkText(i)
+      entries.add LedgerEntry(file: (if b.path.len > 0: b.path else: "(unnamed)"), line: h.startA + shift + 1,
+        project: extractFilename(rootFromDir(if b.path.len > 0: parentDir(b.path) else: getCurrentDir())),
+        source: reviewSource, removed: removed, added: added,
+        explanation: (if i < explained.len and explained[i]: explanations[i] else: ""), at: now())
+      shift += h.insertedB - h.deletedA
+  if entries.len == 0: return
+  try: appendEntries(path, entries)
+  except CatchableError as e: echoLine = "Ledger: " & e.msg
 
 proc reviewMessage*(): string =
   let (removed, added) = reviewState.stats(currentHunk)
@@ -74,6 +124,7 @@ proc beginReview*(proposed: string, source = "Agent") =
   ## proposed version of a hunk, k keeps the buffer's. Any source can propose text.
   reviewSource = source
   reviewState = newReview(b.text, proposed)
+  resetUnderstanding()
   if reviewState.hunks.len == 0:
     echoLine = source & ": no changes"
     return
@@ -92,6 +143,7 @@ proc beginReviewText(proposed, source: string) =
   ## The open review's proposal replaced (decisions start over); closes it when nothing differs.
   reviewSource = source
   reviewState = newReview(b.text, proposed)
+  resetUnderstanding()
   if reviewState.hunks.len == 0:
     mode = ""
     reviewBuf = nil
@@ -113,10 +165,12 @@ proc applyDecisions(): int =
 
 proc applyAndContinue() =
   ## w: the decisions so far go into the buffer; the pending hunks stay under review.
+  recordUnderstanding()
   let taken = applyDecisions()
   let proposed = reviewState.proposedText()
   let source = reviewSource
   reviewState = newReview(b.text, proposed)
+  resetUnderstanding()
   reviewSource = source
   if reviewState.hunks.len == 0:
     mode = ""
@@ -131,6 +185,7 @@ proc finishReview*(cancel = false) =
   if cancel: echoLine = "Review cancelled"
   else:
     let total = reviewState.hunks.len
+    recordUnderstanding()
     echoLine = "Applied " & $applyDecisions() & " of " & $total & " hunks"
   mode = ""
   reviewBuf = nil
@@ -349,16 +404,32 @@ proc pollAgent*(): bool =
           transcript.cursor = (min(point.line, transcript.lines.high), 0)
     elif agentCancelled:
       reviewRequest = false
+      reviewExplain = false
       echoLine = "Agent cancelled"
     elif code != 0:
       reviewRequest = false
+      reviewExplain = false
       let errors = readFile(agentDir / "err.txt").splitLines()
       echoLine = if errors.len > 0 and errors[0].len > 0: errors[0] else: "Agent exited with code " & $code
     else:
       let text = cleanAgentOutput(readFile(agentDir / "out.txt"))
       if validateUtf8(text) != -1: raise newException(ValueError, "Agent output is not valid UTF-8")
       if agentBuf notin reg: raise newException(ValueError, "Agent: its buffer was killed")
-      if reviewRequest:
+      if reviewExplain:
+        reviewExplain = false
+        if explainHunk in 0..<explained.len:
+          explained[explainHunk] = true
+          explanations[explainHunk] = text
+        showExplain("Hunk " & $(explainHunk + 1) & "\n\n" & strutils.strip(text) & "\n")
+        let glossary = glossaryPath()
+        let terms = glossaryTerms(text)
+        if glossary.len > 0 and terms.len > 0:
+          try:
+            let old = if fileExists(glossary): readFile(glossary) else: ""
+            writeFile(glossary, mergeGlossary(old, terms))
+          except CatchableError as e: echoLine = "Glossary: " & e.msg
+        echoLine = "Explained hunk " & $(explainHunk + 1) & (if terms.len > 0: "; " & $terms.len & " terms to the glossary" else: "")
+      elif reviewRequest:
         # The answer to a request for changes: the new proposal replaces the review's.
         reviewRequest = false
         if mode == "review" and b == agentBuf:
@@ -378,6 +449,29 @@ proc pollAgent*(): bool =
   finally:
     agentChat = nil
     cleanAgentFiles()
+
+proc explainCurrentHunk*() =
+  ## x: the agent explains the current hunk (what, why, and the domain terms in it as
+  ## `- term :: definition`); the hunk counts as understood when taken afterwards.
+  if mode != "review": raise newException(ValueError, "No review is open")
+  if agentProcess != nil: raise newException(ValueError, "Agent already running")
+  let command = interp.env.values["agent-command"].asString
+  if strutils.strip(command).len == 0: raise newException(ValueError, "agent-command is empty")
+  let (removed, added) = reviewState.hunkText(currentHunk)
+  agentBuf = b
+  reviewExplain = true
+  explainHunk = currentHunk
+  launchAgent(command,
+    "A reviewer is deciding whether to take one hunk of a proposed change to a text file and wants to understand it. " &
+    "Explain in plain language, in the reviewer's language if the file suggests one (Japanese for Japanese text): " &
+    "what the hunk changes, why one would make this change, and what to watch out for. Then list every domain-specific " &
+    "or technical term the hunk relies on as Org description items, one per line, exactly in the form `- term :: definition`. " &
+    "Output plain text with those items; no code fences, no headings.\n" &
+    "File path: " & (if b.path.len > 0: b.path else: "(unnamed)") & "\n" &
+    "--- HUNK: LINES REMOVED ---\n" & removed & "--- HUNK: LINES ADDED ---\n" & added &
+    "--- WHOLE PROPOSED FILE (context) ---\n" & reviewState.proposedText() & "\n--- END ---\n")
+  showExplain("Explaining hunk " & $(currentHunk + 1) & "...")
+  echoLine = "Agent: explaining hunk " & $(currentHunk + 1) & "..."
 
 proc requestChanges*(instruction: string) =
   ## r: the reviewer's instruction for the current hunk goes to the agent with the
@@ -435,6 +529,76 @@ interp.defPrimitive("agent-changes", proc(args: seq[Value]): Value =
   else: beginMini("agent-changes", "Agent changed (" & extractFilename(agentChangedRoot) & "): ")
   nilValue())
 
+# The ledger and the glossary outside a review
+
+var debtRows: seq[tuple[label, file: string, line: int]]
+definePrompt(Prompt(kind: "understanding-debt", text: true, candidates: proc(): seq[string] =
+    debtRows.mapIt(it.label),
+  onAccept: proc(value: string): bool =
+    for e in debtRows:
+      if e.label == value:
+        try:
+          visit(e.file)
+          b.cursor = (min(e.line - 1, b.lines.high), 0)
+        except CatchableError as err: echoLine = err.msg
+        break
+    true))
+interp.defPrimitive("understanding-debt", proc(args: seq[Value]): Value =
+  ## The ledger's TODO entries (hunks taken without an explanation); Enter visits the spot.
+  args.arity(0, 0)
+  let path = ledgerPath()
+  if path.len == 0 or not fileExists(path):
+    echoLine = "No understanding ledger yet (reviews write " & (if path.len > 0: shortPath(path) else: "none") & ")"
+    return nilValue()
+  let text = readFile(path)
+  debtRows = debtEntries(text)
+  let (debt, understood) = debtCount(text)
+  if debtRows.len == 0:
+    echoLine = "No understanding debt: " & $understood & " hunks understood"
+    return nilValue()
+  beginMini("understanding-debt", "Debt (" & $debt & " open, " & $understood & " understood): ")
+  nilValue())
+interp.defPrimitive("understanding-ledger", proc(args: seq[Value]): Value =
+  ## Opens the ledger file itself (Org).
+  args.arity(0, 0)
+  let path = ledgerPath()
+  if path.len == 0: echoLine = "understanding-ledger is nil"
+  else: visit(path)
+  nilValue())
+
+var glossaryRows: seq[string]
+definePrompt(Prompt(kind: "glossary", text: true, candidates: proc(): seq[string] = glossaryRows,
+  onAccept: proc(value: string): bool =
+    echoLine = value
+    true))
+interp.defPrimitive("glossary", proc(args: seq[Value]): Value =
+  ## The terms explanations collected, `term :: definition`, to look one up.
+  args.arity(0, 0)
+  let path = glossaryPath()
+  if path.len == 0 or not fileExists(path):
+    echoLine = "No glossary yet (explanations in reviews fill " & (if path.len > 0: shortPath(path) else: "none") & ")"
+    return nilValue()
+  glossaryRows = @[]
+  for (term, definition) in glossaryTerms(readFile(path)): glossaryRows.add term & " :: " & definition
+  if glossaryRows.len == 0:
+    echoLine = "The glossary has no terms yet"
+    return nilValue()
+  beginMini("glossary", "Term: ")
+  nilValue())
+
+proc dispatchReview*(c: string)  # forward: the review's keys, also driven from Lisp
+
+for (name, key) in [("review-take", "y"), ("review-keep", "k"), ("review-next", "n"), ("review-previous", "p"),
+                    ("review-finish", "q"), ("review-explain-hunk", "x")]:
+  closureScope:
+    let key = key
+    interp.defPrimitive(name, proc(args: seq[Value]): Value =
+      ## The review's keys as commands, so an init file or an agent can drive a review.
+      args.arity(0, 0)
+      if mode != "review": echoLine = "No review is open"
+      else: dispatchReview(key)
+      nilValue())
+
 var hunkRows: seq[string]
 definePrompt(Prompt(kind: "review-hunks", text: true, over: "review", candidates: proc(): seq[string] = hunkRows,
   onAccept: proc(value: string): bool =
@@ -467,6 +631,10 @@ proc dispatchReview*(c: string) =
     if agentProcess != nil: echoLine = "Agent already running"
     else: beginMini("review-request", "Request changes to hunk " & $(currentHunk + 1) & ": ")
     return
+  of "x":
+    try: explainCurrentHunk()
+    except CatchableError as e: echoLine = e.msg
+    return
   of "l":
     hunkRows = @[]
     for i in 0..<reviewState.hunks.len: hunkRows.add reviewState.hunkLabel(i)
@@ -474,7 +642,7 @@ proc dispatchReview*(c: string) =
     return
   of "?":
     echoLine = "y: take the proposed hunk  k: keep the buffer's  u: undo the decision  " &
-      "n / p: move  l: list  r: ask the agent to change this hunk  w: apply so far, go on  " &
+      "n / p: move  l: list  x: explain this hunk  r: ask the agent to change it  w: apply so far, go on  " &
       "a / A: take / keep all pending and finish  q / Enter: apply decisions  C-g: cancel"
     return
   of "a":
@@ -608,6 +776,8 @@ tickHooks.add pollAgent
 argCommands.add "agent"
 defaults.add """
 (global-set-key "C-c a" 'agent-prompt)
+(setq understanding-ledger "~/.darger-understanding.org")
+(setq glossary-file "~/.darger-glossary.org")
 (global-set-key "C-c c" 'agent-chat)
 (setq agent-command "claude -p --output-format text")
 (setq agent-chat-command "claude -p --output-format stream-json --verbose --session-id {id}")

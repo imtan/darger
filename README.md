@@ -84,6 +84,7 @@ nim r tests/tproject.nim  # project file listing (git and plain) and known proje
 nim r tests/tmigemo.nim   # romaji -> kana -> dictionary words for migemo
 nim r tests/tpictures.nim # PNG conversion cache for pictures pixie cannot decode
 nim r tests/tchanges.nim  # files changed under a project between two snapshots
+nim r tests/tledger.nim   # understanding ledger entries and the glossary
 nim r tests/tmonkey.nim   # fuzz: random input into Buffer, SKK, Lisp, HTML, the terminal, panes
 tests/editormonkey/run.sh 1 16 300   # whole editor: random command sequences per seed (opens windows)
 ```
@@ -367,6 +368,25 @@ these open a review:
   counted in the echo line, and `M-x agent-changes` lists them: Enter opens the file
   in a review against the buffer's own text when it differs from the disk, else
   against git HEAD, so an agent's edits across the project are gated the same way.
+
+### Understanding ledger
+
+Code taken from an agent without understanding it is a debt; the review keeps the
+books. x asks the agent to explain the current hunk (what it changes, why, what to
+watch out for, and the domain or technical terms it relies on as `- term ::
+definition` items); the explanation shows in `*explain*` in the other window and
+the hunk counts as understood. When a review of an agent's or the disk's changes
+ends, every hunk taken becomes an Org entry in `understanding-ledger` (default
+`~/.darger-understanding.org`, `nil` to disable): `* TODO file:line  taken without
+explanation  :debt:project:` with the hunk as a diff block, or `* DONE … :understood:`
+with the explanation, so the agenda and TODO tools track what is still to be
+understood. `M-x understanding-debt` lists the open entries and Enter visits the
+spot (`M-x understanding-ledger` opens the file). The terms from explanations
+collect in `glossary-file` (default `~/.darger-glossary.org`, one `- term ::
+definition` per line, existing terms kept) and `M-x glossary` looks one up.
+The review's keys are also commands (`review-take`, `review-keep`, `review-next`,
+`review-previous`, `review-finish`, `review-explain-hunk`), so an init file or an
+agent can drive a review.
 
 ## Filer (Dired)
 

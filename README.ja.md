@@ -78,6 +78,7 @@ nim r tests/tproject.nim  # プロジェクトのファイル列挙 (git / 素) 
 nim r tests/tmigemo.nim   # migemo のローマ字 → かな → 辞書語
 nim r tests/tpictures.nim # pixie が読めない画像の PNG 変換キャッシュ
 nim r tests/tchanges.nim  # 2 時点のスナップショット間で変わったプロジェクトのファイル
+nim r tests/tledger.nim   # 理解台帳のエントリと用語集
 nim r tests/tmonkey.nim   # ファズ: Buffer、SKK、Lisp、HTML、端末、ペインにランダム入力
 tests/editormonkey/run.sh 1 16 300   # エディタ全体: seed ごとにランダムなコマンド列 (ウィンドウが開く)
 ```
@@ -343,6 +344,21 @@ Lisp から行います。未判断のハンクでは k 番目の削除行と追
   出て、`M-x agent-changes` で一覧できます。Enter でそのファイルを開き、バッファがディスクと違えば
   その差分、同じなら git HEAD との差分をレビューします。プロジェクト全体へのエージェントの編集も
   同じゲートを通ります。
+
+### 理解台帳
+
+エージェントの書いたものを理解しないまま採用すると理解負債になります。レビューがその帳簿を付けます。
+x で今のハンクの説明をエージェントに求めます (何を変えるか、なぜか、注意点、そして依拠するドメイン用語・
+技術用語を `- 用語 :: 定義` の形で)。説明は隣のウィンドウの `*explain*` に出て、そのハンクは理解済みに
+なります。エージェントまたはディスクの変更のレビューを終えると、採用した各ハンクが `understanding-ledger`
+(既定 `~/.darger-understanding.org`、`nil` で無効) に Org のエントリとして追記されます: 説明なしなら
+`* TODO ファイル:行  taken without explanation  :debt:プロジェクト:` にハンクの diff ブロック、説明ありなら
+`* DONE … :understood:` に説明文。agenda や TODO の道具でそのまま「まだ理解していないもの」を追えます。
+`M-x understanding-debt` は未返済のエントリを一覧し、Enter でその場所へ (`M-x understanding-ledger` で
+台帳ファイル自体を開く)。説明に出た用語は `glossary-file` (既定 `~/.darger-glossary.org`、1 行 1 語の
+`- 用語 :: 定義`、既存の語は保持) に集まり、`M-x glossary` で引けます。レビューのキーはコマンドでも
+あります (`review-take`、`review-keep`、`review-next`、`review-previous`、`review-finish`、
+`review-explain-hunk`)。init ファイルやエージェントからレビューを操作できます。
 
 ## ファイラ (Dired)
 
