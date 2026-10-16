@@ -306,25 +306,7 @@ proc imeStarted*() =
 proc folds*(buf: Buffer): seq[int8] = (if foldHook != nil: foldHook(buf) else: @[])
 proc pictures*(buf: Buffer): tuple[extra: seq[int], pictures: seq[Picture]] =
   if pictureHook != nil: pictureHook(buf) else: (@[], @[])
-proc rowsBelow*(extra: seq[int], n: int): int = (if n < extra.len: max(0, extra[n]) else: 0)
-proc hiddenLine*(fold: seq[int8], n: int): bool = n < fold.len and fold[n] == 1
-proc shownLine*(fold: seq[int8], count, n, direction: int): int =
-  ## The nearest shown line from n (n itself when shown) in direction; -1 when none.
-  result = n
-  while result in 0..<count and hiddenLine(fold, result): result += direction
-  if result notin 0..<count: result = -1
-proc stepShown*(fold: seq[int8], count, n, delta: int): int =
-  ## The line delta shown lines away from n, stopping at the first or last shown line.
-  result = max(0, min(n, count - 1))
-  let direction = if delta < 0: -1 else: 1
-  for i in 1..abs(delta):
-    let next = shownLine(fold, count, result + direction, direction)
-    if next < 0: break
-    result = next
-proc shownBetween*(fold: seq[int8], a, z: int, extra: seq[int] = @[]): int =
-  ## The rows the shown lines among a..<z take (with their image rows).
-  for n in a..<z:
-    if not hiddenLine(fold, n): result += 1 + rowsBelow(extra, n)
+export hiddenLine, shownLine, stepShown, shownBetween, rowsBelow
 
 proc settleFolds*() =
   ## The cursor never rests on a hidden line: after a movement it skips the fold in the
@@ -521,14 +503,15 @@ proc wheelAt*(cx, cy, delta: int) =
   if p == nil or delta == 0: return
   let buf = if p == pane: b else: p.buf
   let fold = folds(buf)
+  let extra = pictures(buf).extra
   let count = buf.lines.len
   let rows = max(1, p.h - 1)
   var top = if p == pane: renderer.top else: p.top
   var cursor = if p == pane: b.cursor else: p.cursor
   let last = shownLine(fold, count, buf.lines.high, -1)
-  let maxTop = max(0, stepShown(fold, count, last, -(rows - 1)))
-  top = clamp(stepShown(fold, count, top, delta), 0, maxTop)
-  let bottom = stepShown(fold, count, top, rows - 1)
+  let maxTop = max(0, stepShown(fold, count, last, -(rows - 1), extra))
+  top = clamp(stepShown(fold, count, top, delta, extra), 0, maxTop)
+  let bottom = stepShown(fold, count, top, rows - 1, extra)
   if cursor.line < top: cursor.line = max(0, shownLine(fold, count, top, 1))
   elif cursor.line > bottom: cursor.line = bottom
   cursor.col = min(cursor.col, buf.lines[cursor.line].len)
@@ -1007,9 +990,10 @@ proc page*(buf: Buffer, full: string) =
   ## A page is a screen of shown lines: hidden (folded) lines do not count.
   let direction = if full in ["C-v", "pagedown"]: 1 else: -1
   let fold = folds(buf)
+  let extra = pictures(buf).extra
   let count = buf.lines.len
   let last = shownLine(fold, count, buf.lines.high, -1)
-  if direction > 0 and shownBetween(fold, renderer.top, last + 1) <= renderer.rows:
+  if direction > 0 and shownBetween(fold, renderer.top, last + 1, extra) <= renderer.rows:
     echoLine = "End of buffer"
     return
   if direction < 0 and renderer.top == 0:
@@ -1017,18 +1001,18 @@ proc page*(buf: Buffer, full: string) =
     return
   let delta = direction * max(1, renderer.rows-2)
   if buf.goal < 0: buf.goal = buf.cellCol(buf.cursor)
-  buf.cursor.line = stepShown(fold, count, buf.cursor.line, delta)
+  buf.cursor.line = stepShown(fold, count, buf.cursor.line, delta, extra)
   buf.cursor.col = runeCol(buf.lines[buf.cursor.line], buf.goal)
   buf.last = "move"
-  let maxTop = stepShown(fold, count, last, -(renderer.rows - 1))
-  renderer.top = clamp(stepShown(fold, count, renderer.top, delta), 0, max(0, maxTop))
+  let maxTop = stepShown(fold, count, last, -(renderer.rows - 1), extra)
+  renderer.top = clamp(stepShown(fold, count, renderer.top, delta, extra), 0, max(0, maxTop))
 
 proc recenter*(buf: Buffer) =
   let row = case recenterCycle
     of 0: renderer.rows div 2
     of 1: 0
     else: renderer.rows - 1
-  renderer.top = stepShown(folds(buf), buf.lines.len, buf.cursor.line, -row)
+  renderer.top = stepShown(folds(buf), buf.lines.len, buf.cursor.line, -row, pictures(buf).extra)
   recenterCycle = (recenterCycle + 1) mod 3
 
 

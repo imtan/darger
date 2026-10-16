@@ -643,7 +643,8 @@ Emacs のコマンドと同じで、pngpaste は要りません。
 
 画像リンクは org-display-inline-images のようにインライン表示されます。`[[file:…png]]` (jpg、gif、
 webp、bmp も。`~` やファイルからの相対パス可) のある行の下に、本文幅と `org-image-max-rows` 行
-(既定 15) に収まるよう縮小した絵が入ります。ファイルが変わると読み直し、絵をクリックするとその行末に
+(既定 15) に収まるよう縮小した絵が入ります。ペイン下端にかかる絵は切り抜かれ、ホイール、C-v / M-v、
+リセンターは絵の行数も数えます。ファイルが変わると読み直し、絵をクリックするとその行末に
 ポイントが移ります。M-x org-toggle-inline-images で非表示 / 表示を切り替えます。
 
 Eagle (eagle.cool) からの画像も Emacs と同じ手順で入れられます。C-M-e (`org-insert-eagle-image`) は

@@ -129,6 +129,19 @@ block tooSmall:
 
 echo "panes ok"
 
+block rows:
+  let fold: seq[int8] = @[0'i8, 1, 1, 0, 0, 0]          # lines 1 and 2 hidden
+  doAssert shownLine(fold, 6, 1, 1) == 3 and shownLine(fold, 6, 2, -1) == 0 and shownLine(fold, 3, 1, 1) == -1
+  doAssert stepShown(fold, 6, 0, 2) == 4 and stepShown(fold, 6, 4, -1) == 3 and stepShown(fold, 6, 3, -5) == 0
+  doAssert shownBetween(fold, 0, 6) == 4
+  let extra = @[0, 0, 0, 3, 0, 0]                         # line 3 has a 3-row picture under it
+  doAssert shownBetween(fold, 0, 6, extra) == 7
+  doAssert stepShown(fold, 6, 0, 2, extra) == 3           # 0 -> 3 costs 1 row, leaving 3 would cost 4 more
+  doAssert stepShown(fold, 6, 0, 5, extra) == 4           # 1 + 4 = 5 rows
+  doAssert stepShown(fold, 6, 3, 1, extra) == 4           # a tall picture still scrolls one line
+  doAssert stepShown(fold, 6, 5, -1, extra) == 4 and stepShown(fold, 6, 5, -2, extra) == 4  # entering 3 costs 4
+  doAssert stepShown(fold, 6, 5, -5, extra) == 3 and stepShown(fold, 6, 5, -6, extra) == 0
+
 block pointAt:
   proc rs(s: string): seq[Rune] = s.toRunes
   let lines = @[rs"line one", rs"second", rs"third", rs"fourth", rs"last"]

@@ -137,6 +137,38 @@ proc gutterWidth*(lineCount: int): int =
   ## The line-number gutter: right-aligned numbers at least 3 digits wide, then 2 cells.
   max(3, len($lineCount)) + 2
 
+# Rows: hidden (folded) lines take none, a line with an inline image its own and the
+# image's (`extra`, rows under each line; missing = 0).
+
+proc hiddenLine*(fold: seq[int8], n: int): bool = n < fold.len and fold[n] == 1
+proc rowsBelow*(extra: seq[int], n: int): int = (if n < extra.len: max(0, extra[n]) else: 0)
+
+proc shownLine*(fold: seq[int8], count, n, direction: int): int =
+  ## The nearest shown line from n (n itself when shown) in direction; -1 when none.
+  result = n
+  while result in 0..<count and hiddenLine(fold, result): result += direction
+  if result notin 0..<count: result = -1
+
+proc stepShown*(fold: seq[int8], count, n, delta: int, extra: seq[int] = @[]): int =
+  ## The line about delta rows away from n, stopping at the first or last shown line:
+  ## leaving a line downwards or entering one upwards costs its rows; the step never
+  ## goes past delta rows except for the first line, so a tall picture still scrolls.
+  result = max(0, min(n, count - 1))
+  let direction = if delta < 0: -1 else: 1
+  var used = 0
+  while used < abs(delta):
+    let next = shownLine(fold, count, result + direction, direction)
+    if next < 0: break
+    let cost = 1 + rowsBelow(extra, if direction > 0: result else: next)
+    if used > 0 and used + cost > abs(delta): break
+    used += cost
+    result = next
+
+proc shownBetween*(fold: seq[int8], a, z: int, extra: seq[int] = @[]): int =
+  ## The rows the shown lines among a..<z take (with their image rows).
+  for n in a..<z:
+    if not hiddenLine(fold, n): result += 1 + rowsBelow(extra, n)
+
 proc pointAt*(lines: seq[seq[Rune]], fold: seq[int8], top, left, gutter, cx, cy: int,
               extra: seq[int] = @[]): Point =
   ## The buffer point under text cell (cx, cy) of a pane scrolled to (top, left), skipping

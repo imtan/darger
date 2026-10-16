@@ -633,14 +633,50 @@ type
     box*: CursorBox
     matchStart*, matchLen*: int
 
+var
+  pictureSources: Table[string, Image]       # the pictures as added, for cropping
+  pictureCrops: Table[string, seq[string]]   # picture key -> its cropped copies' keys
+
+proc removePicture*(r: Renderer, key: string) =
+  ## Between frames only: boxy refuses to remove an image queued for drawing.
+  if r.gpu.contains(key): r.gpu.removeImage(key)
+  for crop in pictureCrops.getOrDefault(key):
+    if r.gpu.contains(crop): r.gpu.removeImage(crop)
+  pictureCrops.del key
+  pictureSources.del key
+
+proc pruneCrops(r: Renderer) =
+  ## Before a frame: a picture that gathered many crops (panes of changing heights)
+  ## drops them all; the ones still needed come back as they are drawn.
+  for key, crops in pictureCrops.mpairs:
+    if crops.len > 8:
+      for crop in crops:
+        if r.gpu.contains(crop): r.gpu.removeImage(crop)
+      crops = @[]
+
 proc addPicture*(r: Renderer, key: string, img: Image) =
   ## Keeps an image for Picture rows under `key` (replacing one with the same key).
-  if r.gpu.contains(key): r.gpu.removeImage(key)
+  r.removePicture(key)
   r.gpu.addImage(key, img)
+  pictureSources[key] = img
 
 proc hasPicture*(r: Renderer, key: string): bool = r.gpu.contains(key)
-proc removePicture*(r: Renderer, key: string) =
-  if r.gpu.contains(key): r.gpu.removeImage(key)
+
+proc drawPicture(r: Renderer, pic: Picture, x, y, maxH: int) =
+  ## The picture at (x, y), at most maxH pixels tall: a picture running off the
+  ## pane's bottom is cropped (one cropped copy per picture is kept).
+  if not r.gpu.contains(pic.key) or maxH <= 0: return
+  if pic.h <= maxH:
+    r.gpu.drawImage(pic.key, rect(x.float32, y.float32, pic.w.float32, pic.h.float32))
+    return
+  if pic.key notin pictureSources: return
+  let src = pictureSources[pic.key]
+  let srcH = clamp(int(src.height.float * maxH.float / pic.h.float), 1, src.height)
+  let cropKey = pic.key & "#" & $srcH
+  if not r.gpu.contains(cropKey):
+    r.gpu.addImage(cropKey, src.subImage(0, 0, src.width, srcH))
+    pictureCrops.mgetOrPut(pic.key, @[]).add cropKey
+  r.gpu.drawImage(cropKey, rect(x.float32, y.float32, pic.w.float32, maxH.float32))
 
 proc drawPane(r: Renderer, window: Window, p: var PaneView, composition: seq[Rune],
               imeCursor: int, textCursor: bool) =
@@ -667,11 +703,17 @@ proc drawPane(r: Renderer, window: Window, p: var PaneView, composition: seq[Run
     for i in top..<n:
       if not hidden(i): result += 1 + below(i)
   if cursor.line < top or rowOf(cursor.line) + below(cursor.line) >= r.rows:
+    # Recentre: the cursor line about half way down, never pushed off by a tall picture above.
     top = cursor.line
     var back = r.rows div 2 - below(cursor.line)
     while top > 0 and back > 0:
-      dec top
-      if not hidden(top): back -= 1 + below(top)
+      var prev = top - 1
+      while prev > 0 and hidden(prev): dec prev
+      if hidden(prev): break
+      let cost = 1 + below(prev)
+      if cost > back: break
+      back -= cost
+      top = prev
   let cursorRow = rowOf(cursor.line)
   if span.cell < left: left = span.cell
   if span.cell + span.width > left + cols: left = max(0, span.cell + span.width - cols)
@@ -710,11 +752,11 @@ proc drawPane(r: Renderer, window: Window, p: var PaneView, composition: seq[Run
       x0 = gutter, width = cols, bgs = if line < p.bgs.len: p.bgs[line] else: @[])
     offset += b.lines[line].len + 1
     inc row
-    # The rows under a line hold its picture, drawn when they all fit in the pane.
+    # The rows under a line hold its picture, cropped at the pane's bottom.
     if below(line) > 0:
       for pic in p.pictures:
-        if pic.line == line and row + below(line) <= r.rows and r.gpu.contains(pic.key):
-          r.gpu.drawImage(pic.key, rect(r.cellX(gutter).float32, r.rowY(row).float32, pic.w.float32, pic.h.float32))
+        if pic.line == line and row < r.rows:
+          r.drawPicture(pic, r.cellX(gutter), r.rowY(row), (r.rows - row) * r.cellH)
       row += below(line)
   if p.box.lines.len > 0 and p.box.line >= top and rowOf(p.box.line) < r.rows:
     r.cursorBox(p.box.lines, p.box.selected, gutter + p.box.cell - left, rowOf(p.box.line),
@@ -732,6 +774,7 @@ proc draw*(r: Renderer, window: Window, panes: var seq[PaneView], bars: seq[tupl
   let nativeIme = window.imeCompositionString.len > 0
   let composition = (if nativeIme: window.imeCompositionString else: inputSegment).toRunes
   let imeCursor = if nativeIme: imeRuneCol(composition, window.imeCursorIndex) else: composition.len
+  r.pruneCrops()
   r.gpu.beginFrame(window.size)
   let whole = rect(0, 0, window.size.x.float32, window.size.y.float32)
   if r.background != nil:
