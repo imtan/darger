@@ -20,8 +20,37 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
 
 ## Open
 
-1. Terminal: `C-c C-j` line mode as in Emacs term; a bold face (a second font weight)
-   for bold text.
+(2026-10-16: reordered after comparing ~/.emacs.d/config.org with darger; the Emacs
+keys the user has are the reference)
+
+1. Key parity with the user's Emacs: `C-c a` org-agenda (agent-prompt moves to
+   `C-c C p`), `C-c c` org-capture (agent-chat moves to `C-c C a`), `C-c w` the RSS
+   reader (elfeed; eww to `C-c W`), `C-c f` freed (forward-word is M-f), windmove
+   `C-c <left/right/up/down>` to the window in that direction, `C-c n s` grep over
+   `~/Dropbox/Org` (see 2), `C-c n j` journal entry too (org-roam-dailies-capture-today).
+2. `consult-ripgrep`: grep a directory (default the project root, `C-c n s` the Org
+   directory) with `rg` (else `grep -rn`), results as a consult list with preview.
+3. Org TODO keywords: `(setq org-todo-keywords '("TODO" "NEXT" "WAITING" "|" "DONE"))`
+   drives C-c C-t cycling, highlighting (NEXT orange, WAITING blue as the user's faces),
+   agenda selection; one-letter choice after C-c C-t as in Emacs' fast selection.
+4. Project files: `C-x p f` / `s-p f` style finder over the git root (projectile-find-file),
+   `C-x p p` to switch project, `C-x p b` project buffers.
+5. migemo: romaji matches Japanese in isearch, consult-line and the completion prompts,
+   using cmigemo's dictionary when installed (the user has migemo in Emacs).
+6. Org images: `C-M-y` pastes the clipboard image into `images/` next to the file and
+   inserts `[[file:...]]` (macOS pbpaste/pngpaste); inline image display later.
+7. org-roam: `C-c n c` capture a note with a prompt for the title, `C-c n t` add a tag
+   (`#+filetags:`), backlinks buffer refresh, `C-c n g` graph (open in browser via dot?).
+8. Writing helpers through the agent (their Gemini/gptel map `C-c G`): translate,
+   proofread, summarize, keywords, blog draft on the region, through `agent-command`
+   with prompt templates; result replaces the region or opens a buffer.
+9. magit, minimal: `C-x g` status buffer (branch, staged/unstaged files, untracked),
+   `s`/`u` stage/unstage, `c c` commit with a message buffer, `P p` push, diff on Enter.
+10. Terminal: `C-c C-j` line mode as in Emacs term; a bold face (second font weight).
+11. Mode line polish (doom-modeline-ish): git branch, LSP state, SKK state grouped;
+    olivetti-style centred writing width for Org (`M-x olivetti-mode`).
+12. Books viewer, skilltree / feynman menus, YouTube browse, nostr, elpher, calfw:
+    personal Emacs tools; port only on request.
 
 ## Log
 
