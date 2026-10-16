@@ -80,6 +80,7 @@ nim r tests/tpanes.nim    # window layout
 nim r tests/tshader.nim   # background shader sources
 nim r tests/tgrep.nim     # ripgrep / grep output parsing and a real search
 nim r tests/teagle.nim    # Eagle API parsing and link paths
+nim r tests/tproject.nim  # project file listing (git and plain) and known projects
 nim r tests/tmonkey.nim   # fuzz: random input into Buffer, SKK, Lisp, HTML, the terminal, panes
 tests/editormonkey/run.sh 1 16 300   # whole editor: random command sequences per seed (opens windows)
 ```
@@ -306,6 +307,7 @@ fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK
 | org-roam: find / insert link / backlinks / today | C-c n f / C-c n i / C-c n l / C-c n d |
 | org-roam: today's daily with a time entry | C-c n j |
 | Grep the Org directory (consult-ripgrep) | C-c n s |
+| Project: find file / switch project / project buffers | C-x p f / C-x p p / C-x p b |
 
 Search ignores case for all-lowercase queries. Typing extends the current match; a
 search that hits the buffer edge shows `Failing I-search`, and repeating C-s/C-r
@@ -573,6 +575,16 @@ selection previews the spot, Enter jumps there (M-, comes back) and C-g returns.
 `(consult-ripgrep "dir")` searches that directory, and C-c n s
 (`consult-ripgrep-org`) the `org-roam-directory`, like the user's
 `my/consult-ripgrep-org`. The search runs to completion before the list opens.
+
+## Projects
+
+Like Emacs' project.el: C-x p f (`project-find-file`) lists every file of the
+project, the nearest `.git` above the current file (tracked and untracked files
+with `.gitignore` applied, through `git ls-files`) or else the file's directory
+(hidden and build directories skipped), as relative paths to narrow and open. C-x p p
+(`project-switch-project`) offers the projects visited before (kept in
+`~/.darger-projects`, newest first; any directory can be typed) and then a file in the
+chosen one; C-x p b (`project-buffers`) lists the open buffers under the project.
 
 ## Language servers
 

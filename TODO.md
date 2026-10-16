@@ -23,30 +23,29 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
 (2026-10-16: reordered after comparing ~/.emacs.d/config.org with darger. The user's
 rule: only add what is missing; never rebind or remove existing darger keys.)
 
-1. Project files: `C-x p f` / `s-p f` style finder over the git root (projectile-find-file),
-   `C-x p p` to switch project, `C-x p b` project buffers.
-2. migemo: romaji matches Japanese in isearch, consult-line and the completion prompts,
+1. migemo: romaji matches Japanese in isearch, consult-line and the completion prompts,
    using cmigemo's dictionary when installed (the user has migemo in Emacs).
-3. Org images: `C-M-y` pastes the clipboard image into `images/` next to the file and
+2. Org images: `C-M-y` pastes the clipboard image into `images/` next to the file and
    inserts `[[file:...]]` (macOS pbpaste/pngpaste); inline image display later, which
    would also give the Eagle picker its thumbnail preview.
-4. org-roam: `C-c n c` capture a note with a prompt for the title, `C-c n t` add a tag
+3. org-roam: `C-c n c` capture a note with a prompt for the title, `C-c n t` add a tag
    (`#+filetags:`), backlinks buffer refresh, `C-c n g` graph (open in browser via dot?).
-5. Writing helpers through the agent (their Gemini/gptel map `C-c G`): translate,
+4. Writing helpers through the agent (their Gemini/gptel map `C-c G`): translate,
    proofread, summarize, keywords, blog draft on the region, through `agent-command`
    with prompt templates; result replaces the region or opens a buffer.
-6. magit, minimal: `C-x g` status buffer (branch, staged/unstaged files, untracked),
+5. magit, minimal: `C-x g` status buffer (branch, staged/unstaged files, untracked),
    `s`/`u` stage/unstage, `c c` commit with a message buffer, `P p` push, diff on Enter.
-7. Terminal: `C-c C-j` line mode as in Emacs term; a bold face (second font weight).
-8. Mode line polish (doom-modeline-ish): git branch, LSP state, SKK state grouped;
+6. Terminal: `C-c C-j` line mode as in Emacs term; a bold face (second font weight).
+7. Mode line polish (doom-modeline-ish): git branch, LSP state, SKK state grouped;
     olivetti-style centred writing width for Org (`M-x olivetti-mode`).
-9. Books viewer, skilltree / feynman menus, YouTube browse, nostr, elpher, calfw:
+8. Books viewer, skilltree / feynman menus, YouTube browse, nostr, elpher, calfw:
     personal Emacs tools; port only on request.
 
 ## Log
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-16 projects: C-x p f / p / b over the git root (src/project.nim tested), known roots in ~/.darger-projects
 - 2026-10-16 Eagle images (user request): C-M-e by keyword, C-c e by folder, link to the library file as ~/… (src/eagle.nim tested against the live API)
 - 2026-10-16 org-todo-keywords: sequence, done words, faces, agenda, fast one-key selection on C-c C-t
 - 2026-10-16 consult-ripgrep (rg, grep fallback; src/grep.nim tested), C-c n s over org-roam-directory
