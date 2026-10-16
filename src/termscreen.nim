@@ -20,7 +20,9 @@ type
     wrapPending: bool           ## the cursor sits past the last column until the next rune
     pending: string             ## an incomplete escape or UTF-8 sequence
     saved: tuple[row, col: int]
-    alt: bool
+    alt*: bool                  ## the alternate screen is shown (a full-screen program)
+    mouse*: int                 ## mouse reporting asked for: 0 none, 1000 clicks, 1002 + drags, 1003 any motion
+    sgrMouse*: bool             ## ?1006: SGR encoding of the reports
     main: seq[seq[Cell]]        ## the main screen while the alternate one is shown
     mainCursor: tuple[row, col: int]
     scrollback*: seq[seq[Cell]] ## lines scrolled off the top of the main screen
@@ -179,7 +181,9 @@ proc csi(s: var Screen, params: string, final: char) =
     case final
     of 'h', 'l':
       for c in codes:
-        if c in [1049, 1047, 47]:  # the alternate screen
+        if c in [1000, 1002, 1003]: s.mouse = (if final == 'h': c else: 0)
+        elif c == 1006: s.sgrMouse = final == 'h'
+        elif c in [1049, 1047, 47]:  # the alternate screen
           if final == 'h' and not s.alt:
             s.main = s.cells
             s.mainCursor = (s.row, s.col)
@@ -357,3 +361,14 @@ proc keySequence*(chord: string, shift = false): string =
     let inner = keySequence(rest, shift)
     if inner.len > 0: return "\x1b" & inner
   ""
+
+proc mouseReport*(s: Screen, button, col, row: int, release = false): string =
+  ## What the program receives for a mouse event at cell (col, row), 0-based, when it
+  ## asked for reports: SGR (`ESC[<b;x;yM`, `m` on release) or X10 (`ESC[M` + 3 bytes).
+  ## button: 0 left, 1 middle, 2 right, 64 wheel up, 65 wheel down; "" when not reporting.
+  if s.mouse == 0: return ""
+  if s.sgrMouse:
+    "\x1b[<" & $button & ";" & $(col + 1) & ";" & $(row + 1) & (if release: "m" else: "M")
+  else:
+    let b = if release: 3 else: button
+    "\x1b[M" & char(32 + b) & char(32 + min(col + 1, 223)) & char(32 + min(row + 1, 223))

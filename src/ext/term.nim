@@ -277,6 +277,26 @@ when not defined(windows):
     for t in terminals:
       if t.pty != nil: t.pty.close()
   modifiedIgnore.add proc(buf: Buffer): bool = terminalOf(buf) != nil
+  noGutter.add proc(buf: Buffer): bool = terminalOf(buf) != nil  # the program owns every column
+
+  mouseFilters.add proc(p: Pane, cx, cy, button: int, pressed: bool): bool =
+    ## A program that asked for mouse reports gets clicks and wheel notches on its screen
+    ## cells; on the alternate screen without reports the wheel becomes arrow keys.
+    let buf = if p == pane: core.b else: p.buf
+    let t = terminalOf(buf)
+    if t == nil or t.pty == nil or t.pty.exited: return false
+    let top = if p == pane: renderer.top else: p.top
+    let row = top + (cy - p.y) - t.screen.scrollbackLines.len
+    let col = cx - p.x
+    if cy - p.y >= p.h - 1 or row notin 0..<t.screen.rows or col notin 0..<t.screen.cols: return false
+    if t.screen.mouse != 0:
+      if pressed or t.screen.mouse >= 1000:
+        t.pty.write(t.screen.mouseReport(button, col, row, release = not pressed))
+      return true
+    if t.screen.alt and button in [64, 65] and pressed:
+      t.pty.write(if button == 64: "\x1b[A" else: "\x1b[B")
+      return true
+    false
 
   interp.defPrimitive("term", proc(args: seq[Value]): Value =
     ## (term) runs the shell, (term "command args") that program, in *terminal*.

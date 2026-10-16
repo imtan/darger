@@ -20,13 +20,14 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
 
 ## Open
 
-1. Terminal: mouse reporting for programs that ask for it (?1000 / ?1006), `C-c C-j`
-   line mode as in Emacs term, a bold face (a second font weight) for bold text.
+1. Terminal: `C-c C-j` line mode as in Emacs term; a bold face (a second font weight)
+   for bold text.
 
 ## Log
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-16 terminal: mouse reporting (?1000/1002/1003, SGR ?1006) through a core mouseFilters hook, wheel as arrows on the alternate screen, no gutter in terminal buffers (fixes the width mismatch)
 - 2026-10-16 exploration: tests/editormonkey (random command sequences through ~/.darger.el in a throwaway HOME; 16 seeds x 300 commands, no crash); (ignore-errors ...) added to the Lisp
 - 2026-10-16 SKK: annotations kept and shown beside candidates, (concat "...") evaluated, registered words with / or ; encoded, "word;note" registration
 - 2026-10-16 windows: split ratios with C-x ^ / C-x } / C-x { resizing, C-x + balance (panes.resize / balance tested), C-x 4 b / C-x 4 f

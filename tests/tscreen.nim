@@ -134,6 +134,21 @@ block wide:
   w.feed("\x1b[1;3H\x1b[31mZ")                       # overwriting the first cell of a wide rune
   doAssert w.lines[0] == "abZ" and w.colors[0] == @[0'i8, 0, 2]
 
+block mouse:
+  var s = initScreen(10, 5)
+  doAssert s.mouse == 0 and s.mouseReport(0, 2, 3) == ""
+  s.feed("\x1b[?1000h")
+  doAssert s.mouse == 1000 and s.mouseReport(0, 2, 3) == "\x1b[M\x20\x23\x24"   # X10: button 0, x 3, y 4
+  doAssert s.mouseReport(0, 2, 3, release = true) == "\x1b[M\x23\x23\x24"
+  s.feed("\x1b[?1006h\x1b[?1002h")
+  doAssert s.mouse == 1002 and s.sgrMouse
+  doAssert s.mouseReport(0, 2, 3) == "\x1b[<0;3;4M" and s.mouseReport(64, 0, 0) == "\x1b[<64;1;1M"
+  doAssert s.mouseReport(0, 2, 3, release = true) == "\x1b[<0;3;4m"
+  s.feed("\x1b[?1002l\x1b[?1006l")
+  doAssert s.mouse == 0 and not s.sgrMouse
+  s.feed("\x1b[?1049h")
+  doAssert s.alt
+
 block keys:
   doAssert keySequence("enter") == "\r" and keySequence("backspace") == "\x7f"
   doAssert keySequence("C-a") == "\x01" and keySequence("C-z") == "\x1a" and keySequence("C-SPC") == "\0"

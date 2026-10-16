@@ -64,6 +64,9 @@ window.onMouseMove = proc() =
 
 window.onButtonRelease = proc(key: Button) =
   if key != MouseLeft: return
+  if mode.len == 0:
+    let (cx, cy) = renderer.cellAt(window.mousePos)
+    discard mouseEvent(cx, cy, 0, false)  # a terminal reporting the mouse hears the release
   let button = pressed
   pressed = thNone
   grab.x = -1
@@ -86,7 +89,7 @@ window.onButtonPress = proc(key: Button) =
     grab = if pressed == thNone: window.mousePos else: ivec2(-1, -1)
     if hit == thNone and mode.len == 0:  # a click in the text places the cursor (the drag still moves the window)
       let (cx, cy) = renderer.cellAt(window.mousePos)
-      clickAt(cx, cy)
+      if not mouseEvent(cx, cy, 0, true): clickAt(cx, cy)
     grabSize = window.size
     let ui = window.uiScale
     let corner = int32(32 * ui)
@@ -248,7 +251,10 @@ while running and not window.closed:
     if lines != 0:
       wheel -= lines.float
       let (cx, cy) = renderer.cellAt(window.mousePos)
-      try: wheelAt(cx, cy, lines)
+      try:
+        var taken = false
+        for i in 1..abs(lines): taken = mouseEvent(cx, cy, if lines < 0: 64 else: 65, true) or taken
+        if not taken: wheelAt(cx, cy, lines)
       except CatchableError as e: echoLine = e.msg
       dirty = true
   when defined(macosx):

@@ -250,6 +250,9 @@ var
   backProviders*: seq[proc(buf: Buffer): seq[seq[int8]]]   # per-rune background colours (1-8), any pane
   markProviders*: seq[proc(buf: Buffer): seq[seq[int8]]]   # per-rune underlines (5) when the buffer has
                                                              # no diagnostics
+  noGutter*: seq[proc(buf: Buffer): bool]   # true: the buffer shows without line numbers (a terminal)
+  mouseFilters*: seq[proc(p: Pane, cx, cy, button: int, pressed: bool): bool]  # a click (button 0),
+    # a wheel notch (64 up, 65 down) at frame cell (cx, cy) in pane p; true takes the event
   foldHook*: proc(buf: Buffer): seq[int8]  # per line: 0 shown, 1 hidden, 2 a headline hiding
                                            # the lines after it (drawn with "..."); empty = none
   revealHook*: proc(buf: Buffer, line: int)  # show a hidden line: open the folds over it
@@ -464,6 +467,19 @@ proc otherPaneFor(): Pane =
   if layout.leaves.len == 1: splitPane(false)
   layout.next(pane, 1)
 
+proc gutterFor*(buf: Buffer): int =
+  ## The line-number gutter's width for buf, 0 when an extension hides it.
+  for hook in noGutter:
+    if hook(buf): return 0
+  gutterWidth(buf.lines.len)
+
+proc mouseEvent*(cx, cy, button: int, pressed: bool): bool =
+  ## An extension (a terminal reporting the mouse) may take a click or wheel notch.
+  let p = layout.paneAt(cx, cy)
+  if p == nil: return false
+  for filter in mouseFilters:
+    if filter(p, cx, cy, button, pressed): return true
+
 proc clickAt*(cx, cy: int) =
   ## Mouse-1 on a text cell: that pane is selected and its point goes there (the mark
   ## is deactivated, as in Emacs). A click on a mode line only selects the pane.
@@ -471,7 +487,7 @@ proc clickAt*(cx, cy: int) =
   if p == nil: return
   if p != pane: selectPane(p)
   if cy - p.y >= p.h - 1: return
-  b.cursor = pointAt(b.lines, folds(b), renderer.top, renderer.left, gutterWidth(b.lines.len), cx - p.x, cy - p.y)
+  b.cursor = pointAt(b.lines, folds(b), renderer.top, renderer.left, gutterFor(b), cx - p.x, cy - p.y)
   b.regionActive = false
   b.goal = -1
   moveDirection = 0
@@ -1561,7 +1577,7 @@ proc redraw*(hover = thNone, maximized = false) =
         bgs: if displayed == b: provided(backProviders, b) else: @[],
         fold: if displayed == b: folds(b) else: @[],
         lineColors: if view != nil and view.colors != nil: view.colors() else: @[],
-        lineNumbers: displayed == b,
+        lineNumbers: displayed == b and gutterFor(b) > 0,
         modeLine: modeLineText(displayed, name, displayed.cursor, modeName, tag),
         box: if displayed == b: box else: CursorBox(),
         matchStart: highlight.start, matchLen: highlight.len)
@@ -1570,7 +1586,7 @@ proc redraw*(hover = thNone, maximized = false) =
       let line = min(p.cursor.line, buf.lines.high)
       p.cursor = (line, min(p.cursor.col, buf.lines[line].len))
       views.add PaneView(b: buf, x: p.x, y: p.y, w: p.w, h: p.h, top: p.top, left: p.left,
-        cursor: p.cursor, active: false, faces: facesOf(buf), fold: folds(buf), lineNumbers: true,
+        cursor: p.cursor, active: false, faces: facesOf(buf), fold: folds(buf), lineNumbers: gutterFor(buf) > 0,
         bgs: provided(backProviders, buf), marks: provided(markProviders, buf),
         modeLine: modeLineText(buf, reg.displayName(buf), p.cursor, langOf(buf).name, ""),
         matchStart: -1)
