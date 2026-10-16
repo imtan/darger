@@ -282,6 +282,8 @@ fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK
 | Web browser (eww) / RSS reader | C-c w / C-c r |
 | GLSL buffer: shader apply / picture only / clear | C-c C-c / C-c C-o / C-c C-k |
 | Shell buffer / interrupt / end-of-file | C-c s / C-c C-c / C-d |
+| Claude Code: start or focus / toggle window / new session | C-c C c / C-c C t / C-c C n |
+| Claude Code: send region / send file | C-c C r / C-c C f |
 | Org: TODO / checkbox / new item | C-c C-t / C-c C-c / M-Enter |
 | Org: promote / demote / move subtree up / down | M-Left / M-Right / M-Up / M-Down |
 | Org: headline list / open link / timestamp | C-c C-j / C-c C-o / C-c . |
@@ -356,8 +358,18 @@ work. Every key goes to the program as a terminal would send it (Enter, arrows,
 function keys, C-a … C-z, M-x as ESC x, Escape, Shift-Tab), and typed characters
 too, so SKK is out of the way there; only the editor's prefixes C-x and C-c (and M-x,
 M-:, C-g) stay with darger, so C-x o, C-x b and C-c s still work, and C-c C-c sends
-a C-c to the program. The buffer's cursor is the terminal's. One terminal at a time;
-killing the buffer or quitting hangs the program up.
+a C-c to the program. The buffer's cursor is the terminal's; wide (CJK) runes take two
+cells. Killing the buffer or quitting hangs the program up.
+
+Claude Code runs in such a terminal with the bindings of the user's Emacs setup:
+C-c C c (`claude-code`) starts `claude-command` (default `claude`) in the project root
+(the nearest `.git` above the file) in `*claude-code: <project>*`, shown in a window on
+the right (splitting when there is one window) and selected, or just goes there when
+it already runs; C-c C t (`claude-code-toggle`) hides that window or shows it again;
+C-c C n (`claude-code-new`) kills the session and starts a fresh one; C-c C r
+(`claude-code-send-region`) pastes the region into it (bracketed paste, so its newlines
+do not submit) and presses Enter; C-c C f (`claude-code-send-file`) sends
+`このファイルを見てください: <path relative to the project>` and Enter.
 
 ## Background shader
 

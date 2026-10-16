@@ -268,6 +268,8 @@ CJK と対応する絵文字範囲は 2 セルを占めます。結合文字、�
 | Web ブラウザ (eww) / RSS リーダー | C-c w / C-c r |
 | GLSL バッファ: シェーダー適用 / 絵だけ / 解除 | C-c C-c / C-c C-o / C-c C-k |
 | シェルバッファ / 割り込み / EOF | C-c s / C-c C-c / C-d |
+| Claude Code: 起動・フォーカス / ウィンドウ切替 / 新セッション | C-c C c / C-c C t / C-c C n |
+| Claude Code: リージョン送信 / ファイル送信 | C-c C r / C-c C f |
 | Org: TODO / チェックボックス / 新しい項目 | C-c C-t / C-c C-c / M-Enter |
 | Org: 昇格 / 降格 / サブツリーを上 / 下へ | M-Left / M-Right / M-Up / M-Down |
 | Org: 見出し一覧 / リンクを開く / タイムスタンプ | C-c C-j / C-c C-o / C-c . |
@@ -337,8 +339,17 @@ HUP され、シェルが終わった後 (`Process shell finished`) の C-c s �
 キー、C-a … C-z、M-x は ESC x、Escape、Shift-Tab)、打った文字もそのまま送るので、ここでは SKK は
 介在しません。エディタのプレフィックス C-x と C-c (と M-x、M-:、C-g) だけが darger に残るので、
 C-x o、C-x b、C-c s はそのまま使え、C-c C-c はプログラムに C-c を送ります。バッファのカーソルが
-端末のカーソルです。端末は一度に一つで、バッファを kill するか終了するとプログラムは HUP
-されます。
+端末のカーソルで、全角 (CJK) の文字は 2 セルを占めます。バッファを kill するか終了すると
+プログラムは HUP されます。
+
+Claude Code はこの端末で、あなたの Emacs 設定と同じキーで動かせます。C-c C c (`claude-code`) は
+`claude-command` (既定 `claude`) をプロジェクトルート (ファイルの上にある最も近い `.git`) で
+`*claude-code: <プロジェクト名>*` として起動し、右側のウィンドウ (1 つしかなければ分割) に表示して
+選択します。既に動いていればそこへ移るだけです。C-c C t (`claude-code-toggle`) はそのウィンドウを
+隠す / 出す、C-c C n (`claude-code-new`) はセッションを捨てて新しく起動、C-c C r
+(`claude-code-send-region`) はリージョンを貼り付けて (bracketed paste なので改行で送信されない)
+Enter、C-c C f (`claude-code-send-file`) は `このファイルを見てください: <プロジェクトからの相対パス>`
+と Enter を送ります。
 
 ## 背景シェーダー
 

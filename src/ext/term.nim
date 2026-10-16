@@ -4,7 +4,7 @@
 ## interrupts, C-d at an empty input sends end-of-file. Slice 1 of the terminal: line
 ## mode, no colours, no full-screen programs.
 when not defined(windows):
-  import std/[os, strutils, unicode, tables]
+  import std/[os, strutils, unicode, tables, sequtils]
   import ../[core, buffer, buffers, lisp, pty, termtext, termscreen, syntax, render]
 
   var
@@ -125,99 +125,128 @@ when not defined(windows):
     if proc1 != nil: proc1.close()
   modifiedIgnore.add proc(buf: Buffer): bool = buf == shellBuf
 
-  # ---- M-x term: the screen model shown in *terminal*, every key sent raw (char mode)
-  var
-    termBuf: Buffer
-    procT: Pty
-    screen: Screen
-    termSize: tuple[cols, rows: int]
+  # ---- M-x term: the screen model in a buffer, every key sent raw (char mode)
+  type Terminal* = ref object
+    buf*: Buffer
+    pty*: Pty
+    screen*: Screen
+    size: tuple[cols, rows: int]
 
-  proc termPaneSize(): tuple[cols, rows: int] =
+  var terminals*: seq[Terminal]
+
+  proc terminalOf*(buf: Buffer): Terminal =
+    for t in terminals:
+      if t.buf == buf: return t
+
+  proc terminalNamed*(name: string): Terminal = terminalOf(reg.byName(name))
+
+  proc paneSizeOf(t: Terminal): tuple[cols, rows: int] =
     for p in layout.leaves:
-      if (p == pane and core.b == termBuf) or (p != pane and p.buf == termBuf):
+      if (p == pane and core.b == t.buf) or (p != pane and p.buf == t.buf):
         return (max(20, p.w), max(5, p.h - 1))
-    termSize
+    t.size
 
-  proc showScreen() =
-    ## *terminal* = scrollback above the screen; the buffer cursor is the terminal's.
-    if termBuf == nil: return
-    let back = screen.scrollbackLines
-    let text = (back & screen.lines).join("\n")
-    termBuf.splice(0, termBuf.text.runeLen, text)
-    let line = min(back.len + screen.row, termBuf.lines.high)
-    termBuf.cursor = (line, min(screen.col, termBuf.lines[line].len))
-    termBuf.modified = false
-    if core.b == termBuf: renderer.top = max(renderer.top, back.len - max(0, renderer.rows - screen.rows))
+  proc showScreen(t: Terminal) =
+    ## The buffer = scrollback above the screen; the buffer cursor is the terminal's.
+    let back = t.screen.scrollbackLines
+    let text = (back & t.screen.lines).join("\n")
+    t.buf.splice(0, t.buf.text.runeLen, text)
+    let line = min(back.len + t.screen.row, t.buf.lines.high)
+    t.buf.cursor = (line, min(t.screen.runeIndex(t.screen.row, t.screen.col), t.buf.lines[line].len))
+    t.buf.modified = false
+    if core.b == t.buf: renderer.top = max(renderer.top, back.len - max(0, renderer.rows - t.screen.rows))
+
+  proc startTerminal*(name, command, dir: string): Terminal =
+    ## A terminal buffer called `name` running `command` in `dir` (an existing live one is reused).
+    result = terminalNamed(name)
+    if result != nil and result.pty != nil and not result.pty.exited: return
+    if result == nil:
+      result = Terminal(buf: reg.byName(name))
+      if result.buf == nil:
+        result.buf = newBuffer()
+        reg.add(result.buf, name)
+      terminals.add result
+    if result.pty != nil: result.pty.close()
+    if renderer.frameCols == 0:
+      renderer.resize(window, core.b)
+      layoutPanes()
+    result.size = (max(20, renderer.cols), max(5, renderer.rows))
+    result.screen = initScreen(result.size.cols, result.size.rows)
+    result.buf.splice(0, result.buf.text.runeLen, "")
+    try:
+      result.pty = spawn(command, dir, result.size.cols, result.size.rows,
+        [("TERM", "xterm-256color"), ("COLORTERM", ""), ("INSIDE_DARGER", "1")])
+    except OSError as e:
+      result.pty = nil
+      echoLine = e.msg
+    result.showScreen()
 
   proc openTerm*(command = "") =
-    ## Shows *terminal*, starting `command` (default: the shell) on a pty when none runs.
+    ## M-x term: *terminal* running the shell, or `command`, in the current file's directory.
     let dir = if core.b.path.len > 0: parentDir(core.b.path) else: getCurrentDir()
-    if termBuf == nil or termBuf notin reg:
-      termBuf = newBuffer()
-      reg.add(termBuf, "*terminal*")
-    switchTo(termBuf)
-    if procT == nil or procT.exited:
-      if procT != nil: procT.close()
-      if renderer.frameCols == 0:
-        renderer.resize(window, core.b)
-        layoutPanes()
-      termSize = (max(20, renderer.cols), max(5, renderer.rows))
-      screen = initScreen(termSize.cols, termSize.rows)
-      termBuf.splice(0, termBuf.text.runeLen, "")
-      try:
-        procT = spawn(if command.len > 0: command else: shellCommand(), dir, termSize.cols, termSize.rows,
-          [("TERM", "xterm-256color"), ("COLORTERM", ""), ("INSIDE_DARGER", "1")])
-      except OSError as e:
-        procT = nil
-        echoLine = e.msg
-      showScreen()
+    let t = startTerminal("*terminal*", if command.len > 0: command else: shellCommand(), dir)
+    switchTo(t.buf)
+
+  proc send*(t: Terminal, text: string, paste = false) =
+    ## Text to the program; `paste` wraps it in bracketed-paste marks so newlines do not submit.
+    if t == nil or t.pty == nil or t.pty.exited: return
+    if paste: t.pty.write("\x1b[200~" & text & "\x1b[201~")
+    else: t.pty.write(text)
 
   tickHooks.add proc(): bool =
-    if procT == nil: return false
-    let size = termPaneSize()
-    if size != termSize:
-      termSize = size
-      screen.resize(size.cols, size.rows)
-      procT.resize(size.cols, size.rows)
-      showScreen()
-      result = true
-    let data = procT.read()
-    if data.len > 0:
-      screen.feed(data)
-      showScreen()
-      result = true
-    if procT.exited:
-      screen.feed("\r\n[Process term finished" & (if procT.status != 0: " (exit " & $procT.status & ")" else: "") & "]\r\n")
-      showScreen()
-      procT.close()
-      procT = nil
-      result = true
+    for t in terminals:
+      if t.pty == nil: continue
+      let size = t.paneSizeOf
+      if size != t.size:
+        t.size = size
+        t.screen.resize(size.cols, size.rows)
+        t.pty.resize(size.cols, size.rows)
+        t.showScreen()
+        result = true
+      let data = t.pty.read()
+      if data.len > 0:
+        t.screen.feed(data)
+        t.showScreen()
+        result = true
+      if t.pty.exited:
+        t.screen.feed("\r\n[Process finished" & (if t.pty.status != 0: " (exit " & $t.pty.status & ")" else: "") & "]\r\n")
+        t.showScreen()
+        t.pty.close()
+        t.pty = nil
+        result = true
 
-  proc termActive(): bool = termBuf != nil and core.b == termBuf and procT != nil and mode.len == 0
+  proc activeTerminal(): Terminal =
+    ## The terminal taking the keys: the current buffer's, with a live program, outside prompts.
+    if mode.len > 0: return nil
+    result = terminalOf(core.b)
+    if result != nil and (result.pty == nil or result.pty.exited): result = nil
 
   runeFilters.add proc(r: Rune): bool =
-    if not termActive() or prefix.len > 0: return false
-    procT.write($r)
+    let t = activeTerminal()
+    if t == nil or prefix.len > 0: return false
+    t.pty.write($r)
     true
   keyFilters.add proc(c: string): bool =
     # Char mode: every key goes to the program but the C-x and C-c prefixes (and M-x,
     # M-:), which stay the editor's; C-c C-c sends a C-c, as in Emacs term.
-    if not termActive(): return false
+    let t = activeTerminal()
+    if t == nil: return false
     if prefix == "C-c" and c == "C-c":
       prefix = ""
-      procT.write("\x03")
+      t.pty.write("\x03")
       return true
     if prefix.len > 0 or c in ["C-x", "C-c", "M-x", "M-:", "C-g"]: return false
     let bytes = keySequence(c, shift())
     if bytes.len == 0: return false
-    procT.write(bytes)
+    t.pty.write(bytes)
     true
-  escapeHooks.add proc(): bool = termActive()  # Escape reaches the program
+  escapeHooks.add proc(): bool = activeTerminal() != nil  # Escape reaches the program
 
   faceProviders.add proc(buf: Buffer): seq[seq[Face]] =
-    if buf != termBuf or buf.lines.len == 0: return
-    let back = screen.scrollbackLines.len
-    let colors = screen.colors
+    let t = terminalOf(buf)
+    if t == nil or buf.lines.len == 0: return
+    let back = t.screen.scrollbackLines.len
+    let colors = t.screen.colors
     for n, line in buf.lines:
       var row = newSeq[Face](line.len)
       if n >= back and n - back < colors.len:
@@ -226,13 +255,14 @@ when not defined(windows):
       result.add row
 
   killHooks.add proc(buf: Buffer) =
-    if buf == termBuf:
-      if procT != nil: procT.close()
-      procT = nil
-      termBuf = nil
+    let t = terminalOf(buf)
+    if t != nil:
+      if t.pty != nil: t.pty.close()
+      terminals.delete(terminals.find(t))
   exitHooks.add proc() =
-    if procT != nil: procT.close()
-  modifiedIgnore.add proc(buf: Buffer): bool = buf == termBuf
+    for t in terminals:
+      if t.pty != nil: t.pty.close()
+  modifiedIgnore.add proc(buf: Buffer): bool = terminalOf(buf) != nil
 
   interp.defPrimitive("term", proc(args: seq[Value]): Value =
     ## (term) runs the shell, (term "command args") that program, in *terminal*.

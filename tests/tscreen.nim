@@ -101,6 +101,18 @@ block splitSequences:
   s.feed("\x07c")
   doAssert s.lines[0] == "abc"
 
+block wide:
+  var s = initScreen(6, 2)
+  s.feed("日本語")                                    # three wide runes fill six cells
+  doAssert s.lines[0] == "日本語" and s.col == 5 and s.runeIndex(0, 4) == 2
+  s.feed("x")                                         # the margin was reached: the next rune wraps
+  doAssert s.lines == @["日本語", "x"]
+  var w = initScreen(5, 2)
+  w.feed("ab日本")                                     # 本 would straddle the margin: it wraps whole
+  doAssert w.lines == @["ab日", "本"] and w.colors[0].len == 3
+  w.feed("\x1b[1;3H\x1b[31mZ")                       # overwriting the first cell of a wide rune
+  doAssert w.lines[0] == "abZ" and w.colors[0] == @[0'i8, 0, 2]
+
 block keys:
   doAssert keySequence("enter") == "\r" and keySequence("backspace") == "\x7f"
   doAssert keySequence("C-a") == "\x01" and keySequence("C-z") == "\x1a" and keySequence("C-SPC") == "\0"

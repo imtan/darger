@@ -2,6 +2,7 @@
 ## colours, a cursor, a scrolling region, an alternate screen and scrollback, fed with
 ## what a process on a pty writes (VT100 / xterm sequences the common TUIs use).
 import std/[unicode, strutils, sequtils]
+import buffer  # runeWidth
 
 type
   Cell* = object
@@ -36,11 +37,19 @@ proc initScreen*(cols, rows: int, maxScrollback = 2000): Screen =
 
 proc cellAt*(s: Screen, row, col: int): Cell = s.cells[row][col]
 
+const filler = Rune(0)  ## the second cell of a wide (CJK) rune
+
 proc rowText(cells: seq[Cell]): string =
   var last = -1
   for i, c in cells:
-    if c.r != Rune(' ') or c.color != 0: last = i
-  for i in 0..last: result.add $cells[i].r
+    if (c.r != Rune(' ') and c.r != filler) or c.color != 0: last = i
+  for i in 0..last:
+    if cells[i].r != filler: result.add $cells[i].r
+
+proc runeIndex*(s: Screen, row, col: int): int =
+  ## The rune index in the row's text of the cell at col (wide runes take two cells).
+  for i in 0..<min(col, s.cols):
+    if s.cells[row][i].r != filler: inc result
 
 proc lines*(s: Screen): seq[string] =
   ## The screen rows as text, trailing blanks trimmed.
@@ -49,8 +58,10 @@ proc lines*(s: Screen): seq[string] =
 proc colors*(s: Screen): seq[seq[int8]] =
   for r in s.cells:
     var row: seq[int8]
-    let text = rowText(r)
-    for i in 0..<text.runeLen: row.add r[i].color
+    let count = rowText(r).runeLen
+    for c in r:
+      if row.len >= count: break
+      if c.r != filler: row.add c.color
     result.add row
 
 proc scrollbackLines*(s: Screen): seq[string] =
@@ -83,12 +94,20 @@ proc lineFeed(s: var Screen) =
   elif s.row < s.rows - 1: inc s.row
 
 proc put(s: var Screen, r: Rune) =
-  if s.wrapPending:
+  let wide = runeWidth(r) == 2
+  if s.wrapPending or (wide and s.col == s.cols - 1):  # a wide rune never straddles the margin
+    if wide and not s.wrapPending: s.cells[s.row][s.col] = blank
     s.col = 0
     s.lineFeed()
     s.wrapPending = false
   s.cells[s.row][s.col] = Cell(r: r, color: s.color)
-  if s.col == s.cols - 1: s.wrapPending = true
+  if wide:
+    s.cells[s.row][s.col + 1] = Cell(r: filler, color: s.color)
+    s.col += 2
+    if s.col >= s.cols:
+      s.col = s.cols - 1
+      s.wrapPending = true
+  elif s.col == s.cols - 1: s.wrapPending = true
   else: inc s.col
 
 proc erase(s: var Screen, row, a, z: int) =
