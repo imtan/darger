@@ -20,6 +20,24 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
 
 ## Open
 
+Review first (2026-10-16, the user: "レビューに関する機能を優先的に充実させたい"). The
+review overlay (hunks of a proposed text over the buffer; y/k/u/n/p/a/q) is the
+human gate for agent edits, so it grows before the other items:
+
+R1. (done) Reviews from any source: diff-buffer-with-file, vc-review (git HEAD), review-file;
+    the supersede prompt's `r`; u / ? keys.
+R2. Word-level refine highlighting inside changed lines (theme has the colours);
+    per-hunk +/- counts in the echo line; a hunk list (consult-style) to jump with `l`.
+R3. `e`: edit the proposed hunk in place before taking it; `A`: keep all; `w`: apply
+    the decisions so far and keep reviewing.
+R4. `r`: request changes: an instruction for this hunk goes back to the agent with the
+    hunk, its reply replaces the proposal (the AI-era loop: review -> feedback -> re-propose).
+R5. Agent writes to open files: when a file changed on disk and the buffer has edits,
+    offer the review automatically (auto-revert-review setting); a `*review*` summary
+    of all files an agent changed in a chat turn (git diff of the root), each opening
+    its review.
+R6. Side-by-side layout toggle (`|`) using two panes.
+
 (2026-10-16: reordered after comparing ~/.emacs.d/config.org with darger. The user's
 rule: only add what is missing; never rebind or remove existing darger keys.)
 
@@ -38,6 +56,7 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-16 review R1: diff-buffer-with-file, vc-review, review-file, supersede `r`, u / ? keys, source in the echo line
 - 2026-10-16 term line mode (user request): C-c C-j / C-c C-k, Enter sends the input typed after the screen, [Line]/[Char] in the mode line
 - 2026-10-16 org-roam-graph (C-c n g): self-contained HTML force graph in the browser, current note red (roam.graphHtml tested)
 - 2026-10-16 org-roam-capture (C-c n c, templates with one-key choice) and org-roam-tag-add (C-c n t), tested in torg

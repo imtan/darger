@@ -260,6 +260,7 @@ var
     # a wheel notch (64 up, 65 down) at frame cell (cx, cy) in pane p; true takes the event
   foldHook*: proc(buf: Buffer): seq[int8]  # per line: 0 shown, 1 hidden, 2 a headline hiding
   pictureHook*: proc(buf: Buffer): tuple[extra: seq[int], pictures: seq[Picture]]
+  reviewHook*: proc(proposed, source: string)  # opens a hunk review of b against `proposed` (ext/agent)
     # inline images: rows under each line and the pictures drawn there (ext/orgimage)
                                            # the lines after it (drawn with "..."); empty = none
   revealHook*: proc(buf: Buffer, line: int)  # show a hidden line: open the folds over it

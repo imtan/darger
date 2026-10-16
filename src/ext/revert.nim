@@ -2,7 +2,7 @@
 ## edits of its own (as auto-revert-mode does), and saving over a changed file asks
 ## first (as Emacs' file-supersession check does), so an agent's or another
 ## editor's write is never lost silently.
-import std/[os, times, tables]
+import std/[os, times, tables, strutils]
 import ../[core, buffer, buffers, lisp]
 
 type Stamp = tuple[time: Time, size: int64]
@@ -46,10 +46,14 @@ tickHooks.add proc(): bool =
 
 saveGuards.add proc(): bool =
   if not changedOnDisk(b): return false
-  beginMini("supersede", reg.displayName(b) & " changed on disk; save anyway? (y or n) ")
+  beginMini("supersede", reg.displayName(b) & " changed on disk; save anyway? (y, n, or r to review) ")
   true
 
 definePrompt(Prompt(kind: "supersede", onAccept: proc(value: string): bool =
+  if value.toLowerAscii == "r":
+    # The disk's changes reviewed hunk by hunk against the buffer's own edits.
+    if reviewHook != nil: reviewHook(loadBuffer(b.path).text, "file on disk")
+    return true
   yesNo(value, proc() =
     b.save()
     wrote())))

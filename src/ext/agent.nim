@@ -43,9 +43,11 @@ when defined(windows):
 else:
   var agentGroup*: bool
 
+var reviewSource = "Agent"  # what the proposed text is: the agent, the file on disk, git HEAD, a file
+
 proc reviewMessage*(): string =
-  "Review hunk " & $(currentHunk + 1) & "/" & $reviewState.hunks.len &
-    "  y:accept k:skip a:all q:done"
+  "Review " & reviewSource & ": hunk " & $(currentHunk + 1) & "/" & $reviewState.hunks.len &
+    "  y:take k:keep u:undo n/p:move a:all q:done ?:help"
 
 proc rebuildReview*() =
   let display = reviewState.view(currentHunk)
@@ -57,10 +59,13 @@ proc rebuildReview*() =
   renderer.left = 0
   echoLine = reviewMessage()
 
-proc beginReview*(proposed: string) =
+proc beginReview*(proposed: string, source = "Agent") =
+  ## A hunk-by-hunk review of the current buffer against `proposed`: y takes the
+  ## proposed version of a hunk, k keeps the buffer's. Any source can propose text.
+  reviewSource = source
   reviewState = newReview(b.text, proposed)
   if reviewState.hunks.len == 0:
-    echoLine = "Agent: no changes"
+    echoLine = source & ": no changes"
     return
   closeOverlay()  # the agent finished while the manual or dashboard was open
   b.finish()
@@ -307,6 +312,11 @@ proc dispatchReview*(c: string) =
   of "y", "k":
     reviewState.decisions[currentHunk] = if c == "y": accepted else: rejected
     currentHunk = min(currentHunk + 1, reviewState.hunks.high)
+  of "u": reviewState.decisions[currentHunk] = pending
+  of "?":
+    echoLine = "y: take the proposed hunk  k: keep the buffer's  u: undo the decision  " &
+      "n / p: next / previous hunk  a: take all pending and finish  q / Enter: apply decisions  C-g: cancel"
+    return
   of "a":
     for decision in reviewState.decisions.mitems:
       if decision == pending: decision = accepted
@@ -346,6 +356,49 @@ interp.defPrimitive("agent-chat-new", proc(args: seq[Value]): Value =
     session.started = false
     session.turn = Turn()
     session.setChatText("")
+  nilValue())
+
+reviewHook = proc(proposed, source: string) = beginReview(proposed, source)
+
+proc reviewAgainst(path, source: string) =
+  ## The buffer reviewed against the file at `path`, read as a buffer would be.
+  if b.path.len == 0 and source == "file on disk":
+    echoLine = "Buffer has no file"
+    return
+  try: beginReview(loadBuffer(path).text, source)
+  except CatchableError as e: echoLine = e.msg
+
+interp.defPrimitive("diff-buffer-with-file", proc(args: seq[Value]): Value =
+  ## The buffer against its file on disk: y takes the file's version of a hunk.
+  args.arity(0, 0)
+  reviewAgainst(b.path, "file on disk")
+  nilValue())
+interp.defPrimitive("review-file", proc(args: seq[Value]): Value =
+  ## (review-file "other") compares the buffer with another file; no argument asks for one.
+  args.arity(0, 1)
+  if args.len == 0: beginMini("review-file", "Review against file: ")
+  else: reviewAgainst(expandTilde(args[0].asString), shortPath(expandTilde(args[0].asString)))
+  nilValue())
+definePrompt(Prompt(kind: "review-file", text: true, paths: true, onAccept: proc(value: string): bool =
+  if value.len == 0: return false
+  reviewAgainst(value, shortPath(value))
+  true))
+interp.defPrimitive("vc-review", proc(args: seq[Value]): Value =
+  ## The buffer against the file as committed (git HEAD): y takes the committed version.
+  args.arity(0, 0)
+  if b.path.len == 0:
+    echoLine = "Buffer has no file"
+    return nilValue()
+  let root = rootFromDir(parentDir(b.path))
+  if not (dirExists(root / ".git") or fileExists(root / ".git")):
+    echoLine = "Not in a git repository: " & shortPath(b.path)
+    return nilValue()
+  let rel = relativePath(b.path, root).replace('\\', '/')
+  let (output, code) = execCmdEx("git -C " & quoteShell(root) & " show HEAD:" & quoteShell(rel), options = {poUsePath})
+  if code != 0:
+    echoLine = "git: " & strutils.strip(output).splitLines()[0]
+    return nilValue()
+  beginReview(output.replace("\r\n", "\n"), "git HEAD")
   nilValue())
 
 defineMode(core.Mode(name: "review", tag: "[Review]", editing: true, buffer: proc(): Buffer = reviewBuf,

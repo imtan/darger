@@ -330,6 +330,24 @@ C-y uses the clipboard when the 60-entry kill ring is empty. Undo keeps 200
 snapshots and groups runs of non-whitespace self-inserts. Snapshot undo and
 flattened edits favor small files.
 
+## Review
+
+A review shows the buffer with another version's changes as hunks, the way the
+agent's edits are reviewed: removed lines in red, added in green, the current hunk
+brighter. Keys: y takes the proposed version of the hunk, k keeps the buffer's,
+u undoes the decision, n / p move, a takes every pending hunk and finishes, q or
+Enter applies the decisions (pending hunks stay as they are), C-g cancels, ? lists
+the keys. The echo line names the source and the hunk. Besides the agent (C-c a),
+these open a review:
+
+- `M-x diff-buffer-with-file`: the buffer against its file on disk, so an agent's
+  or another editor's write is merged hunk by hunk with your own edits. Saving over
+  a file that changed on disk now offers `r` for the same review.
+- `M-x vc-review`: the buffer against the file as committed (`git show HEAD:…`);
+  taking a hunk reverts it to the committed version.
+- `(review-file "other.txt")`, or `M-x review-file` with a prompt: the buffer against
+  another file, like ediff-buffers.
+
 ## Filer (Dired)
 
 C-x d prompts for a directory, starting in the current file's directory (or the
