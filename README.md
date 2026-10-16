@@ -411,6 +411,8 @@ Saving the applied file, or changing it on disk, re-applies it, so a shader can 
 written while it runs. A compile error leaves the previous shader running and puts
 GL's log, with the file's line numbers, in the echo line and a `*shader*` buffer
 (C-x b). While a shader runs darger redraws every frame instead of only on input.
+`shaders/` holds three samples to start from: `gradient.glsl`, `plasma.glsl` and
+`stars.glsl`.
 
 ## Web browser (eww)
 
