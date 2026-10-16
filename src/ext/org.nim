@@ -163,7 +163,12 @@ proc journalNewEntry*() =
   let dateLine = setting("org-journal-date-prefix") & strftime(setting("org-journal-date-format"), day, ja)
   if not fileExists(path):
     createDir(dir)
-    writeFile(path, appendedText(strftime(setting("org-journal-file-header"), day, ja), dateLine & "\n"))
+    # The day's template (org-journal-daily-template-file) goes under the date headline,
+    # as the user's Emacs hook inserts it on the first entry; an ID makes the day a roam node.
+    let templatePath = expandTilde(setting("org-journal-daily-template-file"))
+    let dayTemplate = if templatePath.len > 0 and fileExists(templatePath): readFile(templatePath) else: ""
+    let id = if interp.env.values["org-journal-add-id"].kind != vNil: newId() else: ""
+    writeFile(path, newJournalText(strftime(setting("org-journal-file-header"), day, ja), dateLine, dayTemplate, id))
   visit(path)
   var text = b.text
   var hasDate = false
@@ -400,6 +405,8 @@ defaults.add """
 (setq org-journal-time-prefix "** ")
 (setq org-journal-time-format "%R ")
 (setq org-extend-today-until "0")
+(setq org-journal-daily-template-file "")
+(setq org-journal-add-id nil)
 (setq org-capture-file "~/org/inbox.org")
 (setq org-capture-headline "")
 (setq org-capture-template "* TODO %?\n")

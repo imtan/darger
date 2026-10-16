@@ -600,7 +600,11 @@ C-c j (`org-journal-new-entry`) keeps a journal like org-journal: today's file i
 `%A, %d %B %Y`), then a time headline (`org-journal-time-prefix` +
 `org-journal-time-format`, defaults `** ` and `%R `) is added at the end with the
 cursor after it. Before `org-extend-today-until` o'clock (default `"0"`) the entry
-still belongs to yesterday. The formats take strftime's `%Y %y %m %d %e %H %M %S %R
+still belongs to yesterday. A new file gets the contents of
+`org-journal-daily-template-file` (default none) under the date headline, so the
+day's sections are there before the first entry, and an ID property drawer at the
+top when `org-journal-add-id` is `t` (default `nil`), making the day an org-roam
+node. The formats take strftime's `%Y %y %m %d %e %H %M %S %R
 %A %a %B %b %j %%`; under a Japanese locale (`LANG=ja_JP.UTF-8`) `%A` and `%B` give
 `火曜日` and `10月`, as Emacs does. C-c t (`org-capture`) prompts `Capture: ` and
 files the text, through `org-capture-template` (default `* TODO %?\n`; `%?` is the

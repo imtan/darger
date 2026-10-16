@@ -184,6 +184,16 @@ doAssert strftime("%H:%M:%S 100%% %q", tue) == "09:04:00 100% %q"
 doAssert strftime("#+title: %Y-%m-%d Journal\n#+startup: folded\n\n", tue) == "#+title: 2026-10-13 Journal\n#+startup: folded\n\n"
 doAssert appendedText("", "* x\n") == "* x\n" and appendedText("a", "b") == "a\nb" and appendedText("a\n", "b") == "a\nb"
 
+# journal file: header, date headline, template, optional ID drawer
+block:
+  let tmpl = "** 今日の一枚\n\n** 今日の出来事\n"
+  let day = newJournalText("#+title: 2026-10-13 Journal\n#+startup: folded\n\n", "* 火曜日, 13 10月 2026", tmpl)
+  doAssert day == "#+title: 2026-10-13 Journal\n#+startup: folded\n\n* 火曜日, 13 10月 2026\n** 今日の一枚\n\n** 今日の出来事\n", day
+  doAssert appendedText(day, "*** =09:04=\n") == day & "*** =09:04=\n"  # the entry lands under the last headline
+  doAssert newJournalText("", "* Day", "") == "* Day\n"
+  let withId = newJournalText("#+title: T\n", "* Day", "", "ABC-123")
+  doAssert withId == ":PROPERTIES:\n:ID:       ABC-123\n:END:\n#+title: T\n* Day\n"
+
 # capture: under a headline's subtree, at the end, or under a headline created at the end
 block:
   let tasks = "#+title: t\n* Inbox\n** TODO old\n* Tasks\n** TODO a\n   note\n* Later\ntext\n"

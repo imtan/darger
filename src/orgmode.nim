@@ -359,3 +359,10 @@ proc fillTemplate*(tmpl, text: string, t: DateTime): string =
     of 'U': result.add "[" & t.format("yyyy-MM-dd ddd HH:mm") & "]"
     of '%': result.add '%'
     else: result.add '%' & c
+
+proc newJournalText*(header, dateLine, dayTemplate: string, id = ""): string =
+  ## A new journal file as org-journal makes it: an ID drawer when asked (org-roam's
+  ## node), the file header, the date headline, then the day's template under it.
+  if id.len > 0: result.add ":PROPERTIES:\n:ID:       " & id & "\n:END:\n"
+  result = appendedText(result & header, dateLine & "\n")
+  if dayTemplate.len > 0: result = appendedText(result, dayTemplate)

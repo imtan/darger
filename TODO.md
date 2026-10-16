@@ -24,8 +24,8 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
    screen (scrollback above it) with every key sent raw to the pty (C-c as the escape
    prefix, as Emacs term's char mode), TERM=xterm-256color, size following the pane;
    slice 3: `claude` in it with C-c C c-style bindings (send region / file, side window).
-2. Org journal: insert `templates/journal-daily.org` (org-journal-daily-template-file)
-   when the day's first entry is created, as the user's Emacs does.
+2. Org journal: the 体調 ★ prompt on a new entry (1-5 stars after the time, skip on
+   any other key), as the user's Emacs hook does.
 3. Org agenda, minimal: `M-x org-agenda` lists TODO / SCHEDULED items of
    `org-agenda-files` for today in a consult-style list.
 4. Windows: `C-x +` balance, `C-x ^` / `C-x }` resize, `C-x 4 b` other-window buffer.
@@ -38,6 +38,7 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-16 journal: org-journal-daily-template-file under the date headline of a new day, org-journal-add-id for an ID drawer (user: format differed from Emacs)
 - 2026-10-16 terminal slice 2b: src/termscreen.nim, a VT100/xterm screen model (cursor addressing, erase, insert/delete, scrolling regions, alternate screen, scrollback, colours, resize), tests/tscreen.nim
 - 2026-10-16 terminal slice 2a: ANSI foreground colours in *shell* (theme ansi palette, faceProviders hook), window size follows the pane
 - 2026-10-16 SKK: skk-egg-like-newline variable, zenkaku latin L; l-prefixed small kana dropped (l is DDSKK's latin key)
