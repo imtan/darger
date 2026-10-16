@@ -19,8 +19,8 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
 
 ## Open
 
-1. Terminal buffer — slice 2: a `term` raw-key mode (every key to the pty, cursor
-   addressing / screen model for full-screen programs) and ANSI colours; slice 3:
+1. Terminal buffer — slice 2b: a `term` raw-key mode (every key to the pty, a screen
+   model with cursor addressing for full-screen programs such as `claude`); slice 3:
    `claude` in it with C-c C c-style bindings (send region / file, side window).
 2. Org journal: insert `templates/journal-daily.org` (org-journal-daily-template-file)
    when the day's first entry is created, as the user's Emacs does.
@@ -36,6 +36,7 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-16 terminal slice 2a: ANSI foreground colours in *shell* (theme ansi palette, faceProviders hook), window size follows the pane
 - 2026-10-16 SKK: skk-egg-like-newline variable, zenkaku latin L; l-prefixed small kana dropped (l is DDSKK's latin key)
 - 2026-10-16 mouse: click places the cursor (and selects the pane), wheel scrolls the pane under the pointer (panes.pointAt tested)
 - 2026-10-16 terminal slice 1: M-x shell / C-c s comint-style *shell* on a pty (src/pty.nim, src/termtext.nim, src/ext/term.nim), Enter sends, C-c C-c interrupts, C-d EOF

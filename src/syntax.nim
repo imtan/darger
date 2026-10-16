@@ -3,7 +3,8 @@ import std/[unicode, sets, strutils, os]
 
 type
   Face* = enum
-    fPlain, fComment, fString, fKeyword, fFnname, fVariable, fType, fConstant, fBuiltin
+    fPlain, fComment, fString, fKeyword, fFnname, fVariable, fType, fConstant, fBuiltin,
+    fAnsi0, fAnsi1, fAnsi2, fAnsi3, fAnsi4, fAnsi5, fAnsi6, fAnsi7  # terminal colours: black .. white
   StringRule = object
     open, close: string
     multiline: bool

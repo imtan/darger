@@ -238,6 +238,8 @@ var
   marksHook*: proc(): seq[seq[int8]] # per-rune marks under b's text (diagnostics)
   boxHook*: proc(): CursorBox        # a box hanging from the cursor (completion, hover)
   modeLineHook*: proc(): string      # appended to the language name in the mode line
+  faceProviders*: seq[proc(buf: Buffer): seq[seq[Face]]]  # a non-empty result replaces the
+                                                             # language highlighting (a terminal's colours)
   foldHook*: proc(buf: Buffer): seq[int8]  # per line: 0 shown, 1 hidden, 2 a headline hiding
                                            # the lines after it (drawn with "..."); empty = none
   revealHook*: proc(buf: Buffer, line: int)  # show a hidden line: open the folds over it
@@ -1423,7 +1425,10 @@ proc langOf(buf: Buffer): Lang =
 proc facesOf(buf: Buffer): seq[seq[Face]] =
   ## Highlighting for a non-selected pane, cached per buffer version.
   if buf in paneFaces and paneFaces[buf].version == buf.version: return paneFaces[buf].faces
-  result = langOf(buf).highlight(buf.lines)
+  for provider in faceProviders:
+    result = provider(buf)
+    if result.len > 0: break
+  if result.len == 0: result = langOf(buf).highlight(buf.lines)
   paneFaces[buf] = (buf.version, result)
 
 proc modeLineText(buf: Buffer, name: string, cursor: Point, modeName, tag: string): string =
@@ -1453,7 +1458,11 @@ proc redraw*(hover = thNone, maximized = false) =
   # Prompts float in a popup; isearch stays on the bottom line so its match is visible.
   let popup = inMini() and mode != "search"
   if shownBuf != b or shownVersion != b.version:
-    faces = lang.highlight(b.lines)
+    faces = @[]
+    for provider in faceProviders:
+      faces = provider(b)
+      if faces.len > 0: break
+    if faces.len == 0: faces = lang.highlight(b.lines)
     shownBuf = b
     shownVersion = b.version
   let displayFaces = if view == nil: faces elif view.faces != nil: view.faces() else: @[]

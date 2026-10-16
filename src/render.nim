@@ -34,6 +34,7 @@ type
     comment*, str*, keyword*, fnname*, variable*, typ*, constant*, builtin*: Color
     review*: array[5, Color]  # bg, removed, added, removed-refine, added-refine
     err*, warn*, info*, hint*: Color  # diagnostic underlines
+    ansi*: array[8, Color]    # terminal colours: black red green yellow blue magenta cyan white
 
 proc hex(s: string): Color = parseHtmlColor(s).color
 
@@ -46,7 +47,9 @@ let themes = {
     comment: hex"#989898", str: hex"#79a8ff", keyword: hex"#b6a0ff", fnname: hex"#feacd0",
     variable: hex"#00d3d0", typ: hex"#6ae4b9", constant: hex"#00bcff", builtin: hex"#f78fe7",
     review: [hex"#000000", hex"#4f1119", hex"#00381f", hex"#781a1f", hex"#034f2f"],
-    err: hex"#ff5f59", warn: hex"#d0bc00", info: hex"#2fafff", hint: hex"#989898"),
+    err: hex"#ff5f59", warn: hex"#d0bc00", info: hex"#2fafff", hint: hex"#989898",
+    ansi: [hex"#989898", hex"#ff5f59", hex"#44bc44", hex"#d0bc00", hex"#2fafff", hex"#feacd0",
+           hex"#00d3d0", hex"#ffffff"]),
   "catppuccin": Theme(bg: hex"#1e1e2e", fg: hex"#cdd6f4", cursor: hex"#f5e0dc",
     region: hex"#45475a", modeLine: hex"#313244", modeLineFg: hex"#cdd6f4",
     search: hex"#f9e2af", searchFg: hex"#1e1e2e", border: hex"#585b70",
@@ -55,7 +58,9 @@ let themes = {
     comment: hex"#6c7086", str: hex"#a6e3a1", keyword: hex"#cba6f7", fnname: hex"#89b4fa",
     variable: hex"#b4befe", typ: hex"#f9e2af", constant: hex"#fab387", builtin: hex"#f38ba8",
     review: [hex"#1e1e2e", hex"#512e3a", hex"#294638", hex"#784452", hex"#3e6950"],
-    err: hex"#f38ba8", warn: hex"#f9e2af", info: hex"#89b4fa", hint: hex"#6c7086")}.toTable
+    err: hex"#f38ba8", warn: hex"#f9e2af", info: hex"#89b4fa", hint: hex"#6c7086",
+    ansi: [hex"#6c7086", hex"#f38ba8", hex"#a6e3a1", hex"#f9e2af", hex"#89b4fa", hex"#f5c2e7",
+           hex"#94e2d5", hex"#cdd6f4"])}.toTable
 var theme* = themes["modus-vivendi"]
 
 proc setTheme*(name: string): bool =
@@ -365,6 +370,7 @@ proc faceColor(f: Face, tint: Color): Color =
   of fType: theme.typ
   of fConstant: theme.constant
   of fBuiltin: theme.builtin
+  of fAnsi0..fAnsi7: theme.ansi[ord(f) - ord(fAnsi0)]
 
 proc drawLine(r: Renderer, line: seq[Rune], row, scroll: int, cursor = -1,
               selectionStart = -1, selectionEnd = -1, matchStart = -1, matchEnd = -1,

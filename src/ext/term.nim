@@ -5,13 +5,14 @@
 ## mode, no colours, no full-screen programs.
 when not defined(windows):
   import std/[os, strutils, unicode, tables]
-  import ../[core, buffer, buffers, lisp, pty, termtext]
+  import ../[core, buffer, buffers, lisp, pty, termtext, syntax, render]
 
   var
     shellBuf: Buffer
     proc1: Pty
     term: TermText
     outputLen: int   # runes of process output at the top of the buffer; input follows
+    sentSize: tuple[cols, rows: int]  # the window size the process has
 
   proc shellCommand(): string =
     let configured = interp.env.values["shell-file-name"].asString
@@ -30,11 +31,15 @@ when not defined(windows):
     shellBuf.modified = false
 
   proc startShell(dir: string) =
+    if renderer.frameCols == 0:  # from ~/.darger.el, before the first frame: size the panes now
+      renderer.resize(window, core.b)
+      layoutPanes()
     term = TermText()
     outputLen = 0
     shellBuf.splice(0, shellBuf.text.runeLen, "")
     try:
-      proc1 = spawn(shellCommand(), dir, max(20, renderer.cols), max(5, renderer.rows),
+      sentSize = (max(20, renderer.cols), max(5, renderer.rows))
+      proc1 = spawn(shellCommand(), dir, sentSize.cols, sentSize.rows,
         [("TERM", "dumb"), ("INSIDE_DARGER", "1"), ("PAGER", "cat")])
     except OSError as e:
       proc1 = nil
@@ -52,8 +57,19 @@ when not defined(windows):
       startShell(dir)
     shellBuf.cursor = shellBuf.point(shellBuf.text.runeLen)
 
+  proc paneSize(): tuple[cols, rows: int] =
+    ## The pane showing *shell* (the selected one when it does), else the last size.
+    for p in layout.leaves:
+      if (p == pane and core.b == shellBuf) or (p != pane and p.buf == shellBuf):
+        return (max(20, p.w), max(5, p.h - 1))
+    sentSize
+
   tickHooks.add proc(): bool =
     if proc1 == nil: return false
+    let size = paneSize()
+    if size != sentSize:  # the pane was split, resized or zoomed: the process learns its new size
+      sentSize = size
+      proc1.resize(size.cols, size.rows)
     let data = proc1.read()
     if data.len > 0:
       term.feed(data)
@@ -88,6 +104,17 @@ when not defined(windows):
       proc1.write("\x03")
       return true
     false
+
+  faceProviders.add proc(buf: Buffer): seq[seq[Face]] =
+    ## The process output keeps its SGR colours; the command being typed is plain.
+    if buf != shellBuf or buf.lines.len == 0: return
+    let colors = term.faces
+    for n, line in buf.lines:
+      var row = newSeq[Face](line.len)
+      if n < colors.len:
+        for i in 0..<min(line.len, colors[n].len):
+          if colors[n][i] > 0: row[i] = Face(ord(fAnsi0) + colors[n][i] - 1)
+      result.add row
 
   killHooks.add proc(buf: Buffer) =
     if buf == shellBuf:

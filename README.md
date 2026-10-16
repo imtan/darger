@@ -336,12 +336,17 @@ C-c s (`M-x shell`) opens `*shell*`, a comint-style shell buffer (macOS / Linux)
 `shell-file-name` (default `$SHELL`, else `/bin/sh`) runs on a pseudo-terminal in the
 current file's directory with `TERM=dumb`, `INSIDE_DARGER=1` and `PAGER=cat`. Its
 output, with escape sequences, carriage returns and backspaces applied, fills the top
-of the buffer; what you type after it is a command, sent with Enter (the pty does not
-echo, so the line stays as typed and the output follows), C-c C-c interrupts
-(`SIGINT`), and C-d at an empty command sends end-of-file. The output keeps about
-400 KB. The buffer never needs saving; killing it, or quitting, hangs the shell up,
-and C-c s after the shell exited (`Process shell finished`) starts a new one. This
-is the first slice of the terminal: line mode, no colours, no full-screen programs.
+of the buffer in the eight ANSI foreground colours (`ESC[31m` … `ESC[37m`, bright
+`90`-`97`, `38;5;n` for the first 16; other attributes and backgrounds are dropped,
+true colour shows in the default colour) from the theme's `ansi` palette; what you
+type after it is a command, sent with Enter (the pty does not echo, so the line stays
+as typed and the output follows), C-c C-c interrupts (`SIGINT`), and C-d at an empty
+command sends end-of-file. The process learns the size of the window showing
+`*shell*` (`$COLUMNS`, `$LINES`) and follows splits, resizes and zooms. The output
+keeps about 400 KB. The buffer never needs saving; killing it, or quitting, hangs
+the shell up, and C-c s after the shell exited (`Process shell finished`) starts a
+new one. Still line mode: full-screen programs (and their cursor addressing) are
+not interpreted yet.
 
 ## Background shader
 

@@ -21,11 +21,23 @@ block controls:
   doAssert u.text == "progress 100%\n"
   u.feed("bell\a done\n")
   doAssert u.text == "progress 100%\nbell done\n"
+  var z: TermText                   # zsh pads the line to the width and returns before the prompt
+  z.feed("%" & " ".repeat(19) & "\r~ $ ")
+  doAssert z.text == "~ $ " and z.faces[0].len == 4
+  z.feed("ls\n")
+  doAssert z.text == "~ $ ls\n"
 
 block escapes:
   var t: TermText
   t.feed("\x1b[31mred\x1b[0m plain \x1b]0;title\x07after \x1b(Bx\x1b=\x1b>end")
   doAssert t.text == "red plain after xend", t.text
+  doAssert t.faces[0][0..3] == @[2'i8, 2, 2, 0]           # "red" in ANSI red (index 1 + 1), then default
+  var c: TermText
+  c.feed("\x1b[1;32mok\x1b[39m-\x1b[94mb\x1b[38;5;3my\x1b[38;2;1;2;3mt\x1b[mz\n")
+  doAssert c.text == "ok-bytz\n"
+  doAssert c.faces[0] == @[3'i8, 3, 0, 5, 4, 0, 0]          # bold ignored; bright blue = blue; 256-colour 3 = yellow; true colour default
+  c.feed("ab\rX")                                        # an overwrite takes the current colour
+  doAssert c.faces[1] == @[0'i8, 0] and c.text.endsWith("Xb")
   var split: TermText
   split.feed("one\x1b[")          # an escape cut between chunks waits
   doAssert split.text == "one"
