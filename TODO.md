@@ -27,6 +27,7 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-16 exploration: tests/editormonkey (random command sequences through ~/.darger.el in a throwaway HOME; 16 seeds x 300 commands, no crash); (ignore-errors ...) added to the Lisp
 - 2026-10-16 SKK: annotations kept and shown beside candidates, (concat "...") evaluated, registered words with / or ; encoded, "word;note" registration
 - 2026-10-16 windows: split ratios with C-x ^ / C-x } / C-x { resizing, C-x + balance (panes.resize / balance tested), C-x 4 b / C-x 4 f
 - 2026-10-16 dashboard: a Today list (j journal, t capture, a agenda, s shell); recent files now 1-9 and 0

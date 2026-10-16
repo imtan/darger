@@ -50,6 +50,9 @@ block functions:
 block control:
   check("(setq n 0 sum 0) (while (< n 5) (setq sum (+ sum n) n (+ n 1))) sum", "10")
   check("(progn (setq x 1) (setq x 2) x)", "2")
+  check("(ignore-errors 1 2)", "2")
+  check("(ignore-errors (car 1) 5)", "nil")
+  check("(progn (ignore-errors (undefined-thing)) 7)", "7")
   check("(list (and) (or) (and 1 2) (or nil 3) (and nil missing) (or t missing))", "(t nil 2 3 nil t)")
   check("(cond ((= 1 2) missing) ((+ 1 2)) (t 4))", "3")
   check("(cond (nil 1) (t 2 3))", "3")

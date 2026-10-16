@@ -191,6 +191,9 @@ proc evaluate(i: Interp, v: Value, env: Env): Value =
       if i.eval(args[0], env).truth: return i.eval(args[1], env)
       return i.sequence(args[2..^1], env)
     of "progn": return i.sequence(args, env)
+    of "ignore-errors":  # as in Emacs: the body's value, or nil when it signals an error
+      try: return i.sequence(args, env)
+      except LispError: return nilValue()
     of "let":
       args.arity(1)
       let local = Env(parent: env)

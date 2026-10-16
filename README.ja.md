@@ -73,6 +73,7 @@ nim r tests/tscreen.nim   # 端末の画面モデルとキー列
 nim r tests/tpanes.nim    # ウィンドウ配置
 nim r tests/tshader.nim   # 背景シェーダーのソース
 nim r tests/tmonkey.nim   # ファズ: Buffer、SKK、Lisp、HTML、端末、ペインにランダム入力
+tests/editormonkey/run.sh 1 16 300   # エディタ全体: seed ごとにランダムなコマンド列 (ウィンドウが開く)
 ```
 
 ## macOS の darger.app
@@ -672,7 +673,8 @@ import を外せば拡張を取り除けます。
 `zoom-in` / `zoom-out` / `zoom-reset`、
 `(eww "url")`、`(background-shader "path")`、`(setq background-shader-dim 0.6)`、
 `(rss-feed "url")`、`(setq fetch-command "...")`、
-`(setq eww-search-prefix "...")`、そして `(hydra "PREFIX" "hint")` が使えます。hydra は
+`(setq eww-search-prefix "...")`、`(ignore-errors ...)` (本体を評価し、失敗してもファイルの読込を止めずに `nil` を返す)、
+そして `(hydra "PREFIX" "hint")` が使えます。hydra は
 1 キーのプレフィックスを粘着にします。割り当てられた `PREFIX x` コマンドの後もプレフィックスが
 有効なままで、ヒントがエコー領域に出ます。デフォルトの
 `(hydra "f2" "zoom  g:in  l:out  0:reset")` がその例です。

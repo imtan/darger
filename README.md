@@ -79,6 +79,7 @@ nim r tests/tscreen.nim   # the terminal screen model and key sequences
 nim r tests/tpanes.nim    # window layout
 nim r tests/tshader.nim   # background shader sources
 nim r tests/tmonkey.nim   # fuzz: random input into Buffer, SKK, Lisp, HTML, the terminal, panes
+tests/editormonkey/run.sh 1 16 300   # whole editor: random command sequences per seed (opens windows)
 ```
 
 ## darger.app on macOS
@@ -718,7 +719,8 @@ added stay until restart. The echo line reports `Loaded ~/.darger.el` or the err
 (`~` expands), `save-buffer`, `kill-emacs`, `skk-mode`, `zoom-in` / `zoom-out` /
 `zoom-reset`, `(eww "url")`, `(background-shader "path")`, `(setq background-shader-dim 0.6)`,
 `(rss-feed "url")`, `(setq fetch-command "...")`, `(setq eww-search-prefix "...")`, and
-`(hydra "PREFIX" "hint")`, which makes a one-key prefix sticky: after a bound
+`(ignore-errors ...)`, which evaluates its body and gives `nil` instead of stopping the
+file when it fails, and `(hydra "PREFIX" "hint")`, which makes a one-key prefix sticky: after a bound
 `PREFIX x` command the prefix stays active and the hint shows in the echo area, as
 the default `(hydra "f2" "zoom  g:in  l:out  0:reset")`.
 
