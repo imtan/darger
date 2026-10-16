@@ -91,6 +91,18 @@ block resizing:
   s.feed("\x1b[4;1Hlast")
   doAssert s.lines[3] == "last"
 
+block restoreAfterResize:  # found by the fuzzer: a saved cursor outside a shrunk screen
+  var s = initScreen(20, 10)
+  s.feed("\x1b[9;18H\x1b7")
+  s.resize(5, 3)
+  s.feed("\x1b8x")
+  doAssert s.row in 0..<3 and s.col in 0..<5 and s.lines.join("").contains("x")
+
+block oneColumn:  # found by the fuzzer: a wide rune in a one-column screen
+  var s = initScreen(1, 3)
+  s.feed("日x")
+  doAssert s.lines[0] == "日" and s.lines[1] == "x" and s.col == 0
+
 block splitSequences:
   var s = initScreen(8, 2)
   s.feed("a\x1b[")

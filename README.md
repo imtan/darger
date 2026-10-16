@@ -74,6 +74,11 @@ nim r tests/tfeed.nim     # RSS / Atom parsing
 nim r tests/tfetch.nim    # curl downloads (needs curl; uses file:// URLs)
 nim r tests/tupdate.nim   # self-update against a local bare repository (needs git)
 nim r tests/torg.nim      # Org structure and org-roam notes
+nim r tests/tterm.nim     # shell output text and the pty (needs /bin/sh)
+nim r tests/tscreen.nim   # the terminal screen model and key sequences
+nim r tests/tpanes.nim    # window layout
+nim r tests/tshader.nim   # background shader sources
+nim r tests/tmonkey.nim   # fuzz: random input into Buffer, SKK, Lisp, HTML, the terminal, panes
 ```
 
 ## darger.app on macOS

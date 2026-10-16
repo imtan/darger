@@ -68,6 +68,11 @@ nim r tests/tfeed.nim     # RSS / Atom の解析
 nim r tests/tfetch.nim    # curl ダウンロード (curl が必要。file:// URL を使う)
 nim r tests/tupdate.nim   # ローカルの bare リポジトリに対する自己更新 (git が必要)
 nim r tests/torg.nim      # Org 構造と org-roam ノート
+nim r tests/tterm.nim     # シェル出力のテキスト化と pty (/bin/sh が必要)
+nim r tests/tscreen.nim   # 端末の画面モデルとキー列
+nim r tests/tpanes.nim    # ウィンドウ配置
+nim r tests/tshader.nim   # 背景シェーダーのソース
+nim r tests/tmonkey.nim   # ファズ: Buffer、SKK、Lisp、HTML、端末、ペインにランダム入力
 ```
 
 ## macOS の darger.app

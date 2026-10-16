@@ -94,7 +94,7 @@ proc lineFeed(s: var Screen) =
   elif s.row < s.rows - 1: inc s.row
 
 proc put(s: var Screen, r: Rune) =
-  let wide = runeWidth(r) == 2
+  let wide = runeWidth(r) == 2 and s.cols >= 2  # a one-column screen has no room for the filler
   if s.wrapPending or (wide and s.col == s.cols - 1):  # a wide rune never straddles the margin
     if wide and not s.wrapPending: s.cells[s.row][s.col] = blank
     s.col = 0
@@ -210,7 +210,9 @@ proc csi(s: var Screen, params: string, final: char) =
     if z > a: (s.top, s.bottom) = (a, z)
     (s.row, s.col) = (0, 0)
   of 's': s.saved = (s.row, s.col)
-  of 'u': (s.row, s.col) = s.saved
+  of 'u':  # the screen may have shrunk since the save
+    (s.row, s.col) = s.saved
+    s.clampCursor()
   of 'm': s.sgr(codes)
   else: discard  # device requests, modes, tabs: nothing to show
 
@@ -245,7 +247,9 @@ proc feed*(s: var Screen, data: string) =
       case src[i+1]
       of '[': s.csi(src[i+2..<i+n-1], src[i+n-1])
       of '7': s.saved = (s.row, s.col)
-      of '8': (s.row, s.col) = s.saved
+      of '8':
+        (s.row, s.col) = s.saved
+        s.clampCursor()
       of 'D': s.lineFeed()                      # index
       of 'E': (s.col = 0; s.lineFeed())         # next line
       of 'M':                                   # reverse index
