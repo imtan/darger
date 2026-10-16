@@ -79,6 +79,7 @@ nim r tests/tscreen.nim   # the terminal screen model and key sequences
 nim r tests/tpanes.nim    # window layout
 nim r tests/tshader.nim   # background shader sources
 nim r tests/tgrep.nim     # ripgrep / grep output parsing and a real search
+nim r tests/teagle.nim    # Eagle API parsing and link paths
 nim r tests/tmonkey.nim   # fuzz: random input into Buffer, SKK, Lisp, HTML, the terminal, panes
 tests/editormonkey/run.sh 1 16 300   # whole editor: random command sequences per seed (opens windows)
 ```
@@ -301,6 +302,7 @@ fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK
 | Org: headline list / open link / timestamp | C-c C-j / C-c C-o / C-c . |
 | Org: fold the headline / the whole file | TAB / Shift-TAB |
 | Org: journal entry / capture | C-c j / C-c t |
+| Org: image from Eagle by keyword / by folder | C-M-e / C-c e |
 | org-roam: find / insert link / backlinks / today | C-c n f / C-c n i / C-c n l / C-c n d |
 | org-roam: today's daily with a time entry | C-c n j |
 | Grep the Org directory (consult-ripgrep) | C-c n s |
@@ -653,6 +655,15 @@ agenda, and headlines colour them (active words red, yellow, blue, magenta, cyan
 turn, done words dimmed). With selection keys like `(t)`, C-c C-t instead asks
 `TODO: [t] TODO [n] NEXT …` and takes one key, SPC for none, as Emacs' fast TODO
 selection does.
+
+Images from Eagle (eagle.cool), as the user's Emacs does: C-M-e
+(`org-insert-eagle-image`) asks for a keyword (empty for the newest items) and lists
+the matching images from Eagle's local API as `name.ext  [tags]`; C-c e
+(`org-insert-eagle-image-from-folder`) lists Eagle's folders (`parent/child`) first.
+Enter inserts a link to the library file itself, `[[file:~/…/Library.library/images/
+ID.info/name.ext]]`, written with `~` so it resolves on every machine that keeps the
+library under HOME. Eagle must be running (`eagle-api-base`, default
+`http://localhost:41595`); nothing is copied, and there is no thumbnail preview yet.
 
 Folding works as in Emacs: TAB on a headline cycles FOLDED (the subtree hidden, the
 headline ending in `...`), CHILDREN (its text and its child headlines, folded) and

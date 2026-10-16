@@ -28,7 +28,8 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 2. migemo: romaji matches Japanese in isearch, consult-line and the completion prompts,
    using cmigemo's dictionary when installed (the user has migemo in Emacs).
 3. Org images: `C-M-y` pastes the clipboard image into `images/` next to the file and
-   inserts `[[file:...]]` (macOS pbpaste/pngpaste); inline image display later.
+   inserts `[[file:...]]` (macOS pbpaste/pngpaste); inline image display later, which
+   would also give the Eagle picker its thumbnail preview.
 4. org-roam: `C-c n c` capture a note with a prompt for the title, `C-c n t` add a tag
    (`#+filetags:`), backlinks buffer refresh, `C-c n g` graph (open in browser via dot?).
 5. Writing helpers through the agent (their Gemini/gptel map `C-c G`): translate,
@@ -46,6 +47,7 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-16 Eagle images (user request): C-M-e by keyword, C-c e by folder, link to the library file as ~/… (src/eagle.nim tested against the live API)
 - 2026-10-16 org-todo-keywords: sequence, done words, faces, agenda, fast one-key selection on C-c C-t
 - 2026-10-16 consult-ripgrep (rg, grep fallback; src/grep.nim tested), C-c n s over org-roam-directory
 - 2026-10-16 windmove C-c arrows (panes.neighbour tested), C-c n j org-roam-dailies-capture-today

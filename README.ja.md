@@ -73,6 +73,7 @@ nim r tests/tscreen.nim   # 端末の画面モデルとキー列
 nim r tests/tpanes.nim    # ウィンドウ配置
 nim r tests/tshader.nim   # 背景シェーダーのソース
 nim r tests/tgrep.nim     # rg / grep の出力解析と実検索
+nim r tests/teagle.nim    # Eagle API の解析とリンクパス
 nim r tests/tmonkey.nim   # ファズ: Buffer、SKK、Lisp、HTML、端末、ペインにランダム入力
 tests/editormonkey/run.sh 1 16 300   # エディタ全体: seed ごとにランダムなコマンド列 (ウィンドウが開く)
 ```
@@ -286,6 +287,7 @@ CJK と対応する絵文字範囲は 2 セルを占めます。結合文字、�
 | Org: 見出し一覧 / リンクを開く / タイムスタンプ | C-c C-j / C-c C-o / C-c . |
 | Org: 見出しを折りたたむ / ファイル全体 | TAB / Shift-TAB |
 | Org: 日報エントリ / capture | C-c j / C-c t |
+| Org: Eagle から画像 (キーワード / フォルダ) | C-M-e / C-c e |
 | org-roam: 検索 / リンク挿入 / バックリンク / 今日 | C-c n f / C-c n i / C-c n l / C-c n d |
 | org-roam: 今日のデイリーに時刻エントリ | C-c n j |
 | Org ディレクトリを全文検索 (consult-ripgrep) | C-c n s |
@@ -610,6 +612,14 @@ M-Left / M-Right は見出しを昇格・降格し、M-Up / M-Down はそのサ�
 最後の語) は agenda で完了扱い、見出しでは色が付きます (進行中の語は赤・黄・青・マゼンタ・シアンの順、
 完了語は薄く)。`(t)` のような選択キーがあるときの C-c C-t は巡回ではなく `TODO: [t] TODO [n] NEXT …`
 と尋ねて 1 キーで決めます (SPC でなし)。Emacs の高速 TODO 選択と同じです。
+
+Eagle (eagle.cool) からの画像も Emacs と同じ手順で入れられます。C-M-e (`org-insert-eagle-image`) は
+キーワード (空なら新しい順) を尋ね、Eagle のローカル API から該当する画像を `name.ext  [タグ]` で
+一覧し、C-c e (`org-insert-eagle-image-from-folder`) は先に Eagle のフォルダ (`親/子`) を選びます。
+Enter でライブラリ実体へのリンク `[[file:~/…/Library.library/images/ID.info/name.ext]]` を挿入
+します。`~` 表記なので、ライブラリを HOME 配下に置いているマシンならどこでも同じリンクで開けます。
+Eagle が起動している必要があり (`eagle-api-base`、既定 `http://localhost:41595`)、コピーはせず、
+サムネイルのプレビューはまだありません。
 
 折りたたみは Emacs と同じように動きます。見出しで TAB を押すと FOLDED (サブツリーが隠れ、
 見出しの末尾に `...`)、CHILDREN (本文と、折りたたまれた子見出し)、SUBTREE を巡回します。
