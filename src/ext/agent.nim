@@ -53,6 +53,7 @@ var
   reviewExplain = false   # the running agent explains a hunk (x)
   reviewAsk = false       # the running agent answers a question about a hunk (X)
   reviewReadOnly = false  # a comparison (branch base -> buffer): nothing is taken, only understood
+  afterReview*: proc()    # run once when the review closes (the understanding buffer comes back)
   askQuestion = ""
   explainHunk = -1
   explained: seq[bool]        # per hunk: an explanation was read
@@ -63,11 +64,11 @@ proc resetUnderstanding() =
   explained = newSeq[bool](reviewState.hunks.len)
   explanations = newSeq[string](reviewState.hunks.len)
 
-proc ledgerPath(): string =
+proc ledgerPath*(): string =
   let v = interp.env.values["understanding-ledger"]
   if v.kind == vNil: "" else: expandTilde(v.asString)
 
-proc glossaryPath(): string =
+proc glossaryPath*(): string =
   let v = interp.env.values["glossary-file"]
   if v.kind == vNil: "" else: expandTilde(v.asString)
 
@@ -85,13 +86,13 @@ proc showExplain(text: string) =
     other.top = 0
     other.cursor = (0, 0)
 
-proc currentRoot(): string = rootFromDir(if b.path.len > 0: parentDir(b.path) else: getCurrentDir())
+proc currentRoot*(): string = rootFromDir(if b.path.len > 0: parentDir(b.path) else: getCurrentDir())
 
-proc git(root, args: string): tuple[output: string, ok: bool] =
+proc git*(root, args: string): tuple[output: string, ok: bool] =
   let (output, code) = execCmdEx("git -C " & quoteShell(root) & " " & args, options = {poUsePath})
   (strutils.strip(output), code == 0)
 
-proc fileRev(root, path: string): string =
+proc fileRev*(root, path: string): string =
   ## The file's last-change commit (short), "" outside git or for an uncommitted file.
   if root.len == 0 or not (dirExists(root / ".git") or fileExists(root / ".git")): return ""
   let (output, ok) = git(root, "log -1 --format=%h -- " & quoteShell(path))
@@ -237,6 +238,10 @@ proc finishReview*(cancel = false) =
   reviewState = Review()
   renderer.top = savedTop
   renderer.left = savedLeft
+  if afterReview != nil:
+    let f = afterReview
+    afterReview = nil
+    f()
 
 proc cleanAgentFiles*() =
   if agentDir.len == 0: return
@@ -672,16 +677,16 @@ interp.defPrimitive("understanding-debt-all", proc(args: seq[Value]): Value =
 var
   branchRows: seq[string]
   branchFiles: seq[tuple[rel, base: string]]
-  branchRoot: string
+  branchRoot*: string
 
-proc baseBranch(root: string): string =
+proc baseBranch*(root: string): string =
   let v = interp.env.values["understanding-base-branch"]
   if v.kind != vNil and v.asString.len > 0: return v.asString
   for name in ["main", "master", "develop"]:
     if git(root, "rev-parse --verify --quiet " & name).ok: return name
   ""
 
-proc reviewBranchFile(rel, base: string) =
+proc reviewBranchFile*(rel, base: string) =
   let path = branchRoot / rel
   if not fileExists(path):
     echoLine = rel & " was deleted on this branch"

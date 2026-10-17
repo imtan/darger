@@ -298,6 +298,7 @@ CJK と対応する絵文字範囲は 2 セルを占めます。結合文字、�
 | org-roam: 今日のデイリーに時刻エントリ | C-c n j |
 | org-roam: ノートを capture / ファイルタグを追加 | C-c n c / C-c n t |
 | org-roam: グラフをブラウザで | C-c n g |
+| 理解バッファ (ブランチごとの負債) | C-c u |
 | Org ディレクトリを全文検索 (consult-ripgrep) | C-c n s |
 | プロジェクト: ファイル / 切替 / バッファ | C-x p f / C-x p p / C-x p b |
 
@@ -370,6 +371,13 @@ base ブランチ (`main` / `master` / `develop`、または `understanding-base
 変更。採用の操作はなし)。x で説明、X で質問、U で自己申告、q で全ハンク (理解済みか否か) を台帳に
 記録します。もう一度実行すると申告済みのファイルは
 消えます。マージ前の「自分がここでやったことで、まだ理解していないものは何か」に答える道具です。
+
+C-c u (`understanding`) は `*understanding*` バッファを開きます。台帳を眺めながら返していくための
+ビュー (理解負債の magit status) で、ブランチと base の比較 (まだ理解していないファイルを `+n -m` と
+`(uncommitted)` 付きで、理解済みのファイルも)、ブランチの未返済エントリ、用語集の語数が並びます。
+ファイルの行で Enter すると base との比較が開き、閉じるとバッファに戻ります。負債の行で Enter で
+その場所へ、U でファイル全体を理解済みに、o で台帳ファイルを開く、g で再構築、q で閉じる。
+ポップアップ版 (`understanding-debt`、`branch-debt`) は素早く飛ぶ用に残っています。
 
 レビューのキーはコマンドでもあります (`review-take`、`review-keep`、`review-next`、
 `review-previous`、`review-finish`、`review-explain-hunk`、`review-attest`)。init ファイルや

@@ -313,6 +313,7 @@ fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK
 | org-roam: today's daily with a time entry | C-c n j |
 | org-roam: capture a note / add a file tag | C-c n c / C-c n t |
 | org-roam: graph in the browser | C-c n g |
+| Understanding buffer (debt per branch) | C-c u |
 | Grep the Org directory (consult-ripgrep) | C-c n s |
 | Project: find file / switch project / project buffers | C-x p f / C-x p p / C-x p b |
 
@@ -402,6 +403,15 @@ yours), where nothing is taken: x explains, X asks, U attests, and q records eve
 hunk (understood or not) in the ledger. Run it again and the attested files
 are gone; before a merge it answers "what did I do here that I do not yet
 understand?".
+
+C-c u (`understanding`) opens the `*understanding*` buffer, the ledger as a view to
+work from (a magit status for understanding debt): the branch against its base with
+the files still to understand (`+n -m`, `(uncommitted)`) and the ones understood,
+the open debt entries on the branch, and the glossary size. Enter on a file opens
+the base comparison and the buffer comes back when it closes; Enter on a debt entry
+goes to the spot; U marks a whole file understood; o opens the ledger file; g
+rebuilds; q closes. The popup lists (`understanding-debt`, `branch-debt`) stay for
+quick jumps.
 
 The review's keys are also commands (`review-take`, `review-keep`, `review-next`,
 `review-previous`, `review-finish`, `review-explain-hunk`, `review-attest`), so an

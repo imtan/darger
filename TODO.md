@@ -33,6 +33,9 @@ R4. (done) `r`: request changes to the hunk through the agent; the reply replace
 R5. (done) Edited buffer changed on disk: offered once / auto-revert-review opens it;
     agent-changes lists the files a chat turn changed, Enter reviews each.
 R6. Side-by-side layout toggle (`|`) using two panes.
+R7c. (done) *understanding* buffer (user: "バッファにして"): C-c u, magit-status-like view of
+    branch files to understand / understood, open debt, glossary; Enter / U / o / g / q.
+    Next: x on a file row (explain the whole file's change), debt count in the mode line.
 R7b. (done) Per-branch ledger (user: "理解台帳かな。…自分の作業を自分で理解する負債としたい"):
     :BRANCH: / :REV: on entries, understanding-debt per branch, U attest, branch-debt
     (files changed from the merge base without a DONE attestation -> base review).
@@ -61,6 +64,7 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-17 *understanding* buffer (ext/understand.nim): branch files to understand / understood, open debt, glossary; comparison returns to it (afterReview)
 - 2026-10-16 understanding ledger per branch (+ X: ask a question about a hunk, answers join the explanation; branch-base comparisons read base -> branch, read-only): :BRANCH:/:REV:, U attest, understanding-debt(-all), branch-debt with base reviews (chat.branchOf, ledger.entries/understoodRevs tested)
 - 2026-10-16 understanding ledger R7 slice 1: x explain in *explain*, ledger TODO/DONE entries on review end, understanding-debt, glossary (src/ledger.nim tested)
 - 2026-10-16 review R5: changed-on-disk offer + auto-revert-review; agent-changes (src/changes.nim snapshots, tested) with per-file reviews
