@@ -3,7 +3,7 @@
 import std/[os, osproc, tempfiles, strutils, times, unicode, tables, sets, math, json, uri, browsers, hashes]
 import windy, vmath
 when defined(macosx): import macwin
-import buffer, buffers, render, skk, lisp, recent, syntax, complete, lsp, panes
+import buffer, buffers, render, skk, lisp, recent, syntax, complete, lsp, panes, hydra
 export panes
 
 const
@@ -85,10 +85,7 @@ const
 (global-set-key "C-x left" 'previous-buffer)
 (global-set-key "M-g l" 'consult-line)
 (global-set-key "M-," 'lsp-back)
-(global-set-key "f2 g" 'zoom-in)
-(global-set-key "f2 l" 'zoom-out)
-(global-set-key "f2 0" 'zoom-reset)
-(hydra "f2" "zoom  g:in  l:out  0:reset")
+(defhydra "f2" "zoom" '(("g" zoom-in "in") ("l" zoom-out "out") ("0" zoom-reset "reset")))
 """
 
 var argCommands* = @["global-set-key", "insert", "command", "find-file", "load-theme",
@@ -181,6 +178,8 @@ var
   keymap*: Table[string, Value]
   prefixKeys* = toHashSet(["C-x", "M-g"])
   hydras*: Table[string, string]  # sticky prefix -> hint
+  hydraHints*: Table[string, seq[string]]  # defhydra: prefix -> the hint box's lines
+  hydraExits*: HashSet[string]             # chords that run their command and leave the hydra
   overlayTop*, overlayLeft*: int
   startScreen*: proc()  # shown at start without files (the dashboard); nil = *scratch*
   pendingKill*: Buffer  # awaiting y/n: the "killy" prompt or k in the buffer list
@@ -1086,8 +1085,13 @@ proc sticky*(full: string): string =
 proc rearm*(full: string) =
   let key = sticky(full)
   if key.len == 0: return
+  if full in hydraExits:  # an exit head: the command ran, the hydra is left
+    if echoLine.startsWith(hydras[key]): echoLine = ""
+    return
   prefix = key
-  echoLine = hydras[key] & (if echoLine.len > 0: "  " & echoLine else: "")
+  # The hint, then the command's own message (not the hint again)
+  let message = if echoLine.startsWith(hydras[key]): "" else: echoLine
+  echoLine = hydras[key] & (if message.len > 0: "  " & message else: "")
 
 proc leavesHydra*(full: string): bool =
   ## An unbound key after a hydra prefix leaves it; built-in chords stay chords.
@@ -1312,6 +1316,47 @@ interp.defPrimitive("hydra", proc(args: seq[Value]): Value =
   hydras[key] = args[1].asString
   prefixKeys.incl key
   args[0])
+interp.defPrimitive("ignore", proc(args: seq[Value]): Value = nilValue())
+interp.defPrimitive("defhydra", proc(args: seq[Value]): Value =
+  ## (defhydra "C-c w" "windows" '(("o" other-window "other") ("1" delete-other-windows "only" :exit)
+  ##   ("q" nil "quit"))): the prefix becomes sticky, each head a binding under it; while
+  ## it is active a box shows the heads; a head with :exit (or a nil command) leaves it.
+  args.arity(3, 3)
+  let key = args[0].asString
+  if key.len == 0: raise newException(LispError, "Expected a prefix key")
+  let title = args[1].asString
+  var heads: seq[Head]
+  for item in args[2].asList:
+    let parts = item.asList
+    if parts.len < 2: raise newException(LispError, "A head is (key command hint [:exit])")
+    var head = Head(key: parts[0].asString, hint: (if parts.len > 2 and parts[2].kind == vString: parts[2].asString else: ""))
+    head.command = if parts[1].kind == vSymbol: parts[1].str else: ""
+    if head.command == "nil": head.command = ""
+    for extra in parts[2..^1]:
+      if extra.kind == vSymbol and extra.str == ":exit": head.exit = true
+    if head.command.len == 0: head.exit = true
+    if head.hint.len == 0: head.hint = (if head.command.len > 0: head.command else: "quit")
+    heads.add head
+  let tokens = strutils.splitWhitespace(key)
+  for i in 1..<tokens.len: prefixKeys.incl tokens[0..<i].join(" ")
+  prefixKeys.incl key
+  hydras[key] = summary(title, heads)
+  hydraHints[key] = hintLines(title, heads)
+  for head in heads:
+    let full = key & " " & head.key
+    keymap[full] = Value(kind: vSymbol, str: (if head.command.len > 0: head.command else: "ignore"))
+    if head.exit: hydraExits.incl full
+  args[0])
+interp.defPrimitive("hydra-enter", proc(args: seq[Value]): Value =
+  ## (hydra-enter "C-c w"): opens the hydra as if its prefix had been pressed, so a
+  ## plain key can be bound to a hydra body (and scripts can show it).
+  args.arity(1, 1)
+  let key = args[0].asString
+  if key notin hydras: raise newException(LispError, "No hydra on " & key)
+  prefix = key
+  echoLine = hydras[key]
+  b.finish()
+  nilValue())
 let initPath* = getHomeDir() / ".darger.el"
 var
   initStamp*: times.Time  # the init file's modification time when it was last loaded
@@ -1323,6 +1368,8 @@ proc loadInit*(report = false) =
   ## defuns already added stay until restart.
   keymap.clear()
   hydras.clear()
+  hydraHints.clear()
+  hydraExits.clear()
   prefixKeys = toHashSet(["C-x", "M-g"])
   discard interp.evalString(defaultBindings, "<default-bindings>")
   # Option types special characters on macOS, so the command key is Meta there.
@@ -1420,6 +1467,9 @@ interp.defPrimitive("type-string", proc(args: seq[Value]): Value =
   ## can exercise what typing does; the input method is not involved.
   args.arity(1, 1)
   for r in args[0].asString.runes:
+    if mode in modes or prefix.len > 0:  # an overlay's key, or a chord / hydra head
+      dispatch($r)
+      continue
     if filterRune(r): continue
     if inMini():
       mini.insert($r, true)
@@ -1675,7 +1725,8 @@ proc redraw*(hover = thNone, maximized = false) =
     prompt, popup,
     cands.toOpenArray(0, if listed: cands.high else: -1), candIndex, listed,
     if isConsult(mode): atBottom else: atTop,
-    "darger — " & name, hover, maximized, thumbnail)
+    "darger — " & name, hover, maximized, thumbnail,
+    if prefix in hydraHints: hydraHints[prefix] else: @[])
   for i, p in leaves:  # the scroll each pane settled on, so its cursor stays in view
     if p == pane: (renderer.top = views[i].top; renderer.left = views[i].left)
     else: (p.top = views[i].top; p.left = views[i].left)

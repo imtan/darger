@@ -851,7 +851,7 @@ proc draw*(r: Renderer, window: Window, panes: var seq[PaneView], bars: seq[tupl
            echo, mini: string, miniCursor = -1, inputSegment = "", prompt = "", popup = false,
            candidates: openArray[string] = [], selected = -1, listed = false,
            anchor = atTop, title = "darger", hover = thNone, maximized = false,
-           thumbnail = "") =
+           thumbnail = "", hint: seq[string] = @[]) =
   ## A frame: the title bar, every pane with its mode line, the separators, then the
   ## prompt popup or the echo line over the whole text area. `thumbnail`: a picture
   ## key previewed beside the popup (the Eagle picker).
@@ -878,6 +878,8 @@ proc draw*(r: Renderer, window: Window, panes: var seq[PaneView], bars: seq[tupl
   for bar in bars:
     for row in 0..<bar.h: r.glyph(Rune(0x2502), r.cellX(bar.x), r.rowY(bar.y + row), theme.border)
   if miniCursor >= 0: r.drawThumbnail(thumbnail, anchor)
+  # A hydra's hint box, just above the echo line while its prefix is active.
+  if hint.len > 0 and miniCursor < 0: r.cursorBox(hint, -1, 1, r.frameRows - 1, maxRows = hint.len)
   let echoRow = r.frameRows
   let miniComp = if miniCursor >= 0: composition else: @[]
   let miniIme = if miniCursor >= 0: imeCursor else: 0

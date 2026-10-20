@@ -948,7 +948,24 @@ import を外せば拡張を取り除けます。
 そして `(hydra "PREFIX" "hint")` が使えます。hydra は
 1 キーのプレフィックスを粘着にします。割り当てられた `PREFIX x` コマンドの後もプレフィックスが
 有効なままで、ヒントがエコー領域に出ます。デフォルトの
-`(hydra "f2" "zoom  g:in  l:out  0:reset")` がその例です。
+`(hydra "f2" "zoom  g:in  l:out  0:reset")` がその例です。Emacs の hydra を一つの形で書くには `defhydra`
+を使います:
+
+```elisp
+(defhydra "C-c w" "windows"
+  '(("o" other-window "other")
+    ("2" split-window-below "split below")
+    ("3" split-window-right "split right")
+    ("1" delete-other-windows "only" :exit)
+    ("q" nil "quit")))
+```
+
+prefix (`C-c w` のようなコードも可) が粘着になり、各 head がその下のキーになります。有効な間は
+モードラインの上の箱に head が `[キー] 説明` の列で並び、最後の行にどのキーで抜けるかが出ます。
+`:exit` 付きの head はコマンドを実行して抜け、コマンドが `nil` なら抜けるだけ、それ以外の未割り当ての
+キーは抜けてから普通に動きます。`(hydra-enter "C-c w")` で Lisp から (または普通のキーに割り当てて)
+hydra を開けます。既定のズームもこれで定義しています:
+`(defhydra "f2" "zoom" '(("g" zoom-in "in") ("l" zoom-out "out") ("0" zoom-reset "reset")))`。
 
 ```elisp
 (global-set-key "f2 r" 'zoom-reset)

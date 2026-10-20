@@ -56,6 +56,7 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-20 defhydra (user: "Hydra みたいな機能欲しい"): heads with :exit, a hint box above the mode line while active, hydra-enter; the zoom hydra uses it; type-string dispatches pending chords (src/hydra.nim tested)
 - 2026-10-20 Grep mode (user: "Grep モードという名前にして共通化"): places renamed grep-mode / *grep* / grep-next, auto-open for files that read like grep output, M-x rgrep into a grep buffer, "(Grep)" in the mode line (modeNameProviders)
 - 2026-10-20 fix (user: "places の n, p が機能しなくなった"): typed letters go through runeFilters, not keyFilters, so the places / understanding / magit buffers now route runes to their key handlers; (type-string "...") types from Lisp
 - 2026-10-20 terminal: bold font weight (Bold / SemiBold / Medium), per-pane bold attributes and regular fallback; SGR reset and wide-rune flags covered by tscreen (synthetic bold when the font has no bold weight, e.g. SF Mono)

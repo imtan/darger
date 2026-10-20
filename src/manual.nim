@@ -236,7 +236,8 @@ M-x darger-update        GitHub に新しいコミットがあれば取り込ん
                          未プッシュコミットと衝突する場合は取り込まない
 設定                     darger-source-directory（既定: 実行ファイルの場所）
                          darger-build-command（既定: nimble -y build -d:release）
-F2 g / l / 0             文字の拡大 / 縮小 / 元に戻す（連打可）
+F2 g / l / 0             文字の拡大 / 縮小 / 元に戻す（連打可。hydra。有効中は head の箱が出る）
+                         自分の hydra は ~/.darger.el に (defhydra "C-c w" "windows" '(("o" other-window "other") ...))
 C-c ,                    設定ファイル ~/.darger.el を開く
 M-x                      コマンド名を入力して実行
 M-:                      Lisp 式を評価

@@ -1041,9 +1041,26 @@ added stay until restart. The echo line reports `Loaded ~/.darger.el` or the err
 `zoom-reset`, `(eww "url")`, `(background-shader "path")`, `(setq background-shader-dim 0.6)`,
 `(rss-feed "url")`, `(setq fetch-command "...")`, `(setq eww-search-prefix "...")`, and
 `(ignore-errors ...)`, which evaluates its body and gives `nil` instead of stopping the
-file when it fails, and `(hydra "PREFIX" "hint")`, which makes a one-key prefix sticky: after a bound
-`PREFIX x` command the prefix stays active and the hint shows in the echo area, as
-the default `(hydra "f2" "zoom  g:in  l:out  0:reset")`.
+file when it fails, `(hydra "PREFIX" "hint")`, which makes a one-key prefix sticky: after a bound
+`PREFIX x` command the prefix stays active and the hint shows in the echo area, and
+`defhydra`, Emacs' hydra in one form:
+
+```elisp
+(defhydra "C-c w" "windows"
+  '(("o" other-window "other")
+    ("2" split-window-below "split below")
+    ("3" split-window-right "split right")
+    ("1" delete-other-windows "only" :exit)
+    ("q" nil "quit")))
+```
+
+The prefix (a chord like `C-c w` works too) becomes sticky and each head a binding
+under it; while it is active a box above the mode line lists the heads as `[key]
+hint` in columns, with a last line saying which keys leave. A head with `:exit`
+runs its command and leaves, a `nil` command just leaves, any other unbound key
+leaves and runs as usual. `(hydra-enter "C-c w")` opens a hydra from Lisp or from a
+plain key bound to it. The default zoom is one:
+`(defhydra "f2" "zoom" '(("g" zoom-in "in") ("l" zoom-out "out") ("0" zoom-reset "reset")))`.
 
 ```elisp
 (global-set-key "f2 r" 'zoom-reset)
