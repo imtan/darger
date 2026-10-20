@@ -405,6 +405,8 @@ proc drawLine(r: Renderer, line: seq[Rune], row, scroll: int, cursor = -1,
           elif bg in 9'i8..12'i8:  # a review's refined (changed) part of a line
             let base = theme.review[if bg in [9'i8, 11'i8]: 3 else: 4]
             r.fill(x0+at-scroll, row, size, if bg >= 11: mix(base, theme.fg, 0.3) else: base)
+          elif bg == 13: r.fill(x0+at-scroll, row, size, theme.keyword)  # solid cells (the dashboard's logo)
+          elif bg == 14: r.fill(x0+at-scroll, row, size, mix(theme.keyword, theme.bg, 0.55))  # their shadow
           if selected or composing: r.fill(x0+at-scroll, row, size, theme.region)
           if matched: r.fill(x0+at-scroll, row, size, theme.search)
           if not composing and original in paren: r.fill(x0+at-scroll, row, size, theme.paren)

@@ -168,14 +168,19 @@ types special characters on many keys there, so on macOS the command key is Meta
 `(setq meta-modifier "alt")` in `~/.darger.el` makes Option Meta, as elsewhere. C-x C-c quits. On Windows the build is a GUI program (`--app:gui` in
 `config.nims`), so no console opens behind it and messages on stderr are not shown.
 
-Without a file, the editor opens `*scratch*` with a dashboard shown over it: a
-"Today" list of one-key commands, `j` today's journal entry, `t` capture a task, `a`
-the agenda, `s` the shell, then up to 10 recent files labelled 1-9 and 0 (HOME shown
-as `~`, long paths cut from the left). C-n / C-p / arrows move between entries,
-Enter or an entry's label opens it
-(a file that no longer exists is reported and the dashboard stays), q, C-g or Escape
-close it to `*scratch*`, C-x C-f prompts for a file, F1 switches to the manual and
-C-x C-c quits. `M-x dashboard` opens it and a key bound to `dashboard` also closes
+Without a file, the editor opens `*scratch*` with a dashboard shown over it, in
+the spirit of nvim's start screens: the DARGER logo (drawn as filled cells with a
+shadow, so it looks the same in every font) with a line under it, a centred menu of
+one-key commands with their real bindings at the right (`j` journal entry, `t`
+capture a task, `a` agenda, `u` understanding, `f` find file, `p` projects, `g`
+agent chat, `s` shell, `m` manual), up to 10 recent files labelled 1-9 and 0 (HOME
+shown as `~`, long paths cut from the left), and a footer with the date, the file
+count and the understanding debt. The layout follows the window's size. C-n / C-p,
+arrows or k / j-less moves select an entry (the selected line is highlighted),
+Enter runs or opens it, a label or menu key does so at once (a file that no longer
+exists is reported and the dashboard stays), q, C-g or Escape close it to
+`*scratch*`, C-x C-f / C-x b / C-x d go to those prompts, F1 switches to the manual
+and C-x C-c quits. `M-x dashboard` opens it and a key bound to `dashboard` also closes
 it; none is bound by default. The list lives in `~/.darger-recent` (one absolute
 UTF-8 path per line, newest first, at most 30, written atomically): every existing
 file visited from the command line, C-x C-f or `find-file`, and every file saved, is

@@ -218,7 +218,7 @@ C-c C-k                  解除。エラーは *shader* バッファとエコー
 [その他]
 C-g                      操作を中断
 F1                       このヘルプを表示 / 閉じる
-M-x dashboard            起動画面（最近のファイル一覧）を表示
+M-x dashboard            起動画面 (DARGER ロゴ、メニュー j/t/a/u/f/p/g/s/m、最近のファイル 1-9 0、理解負債のフッター)
 M-x darger-update        GitHub に新しいコミットがあれば取り込んで再ビルド
                          実行中は Updating darger ... をエコー欄に表示、C-g で中止
                          結果: up to date / updated to ハッシュ（要再起動）/ failed
