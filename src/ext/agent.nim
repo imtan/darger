@@ -2,7 +2,7 @@
 ## chat per project root with a live transcript (C-c c, chat.nim).
 import std/[os, osproc, tempfiles, strutils, unicode, times, tables, sequtils]
 from windy import closeIme
-import ../[core, buffer, buffers, render, lisp, review, chat, syntax, lsp, changes, ledger]
+import ../[core, buffer, buffers, render, lisp, review, chat, lsp, changes, ledger]
 
 when defined(windows):
   import std/[winlean, streams]
@@ -525,6 +525,12 @@ proc pollAgent*(): bool =
     agentChat = nil
     cleanAgentFiles()
 
+const explainInstructions =
+    "Explain in plain language, in the reviewer's language if the file suggests one (Japanese for Japanese text): " &
+    "what the hunk changes, why one would make this change, and what to watch out for. Then list every domain-specific " &
+    "or technical term the hunk relies on as Org description items, one per line, exactly in the form `- term :: definition`. " &
+    "Output plain text with those items; no code fences, no headings.\n"
+
 proc explainCurrentHunk*() =
   ## x: the agent explains the current hunk (what, why, and the domain terms in it as
   ## `- term :: definition`); the hunk counts as understood when taken afterwards.
@@ -538,15 +544,57 @@ proc explainCurrentHunk*() =
   explainHunk = currentHunk
   launchAgent(command,
     "A reviewer is deciding whether to take one hunk of a proposed change to a text file and wants to understand it. " &
-    "Explain in plain language, in the reviewer's language if the file suggests one (Japanese for Japanese text): " &
-    "what the hunk changes, why one would make this change, and what to watch out for. Then list every domain-specific " &
-    "or technical term the hunk relies on as Org description items, one per line, exactly in the form `- term :: definition`. " &
-    "Output plain text with those items; no code fences, no headings.\n" &
+    explainInstructions &
     "File path: " & (if b.path.len > 0: b.path else: "(unnamed)") & "\n" &
     "--- HUNK: LINES REMOVED ---\n" & removed & "--- HUNK: LINES ADDED ---\n" & added &
     "--- WHOLE PROPOSED FILE (context) ---\n" & reviewState.proposedText() & "\n--- END ---\n")
   showExplain("Explaining hunk " & $(currentHunk + 1) & "...")
   echoLine = "Agent: explaining hunk " & $(currentHunk + 1) & "..."
+
+proc repayUnderstanding*() =
+  ## Explain the nearest recorded debt for this file, regardless of branch.
+  if b.path.len == 0:
+    echoLine = "Current buffer has no file path"
+    return
+  if agentProcess != nil: raise newException(ValueError, "Agent already running")
+  let path = ledgerPath()
+  let old = if path.len > 0 and fileExists(path): readFile(path) else: ""
+  let index = debtNear(old, b.path, b.cursor.line + 1)
+  if index < 0:
+    echoLine = "No understanding debt recorded for this file"
+    return
+  let entry = entries(old)[index]
+  let command = interp.env.values["agent-command"].asString
+  if strutils.strip(command).len == 0: raise newException(ValueError, "agent-command is empty")
+  let root = currentRoot()
+  let glossary = glossaryPath()
+  let lines = b.text.splitLines
+  let center = min(entry.line - 1, lines.high)
+  let context = lines[max(0, center - 40)..min(lines.high, center + 40)].join("\n")
+  onAgentResult = proc(text: string) =
+    showExplain(text)
+    writeFile(path, markDone(readFile(path), entry.file, entry.line, text))
+    let terms = glossaryTerms(text)
+    if glossary.len > 0 and terms.len > 0:
+      let previous = if fileExists(glossary): readFile(glossary) else: ""
+      writeFile(glossary, mergeGlossary(previous, terms))
+    echoLine = "Repaid " & shortPath(entry.file, 50) & ":" & $entry.line
+  try:
+    launchAgent(command,
+      "A reviewer wants to understand a previously recorded change to a text file. " & explainInstructions &
+      "File path: " & entry.file & ":" & $entry.line & "\n" &
+      "--- RECORDED HUNK (diff) ---\n" & entryHunk(old, index) &
+      "--- CURRENT FILE (context) ---\n" & context & "\n--- END ---\n", root)
+  except CatchableError:
+    onAgentResult = nil
+    raise
+  showExplain("Explaining debt " & entry.file & ":" & $entry.line & "...")
+  echoLine = "Agent: explaining understanding debt..."
+
+interp.defPrimitive("understanding-repay", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  repayUnderstanding()
+  nilValue())
 
 proc askAboutHunk*(question: string) =
   ## X: a follow-up question about the current hunk; the answer joins the explanation

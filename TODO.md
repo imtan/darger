@@ -64,6 +64,7 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-20 understanding-repay: explain the nearest recorded debt, mark it DONE, and merge glossary terms; x on understanding debt rows (ledger tests)
 - 2026-10-20 understanding is an ordinary read-only buffer too (keyFilters / providers), q leaves, the comparison returns to it
 - 2026-10-20 places is an ordinary read-only buffer with its own keys instead of an overlay (user: C-x o did not work); understanding lets window commands through
 - 2026-10-20 ERB mode (user request): HTML tags/attributes/comments + Ruby inside <% %> via a shadow document (tsyntax)

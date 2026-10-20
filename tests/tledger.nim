@@ -60,4 +60,38 @@ doAssert glossaryTerms("text\n- okuri :: kana after the stem\n  - nested :: igno
 let g = mergeGlossary("", @[("Okuri", "a"), ("Hunk", "b")])
 doAssert g == "#+title: Glossary\n\n- Okuri :: a\n- Hunk :: b\n", g
 doAssert mergeGlossary(g, @[("okuri", "other"), ("New", "c")]) == g & "- New :: c\n"
+block repay:
+  let explanation = "Changes the field.\n- field :: a stored value\n"
+  var expected = debt
+  expected.explanation = explanation
+  let preamble = "#+title: Keep this exactly\n\n"
+  let original = preamble & text & btext & dtext
+  doAssert markDone(original, debt.file, debt.line, explanation) ==
+    preamble & orgEntry(expected) & btext & dtext
+  doAssert markDone(original, "/missing", 12, explanation) == original
+  doAssert markDone(original, debt.file, 13, explanation) == original
+  doAssert markDone(dtext, debt.file, 12, explanation) == dtext
+  var baseDone = cmp
+  baseDone.explanation = explanation
+  doAssert markDone(orgEntry(cmp), cmp.file, cmp.line, explanation) == orgEntry(baseDone)
+  let crlf = text.replace("\n", "\r\n")
+  doAssert markDone(crlf & "* Notes\r\nunchanged", debt.file, 12, "Explanation") ==
+    crlf.replace("* TODO ", "* DONE ").replace("taken without explanation", "understood")
+      .replace(":debt:", ":understood:") & "Explanation\r\n* Notes\r\nunchanged"
+  doAssert markDone(text.strip, debt.file, 12, "Explanation") ==
+    text.replace("* TODO ", "* DONE ").replace("taken without explanation", "understood")
+      .replace(":debt:", ":understood:") & "Explanation\n"
+  doAssert markDone("", debt.file, 12, explanation) == ""
+  var later = onBranch
+  later.line = 20
+  let mixed = dtext & "* Notes\nkept\n* TODO missing properties\n" & text & orgEntry(later)
+  doAssert debtNear(mixed, debt.file, 12) == 1
+  doAssert debtNear(mixed, debt.file, 19) == 2
+  doAssert debtNear(mixed, debt.file, 16) == 1  # tie, first TODO
+  doAssert debtNear(mixed, "/missing", 12) == -1
+  doAssert debtNear(dtext, debt.file, 12) == -1
+  doAssert debtNear("", debt.file, 12) == -1
+  doAssert entryHunk(mixed, 2) == "-old line\n+new line\n+more\n"
+  doAssert entryHunk(mixed, 3) == ""
+
 echo "ledger ok"

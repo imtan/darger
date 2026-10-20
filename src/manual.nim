@@ -131,6 +131,7 @@ M-x agent-changes        直前のチャットターンで変わったファイ�
   X (レビュー中)         今のハンクについて質問する。答えは説明に追記され台帳にも残る
   U (レビュー中)         説明なしで「理解した」と自己申告 (DONE で記録)
 M-x understanding-debt   理解台帳 (~/.darger-understanding.org) の今のブランチの未返済一覧 (-all で全部)
+M-x understanding-repay  現在のファイルの最寄りの負債を説明して DONE に (*understanding* の負債行では x)
 M-x branch-debt          このブランチで base から変わったファイルのうち未理解のもの。Enter で base と比較レビュー
 C-c u                    *understanding* バッファ: ブランチの未理解 / 理解済みファイル、未返済エントリ、用語集
                          Enter で比較 (閉じると戻る) / 負債の場所へ、b で base ブランチ選択、U でファイル全体を理解済み、

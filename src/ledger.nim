@@ -77,6 +77,65 @@ proc entries*(text: string): seq[LedgerItem] =
       i = j
     else: inc i
 
+iterator entrySpans(text: string): tuple[first, last: int] =
+  ## Byte ranges bounded by top-level Org headings, preserving line endings.
+  var first = -1
+  var offset = 0
+  for l in text.splitLines(keepEol = true):
+    if l.startsWith("* "):
+      if first >= 0: yield (first, offset)
+      first = offset
+    offset += l.len
+  if first >= 0: yield (first, text.len)
+
+proc markDone*(text: string, file: string, line: int, explanation: string): string =
+  ## Repay the first matching TODO, leaving all other bytes intact.
+  for (first, last) in entrySpans(text):
+    let body = text[first..<last]
+    let items = entries(body)
+    if items.len == 0 or items[0].done or items[0].file != file or items[0].line != line: continue
+    let newline = body.find('\n')
+    let headingEnd = if newline < 0: body.len else: newline
+    let heading = body[0..<headingEnd]
+    let eol = if heading.endsWith("\r"): "\r\n" else: "\n"
+    result = text[0..<first] & "* DONE " & heading[7..^1]
+      .replace("taken without explanation", "understood")
+      .replace("not yet understood", "understood")
+      .replace(":debt:", ":understood:") & body[headingEnd..^1]
+    if explanation.len > 0:
+      if not result.endsWith("\n"): result.add eol
+      result.add explanation
+      if not explanation.endsWith("\n"): result.add eol
+    result.add text[last..^1]
+    return
+  result = text
+
+proc debtNear*(text, file: string, line: int): int =
+  ## Index in entries(); equal distances prefer the first recorded debt.
+  result = -1
+  var distance = high(int)
+  for i, e in entries(text):
+    if e.done or e.file != file: continue
+    let d = abs(e.line - line)
+    if result < 0 or d < distance:
+      result = i
+      distance = d
+
+proc entryHunk*(text: string, index: int): string =
+  ## The diff block contents for an index in entries().
+  var i = 0
+  for (first, last) in entrySpans(text):
+    let body = text[first..<last]
+    if entries(body).len == 0: continue
+    if i == index:
+      var inDiff = false
+      for l in body.splitLines(keepEol = true):
+        if l.strip == "#+end_src": inDiff = false
+        if inDiff: result.add l
+        if l.strip == "#+begin_src diff": inDiff = true
+      return
+    inc i
+
 proc debtEntries*(text: string, branch = ""): seq[tuple[label, file: string, line: int]] =
   ## The TODO (debt) entries, those of one branch when given ("" = all).
   for e in entries(text):

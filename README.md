@@ -401,6 +401,12 @@ hunk can be understood through a short dialogue. U attests that you understand t
 hunk without an explanation; it is recorded as DONE too. Nothing is ever demanded: the ledger is a self-kept account of the work
 you still want to understand.
 
+`M-x understanding-repay` explains the nearest open debt for the current file, across
+all branches, using its recorded hunk and the current file context (40 lines either
+side). The answer appears in `*explain*`, the entry becomes DONE with the explanation,
+and its terms join the glossary. In `*understanding*`, x visits and repays a debt
+row; Enter still just visits it.
+
 Entries carry the git branch (`:BRANCH:`, also a tag) and the file's last-change
 commit (`:REV:`), so the debt is kept per branch: `M-x understanding-debt` lists the
 current branch's open entries (`understanding-debt-all` every branch's).

@@ -3,8 +3,8 @@
 ## ones already understood), the open debt entries on the branch, the glossary size.
 ## An ordinary read-only buffer with its own keys (window and buffer commands work as
 ## usual): Enter opens a comparison or the spot, b picks the base branch, U attests a
-## whole file, o opens the ledger, g rebuilds, q leaves.
-import std/[os, strutils, tables, times, sequtils, unicode]
+## whole file, x explains a debt, o opens the ledger, g rebuilds, q leaves.
+import std/[os, strutils, tables, times, unicode]
 import ../[core, buffer, buffers, lisp, syntax, chat, ledger]
 import agent
 
@@ -177,6 +177,14 @@ keyFilters.add proc(c: string): bool =
     of rkLedger:
       if row.file.len > 0: visit(row.file)
     of rkNone: echoLine = "Nothing to open here"
+  of "x":
+    if row.kind == rkDebt:
+      try:
+        visit(row.file)
+        b.cursor = (min(row.line - 1, b.lines.high), 0)
+        repayUnderstanding()
+      except CatchableError as e: echoLine = e.msg
+    else: echoLine = "x explains an open debt"
   of "b": chooseBase()
   of "U":
     if row.kind == rkFile:
@@ -191,13 +199,13 @@ keyFilters.add proc(c: string): bool =
     buildUnderstanding(here)
     echoLine = "Rebuilt"
   of "q": leaveUnderstanding()
-  of "?": echoLine = "Enter: compare the file with the base / go to the debt   b: base branch   U: whole file understood   o: the ledger   g: rebuild   q: leave"
+  of "?": echoLine = "Enter: compare the file with the base / go to the debt   x: explain debt   b: base branch   U: whole file understood   o: the ledger   g: rebuild   q: leave"
   else: return false
   true
 runeFilters.add proc(r: Rune): bool =
   # Read-only: typed characters are keys or nothing.
   if mode.len > 0 or prefix.len > 0 or ubuf == nil or b != ubuf: return false
-  if r.int < 128 and char(r.int) in {'f', 'b', 'U', 'o', 'g', 'q', '?'}: return false
+  if r.int < 128 and char(r.int) in {'f', 'x', 'b', 'U', 'o', 'g', 'q', '?'}: return false
   echoLine = "The understanding buffer is read-only (? for its keys)"
   true
 faceProviders.add proc(buf: Buffer): seq[seq[Face]] =
