@@ -79,6 +79,7 @@ nim r tests/tmigemo.nim   # migemo のローマ字 → かな → 辞書語
 nim r tests/tpictures.nim # pixie が読めない画像の PNG 変換キャッシュ
 nim r tests/tchanges.nim  # 2 時点のスナップショット間で変わったプロジェクトのファイル
 nim r tests/texecpath.nim # GUI 起動向けにログインシェルの PATH を取り込む
+nim r tests/tplaces.nim   # grep-mode 風の places 一覧
 nim r tests/tledger.nim   # 理解台帳のエントリと用語集
 nim r tests/tmonkey.nim   # ファズ: Buffer、SKK、Lisp、HTML、端末、ペインにランダム入力
 tests/editormonkey/run.sh 1 16 300   # エディタ全体: seed ごとにランダムなコマンド列 (ウィンドウが開く)
@@ -632,12 +633,17 @@ rg がなければ `grep -rni`) で検索し、結果を `path:line: text` と�
 ## エージェントに場所を聞く
 
 C-c l (`agent-locate`) はプロジェクトについての質問 (「リトライ処理はどこ?」「日報のテンプレートを
-埋めているのはどこ?」) を `agent-command` に送り、答えを consult-ripgrep の検索結果と同じ形で
-開きます。エージェントには `path:line: メモ` の行だけで答えるよう指示し、実在するファイルを指す
-行がプレビュー付きの一覧になります。Enter でジャンプ (M-, で戻る)、C-g で元の位置へ。
-`(agent-locate "質問")` で Lisp からも。`M-x agent-references` は今のバッファが言及する
-`path:line` をすべて一覧にするので、チャットのトランスクリプトでエージェントが挙げた場所も
-同じように開けます。
+埋めているのはどこ?」) を `agent-command` に送り、答えを Emacs の grep バッファのような `*places*`
+一覧で開きます。エージェントには `path:line: メモ` の行で、必要なら `== 1. 見出し` で区切って
+答えるよう指示します。一覧では n / p で場所を移動しながら隣のウィンドウがその場所に追従し、Enter で
+ジャンプ、q で閉じる、? でキー一覧。`(agent-locate "質問")` で Lisp からも。`M-x agent-references`
+は今のバッファが言及する `path:line` を同じ形で一覧にします。
+
+同じ形のテキストなら何でも使えます。1 行目が Emacs のクッキー `-*- mode: grep; default-directory:
+"/the/project/" -*-` のファイル (Claude Code に質問の足跡として書かせたもの) は、開くとそのまま
+places 一覧になり (o でファイル自体を編集。`(setq places-auto-open nil)` で自動で開かない)、
+`M-x places` は今のバッファをその形で表示します。相対パスはクッキーのディレクトリ、なければ
+ファイル自身のディレクトリで解決します。
 
 ## Migemo
 

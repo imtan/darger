@@ -85,6 +85,7 @@ nim r tests/tmigemo.nim   # romaji -> kana -> dictionary words for migemo
 nim r tests/tpictures.nim # PNG conversion cache for pictures pixie cannot decode
 nim r tests/tchanges.nim  # files changed under a project between two snapshots
 nim r tests/texecpath.nim # the login shell's PATH merged for GUI launches
+nim r tests/tplaces.nim   # grep-mode style places lists
 nim r tests/tledger.nim   # understanding ledger entries and the glossary
 nim r tests/tmonkey.nim   # fuzz: random input into Buffer, SKK, Lisp, HTML, the terminal, panes
 tests/editormonkey/run.sh 1 16 300   # whole editor: random command sequences per seed (opens windows)
@@ -690,12 +691,20 @@ selection previews the spot, Enter jumps there (M-, comes back) and C-g returns.
 ## Asking the agent where
 
 C-c l (`agent-locate`) asks `agent-command` a question about the project ("where is
-the retry logic?", "どこで日報のテンプレートを埋めている?") and opens the answer the way
-consult-ripgrep opens matches: the agent is told to reply only with `path:line: note`
-lines, those naming existing files become a list with a preview, Enter jumps (M-,
-comes back), C-g returns. `(agent-locate "question")` does it from Lisp.
-`M-x agent-references` lists every `path:line` the current buffer mentions, so the
-places an agent cites in a chat transcript open the same way.
+the retry logic?", "どこで日報のテンプレートを埋めている?") and opens the answer as a
+`*places*` list, the way Emacs shows a grep buffer: the agent is told to reply with
+`path:line: note` lines, grouped under `== 1. Heading` lines when that helps. In the
+list, n / p move between the places while the other window follows to each spot,
+Enter jumps there, q closes, ? lists the keys. `(agent-locate "question")` does it
+from Lisp. `M-x agent-references` lists every `path:line` the current buffer
+mentions the same way.
+
+Any text in that shape works: a file whose first line is the Emacs cookie `-*- mode:
+grep; default-directory: "/the/project/" -*-` (Claude Code can write one as a trail
+through a question) opens as a places list over itself (o edits the file; `(setq
+places-auto-open nil)` turns the automatic opening off), and `M-x places` shows the
+current buffer that way. Relative paths resolve under the cookie's directory, else
+the file's own.
 
 ## Migemo
 

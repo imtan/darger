@@ -4,32 +4,39 @@
 ## lists the places the current buffer (an agent transcript) refers to.
 import std/[os, strutils, sequtils, tables]
 import ../[core, buffer, lisp, chat, grep, lsp]
-import agent
+import agent, places
 
 var locateRoot: string
 
 proc showPlaces(hits: seq[Hit], what: string) =
+  ## The agent's answer as a *places* list (grep-mode style): a cookie naming the
+  ## root, the question, then the places with their notes.
   if hits.len == 0:
     echoLine = "No places found for " & what
     return
-  targets = @[]
-  refRows = @[]
-  for h in hits:
-    targets.add Location(path: h.path, line: h.line, col: h.col)
-    refRows.add hitRow(h, locateRoot)
-  beginMini("agent-places", "Place: ")
+  var text = "-*- mode: grep; default-directory: \"" & locateRoot & "/\" -*-\n" & what & "\n\n"
+  for h in hits: text.add hitRow(h, locateRoot) & "\n"
+  openPlacesText(text, locateRoot, what)
+
+proc showAnswer(answer, what: string) =
+  ## The whole answer kept (headings and notes between the places), as a *places* list.
+  let hits = parsePlaces(answer, locateRoot)
+  if hits.len == 0:
+    echoLine = "No places found for " & what
+    return
+  openPlacesText("-*- mode: grep; default-directory: \"" & locateRoot & "/\" -*-\n" & what & "\n\n" & answer, locateRoot, what)
 
 proc locate(question: string) =
   let command = interp.env.values["agent-command"].asString
   if strutils.strip(command).len == 0: raise newException(ValueError, "agent-command is empty")
   locateRoot = currentRoot()
-  onAgentResult = proc(text: string) =
-    showPlaces(parsePlaces(text, locateRoot), question)
+  onAgentResult = proc(text: string) = showAnswer(text, question)
   launchAgent(command,
     "You are helping someone find their way around the project at " & locateRoot & ". " &
-    "Answer the question by listing the places in the project files that matter for it. " &
-    "Output ONLY lines of the form `path:line: short note` (path relative to the project root, " &
-    "line 1-based), most relevant first, at most 30 lines. No other text, no code fences.\n" &
+    "Answer the question as a trail through the project files, like an Emacs grep buffer: " &
+    "lines of the form `path:line: short note` (path relative to the project root, line 1-based), " &
+    "in reading order, grouped under headings written as `== 1. Heading` when that helps, at most 40 places. " &
+    "No other prose, no code fences.\n" &
     "Question: " & question & "\n", locateRoot)
   echoLine = "Agent: locating..."
 
@@ -38,7 +45,6 @@ definePrompt(Prompt(kind: "agent-locate", text: true, onAccept: proc(value: stri
   try: locate(value)
   except CatchableError as e: echoLine = e.msg
   true))
-definePrompt(Prompt(kind: "agent-places", text: true, consult: true, candidates: refRowsNow, onAccept: acceptReference))
 
 interp.defPrimitive("agent-locate", proc(args: seq[Value]): Value =
   ## C-c l: a question for the agent; its answer opens as places with a preview.

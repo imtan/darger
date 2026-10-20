@@ -183,7 +183,9 @@ C-c n d                  今日のデイリーノート daily/日付.org を開�
 C-c n j                  今日のデイリーに時刻の見出しを足す
 C-c n s                  Org ディレクトリを全文検索 (M-x consult-ripgrep はプロジェクト)
 C-x p f / p / b          プロジェクトのファイルを開く / プロジェクト切替 / プロジェクトのバッファ
-C-c l                    エージェントに「どこ?」と聞き、答えの path:line をプレビュー付き一覧で開く
+C-c l                    エージェントに「どこ?」と聞き、答えを *places* (grep バッファ風) で開く
+  n / p / Enter / o / q  場所を移動 (隣のウィンドウが追従) / ジャンプ / 元ファイルを編集 / 閉じる
+M-x places               今のバッファを places 一覧として開く (-*- mode: grep -*- のファイルは自動)
 M-x agent-references     今のバッファ (チャットの記録など) が挙げる path:line を一覧で開く
 M-x org-id-get-create    ファイルに ID を付けてノートにする
 C-c j                    日報 (org-journal)。org-journal-dir の今日のファイルに時刻見出しを足す
