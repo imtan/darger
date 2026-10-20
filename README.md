@@ -334,6 +334,7 @@ fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK
 | Understanding buffer (debt per branch) | C-c u |
 | Grep the Org directory (consult-ripgrep) | C-c n s |
 | Project: find file / switch project / project buffers | C-x p f / C-x p p / C-x p b |
+| Projectile hydra (f p b s r v d l q) | C-c p |
 | Ask the agent where (places with a preview) | C-c l |
 
 Search ignores case for all-lowercase queries. Typing extends the current match; a
@@ -815,6 +816,11 @@ with `.gitignore` applied, through `git ls-files`) or else the file's directory
 (`project-switch-project`) offers the projects visited before (kept in
 `~/.darger-projects`, newest first; any directory can be typed) and then a file in the
 chosen one; C-x p b (`project-buffers`) lists the open buffers under the project.
+C-c p opens a projectile hydra over them: `f` find file, `p` switch project, `b`
+buffers, `s` grep (consult-ripgrep), `r` rgrep into a `*grep*` buffer, `v` magit,
+`d` the root in dired (`project-dired`), `l` ask the agent where, `q` quit; a head
+that opens a prompt ends the hydra. Redefine it with `defhydra` in `~/.darger.el`
+to change the heads.
 
 ## Language servers
 

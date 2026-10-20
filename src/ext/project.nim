@@ -75,8 +75,24 @@ visitHooks.add proc() =
     let root = rootFromDir(parentDir(core.b.path))
     if dirExists(root / ".git") or fileExists(root / ".git"): recordProject(root)
 
+interp.defPrimitive("project-dired", proc(args: seq[Value]): Value =
+  ## The project's root in dired (projectile's D).
+  args.arity(0, 0)
+  discard interp.call(symbol("dired"), @[stringValue(currentRoot())])
+  nilValue())
+
 defaults.add """
 (global-set-key "C-x p f" 'project-find-file)
 (global-set-key "C-x p p" 'project-switch-project)
 (global-set-key "C-x p b" 'project-buffers)
+(defhydra "C-c p" "projectile"
+  '(("f" project-find-file "find file")
+    ("p" project-switch-project "switch project")
+    ("b" project-buffers "buffers")
+    ("s" consult-ripgrep "grep")
+    ("r" rgrep "rgrep buffer")
+    ("v" magit-status "magit")
+    ("d" project-dired "dired root")
+    ("l" agent-locate "ask the agent")
+    ("q" nil "quit")))
 """

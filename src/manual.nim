@@ -194,6 +194,7 @@ C-c n d                  今日のデイリーノート daily/日付.org を開�
 C-c n j                  今日のデイリーに時刻の見出しを足す
 C-c n s                  Org ディレクトリを全文検索 (M-x consult-ripgrep はプロジェクト)
 C-x p f / p / b          プロジェクトのファイルを開く / プロジェクト切替 / プロジェクトのバッファ
+C-c p                    projectile hydra: f ファイル  p 切替  b バッファ  s grep  r rgrep  v magit  d dired  l 場所を聞く  q
 C-x g                    Git status (*magit*): HEAD / upstream / 未追跡 / 未ステージ / ステージ済み / 履歴
   s / u                  ファイルを stage / unstage (見出しでは全変更を stage / 全件を unstage)
   Enter / k              ファイルを開き HEAD とレビュー / 未ステージの変更を y/n 確認後に破棄

@@ -318,6 +318,7 @@ CJK と対応する絵文字範囲は 2 セルを占めます。結合文字、�
 | 理解バッファ (ブランチごとの負債) | C-c u |
 | Org ディレクトリを全文検索 (consult-ripgrep) | C-c n s |
 | プロジェクト: ファイル / 切替 / バッファ | C-x p f / C-x p p / C-x p b |
+| projectile hydra (f p b s r v d l q) | C-c p |
 | エージェントに場所を聞く (プレビュー付き一覧) | C-c l |
 
 検索は、すべて小文字のクエリでは大文字小文字を区別しません。入力すると現在の一致が
@@ -742,7 +743,10 @@ Emacs の project.el と同様です。C-x p f (`project-find-file`) はプロ�
 そのディレクトリを隠しディレクトリとビルド系を除いて走査) の全ファイルを相対パスで一覧し、絞り込んで
 開きます。C-x p p (`project-switch-project`) は以前訪れたプロジェクト (`~/.darger-projects`、新しい順。
 任意のディレクトリも入力可) を選んでからその中のファイルを、C-x p b (`project-buffers`) は
-プロジェクト配下の開いているバッファを一覧します。
+プロジェクト配下の開いているバッファを一覧します。C-c p はこれらをまとめた projectile 風の hydra です:
+`f` ファイルを開く、`p` プロジェクト切替、`b` バッファ、`s` grep (consult-ripgrep)、`r` rgrep (`*grep*`
+バッファへ)、`v` magit、`d` ルートを dired で (`project-dired`)、`l` エージェントに場所を聞く、`q` 閉じる。
+プロンプトを開く head で hydra は終わります。head を変えるには `~/.darger.el` で `defhydra` し直します。
 
 ## 言語サーバー
 

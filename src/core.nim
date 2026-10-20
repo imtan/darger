@@ -1213,6 +1213,8 @@ proc dispatch*(c: string) =
     else:
       discard interp.call(fn, @[])
     if mode == "": rearm(full)
+    elif sticky(full).len > 0 and echoLine.startsWith(hydras[sticky(full)]):
+      echoLine = ""  # a head opened a prompt or a view: the hydra is over, its hint goes
     return
   b.finish()
   case full
