@@ -64,6 +64,8 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-20 understanding / branch-debt: one git numstat for the whole branch instead of three calls per file (the user: it hung with many changes)
+- 2026-10-20 agent-locate (C-c l): ask the agent where, answer parsed as path:line places in a consult list (grep.parsePlaces / findReferences tested); agent-references; onAgentResult hook
 - 2026-10-17 *understanding* buffer (ext/understand.nim): branch files to understand / understood, open debt, glossary; comparison returns to it (afterReview)
 - 2026-10-16 understanding ledger per branch (+ X: ask a question about a hunk, answers join the explanation; branch-base comparisons read base -> branch, read-only): :BRANCH:/:REV:, U attest, understanding-debt(-all), branch-debt with base reviews (chat.branchOf, ledger.entries/understoodRevs tested)
 - 2026-10-16 understanding ledger R7 slice 1: x explain in *explain*, ledger TODO/DONE entries on review end, understanding-debt, glossary (src/ledger.nim tested)

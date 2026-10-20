@@ -316,6 +316,7 @@ fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK
 | Understanding buffer (debt per branch) | C-c u |
 | Grep the Org directory (consult-ripgrep) | C-c n s |
 | Project: find file / switch project / project buffers | C-x p f / C-x p p / C-x p b |
+| Ask the agent where (places with a preview) | C-c l |
 
 Search ignores case for all-lowercase queries. Typing extends the current match; a
 search that hits the buffer edge shows `Failing I-search`, and repeating C-s/C-r
@@ -674,6 +675,16 @@ selection previews the spot, Enter jumps there (M-, comes back) and C-g returns.
 `(consult-ripgrep "dir")` searches that directory, and C-c n s
 (`consult-ripgrep-org`) the `org-roam-directory`, like the user's
 `my/consult-ripgrep-org`. The search runs to completion before the list opens.
+
+## Asking the agent where
+
+C-c l (`agent-locate`) asks `agent-command` a question about the project ("where is
+the retry logic?", "どこで日報のテンプレートを埋めている?") and opens the answer the way
+consult-ripgrep opens matches: the agent is told to reply only with `path:line: note`
+lines, those naming existing files become a list with a preview, Enter jumps (M-,
+comes back), C-g returns. `(agent-locate "question")` does it from Lisp.
+`M-x agent-references` lists every `path:line` the current buffer mentions, so the
+places an agent cites in a chat transcript open the same way.
 
 ## Migemo
 

@@ -301,6 +301,7 @@ CJK と対応する絵文字範囲は 2 セルを占めます。結合文字、�
 | 理解バッファ (ブランチごとの負債) | C-c u |
 | Org ディレクトリを全文検索 (consult-ripgrep) | C-c n s |
 | プロジェクト: ファイル / 切替 / バッファ | C-x p f / C-x p p / C-x p b |
+| エージェントに場所を聞く (プレビュー付き一覧) | C-c l |
 
 検索は、すべて小文字のクエリでは大文字小文字を区別しません。入力すると現在の一致が
 伸び、バッファ端に当たった検索は `Failing I-search` を表示し、C-s/C-r を繰り返すと
@@ -617,6 +618,16 @@ rg がなければ `grep -rni`) で検索し、結果を `path:line: text` と�
 戻ります。`(consult-ripgrep "dir")` はそのディレクトリを、C-c n s (`consult-ripgrep-org`) は
 `org-roam-directory` を検索します (あなたの `my/consult-ripgrep-org` と同じ)。検索は一覧が開く前に
 完了まで走ります。
+
+## エージェントに場所を聞く
+
+C-c l (`agent-locate`) はプロジェクトについての質問 (「リトライ処理はどこ?」「日報のテンプレートを
+埋めているのはどこ?」) を `agent-command` に送り、答えを consult-ripgrep の検索結果と同じ形で
+開きます。エージェントには `path:line: メモ` の行だけで答えるよう指示し、実在するファイルを指す
+行がプレビュー付きの一覧になります。Enter でジャンプ (M-, で戻る)、C-g で元の位置へ。
+`(agent-locate "質問")` で Lisp からも。`M-x agent-references` は今のバッファが言及する
+`path:line` をすべて一覧にするので、チャットのトランスクリプトでエージェントが挙げた場所も
+同じように開けます。
 
 ## Migemo
 

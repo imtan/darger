@@ -54,6 +54,7 @@ var
   reviewAsk = false       # the running agent answers a question about a hunk (X)
   reviewReadOnly = false  # a comparison (branch base -> buffer): nothing is taken, only understood
   afterReview*: proc()    # run once when the review closes (the understanding buffer comes back)
+  onAgentResult*: proc(text: string)  # takes the next one-shot agent's output instead of a review
   askQuestion = ""
   explainHunk = -1
   explained: seq[bool]        # per hunk: an explanation was read
@@ -454,18 +455,24 @@ proc pollAgent*(): bool =
       reviewRequest = false
       reviewExplain = false
       reviewAsk = false
+      onAgentResult = nil
       echoLine = "Agent cancelled"
     elif code != 0:
       reviewRequest = false
       reviewExplain = false
       reviewAsk = false
+      onAgentResult = nil
       let errors = readFile(agentDir / "err.txt").splitLines()
       echoLine = if errors.len > 0 and errors[0].len > 0: errors[0] else: "Agent exited with code " & $code
     else:
       let text = cleanAgentOutput(readFile(agentDir / "out.txt"))
       if validateUtf8(text) != -1: raise newException(ValueError, "Agent output is not valid UTF-8")
       if agentBuf notin reg: raise newException(ValueError, "Agent: its buffer was killed")
-      if reviewAsk:
+      if onAgentResult != nil:
+        let f = onAgentResult
+        onAgentResult = nil
+        f(text)
+      elif reviewAsk:
         reviewAsk = false
         if explainHunk in 0..<explained.len:
           explained[explainHunk] = true
@@ -679,6 +686,48 @@ var
   branchFiles: seq[tuple[rel, base: string]]
   branchRoot*: string
 
+type BranchFile* = object
+  rel*: string
+  plus*, minus*: int
+  dirty*: bool        ## uncommitted changes in the working tree
+  understood*: bool   ## a DONE entry of the branch attests to it at its current commit
+
+proc branchChanges*(root, branch, base: string): tuple[mergeBase: string, files: seq[BranchFile], error: string] =
+  ## The branch's work: files changed since the merge base with `base`, with +/- line
+  ## counts, in three git calls for the whole list (numstat, the dirty files, and the
+  ## last-change commits of the files the ledger knows), so large branches stay quick.
+  result.mergeBase = base
+  if branch != base:
+    let (mb, ok) = git(root, "merge-base " & quoteShell(base) & " HEAD")
+    if ok and mb.len > 0: result.mergeBase = mb
+  let (numstat, ok) = git(root, "diff --numstat " & quoteShell(result.mergeBase))
+  if not ok:
+    result.error = numstat.splitLines()[0]
+    return
+  var dirty: seq[string]
+  let (dirtyOut, _) = git(root, "diff --name-only")
+  for l in dirtyOut.splitLines:
+    if l.len > 0: dirty.add l
+  var understood: seq[tuple[file, rev: string]]
+  let ledger = ledgerPath()
+  if ledger.len > 0 and fileExists(ledger): understood = understoodRevs(readFile(ledger), branch)
+  for l in numstat.splitLines:
+    let parts = l.split('\t')
+    if parts.len < 3: continue
+    var f = BranchFile(rel: parts[2], dirty: parts[2] in dirty)
+    f.plus = try: parseInt(parts[0]) except ValueError: 0   # "-" for binary files
+    f.minus = try: parseInt(parts[1]) except ValueError: 0
+    let path = root / f.rel
+    if not f.dirty and understood.anyIt(it.file == path):
+      let rev = fileRev(root, path)   # only for files the ledger attests to
+      f.understood = (path, rev) in understood
+    result.files.add f
+
+proc plusMinus*(f: BranchFile): string =
+  result = (if f.plus > 0: "+" & $f.plus else: "") & (if f.plus > 0 and f.minus > 0: " " else: "") &
+    (if f.minus > 0: "-" & $f.minus else: "")
+  if result.len == 0: result = "±0"
+
 proc baseBranch*(root: string): string =
   let v = interp.env.values["understanding-base-branch"]
   if v.kind != vNil and v.asString.len > 0: return v.asString
@@ -718,31 +767,19 @@ interp.defPrimitive("branch-debt", proc(args: seq[Value]): Value =
   if base.len == 0:
     echoLine = "No base branch found (setq understanding-base-branch \"name\")"
     return nilValue()
-  var mergeBase = base
-  if branch != base:
-    let (mb, ok) = git(branchRoot, "merge-base " & quoteShell(base) & " HEAD")
-    if ok and mb.len > 0: mergeBase = mb
-  let (names, ok) = git(branchRoot, "diff --name-only " & quoteShell(mergeBase))
-  if not ok:
-    echoLine = "git: " & names.splitLines()[0]
+  let changes = branchChanges(branchRoot, branch, base)
+  if changes.error.len > 0:
+    echoLine = "git: " & changes.error
     return nilValue()
-  var understood: seq[tuple[file, rev: string]]
-  let ledger = ledgerPath()
-  if ledger.len > 0 and fileExists(ledger): understood = understoodRevs(readFile(ledger), branch)
   branchRows = @[]
   branchFiles = @[]
   var skipped = 0
-  for rel in names.splitLines:
-    if rel.len == 0: continue
-    let path = branchRoot / rel
-    let rev = fileRev(branchRoot, path)
-    let dirty = git(branchRoot, "diff --quiet -- " & quoteShell(rel)).ok == false
-    if (path, rev) in understood and not dirty:
+  for f in changes.files:
+    if f.understood:
       inc skipped
       continue
-    let (stat, _) = git(branchRoot, "diff --shortstat " & quoteShell(mergeBase) & " -- " & quoteShell(rel))
-    branchRows.add rel & "  " & stat.replace("1 file changed,", "").strip & (if dirty: "  (uncommitted)" else: "")
-    branchFiles.add (rel, mergeBase)
+    branchRows.add f.rel & "  " & plusMinus(f) & (if f.dirty: "  (uncommitted)" else: "")
+    branchFiles.add (f.rel, changes.mergeBase)
   if branchRows.len == 0:
     echoLine = if skipped > 0: "Branch " & branch & ": all " & $skipped & " changed files understood"
                else: "Branch " & branch & ": no changes from " & base

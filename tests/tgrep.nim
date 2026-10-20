@@ -22,4 +22,18 @@ doAssert hits[0].text.contains("eedle") and hits[1].text.contains("eedle")
 let none = runGrep(dir, "zzzz-not-there")
 doAssert none.hits.len == 0 and none.error == ""
 removeDir(dir)
+block agentPlaces:
+  let dir = getTempDir() / "darger-tgrep-places"
+  removeDir(dir); createDir(dir / "src")
+  writeFile(dir / "src" / "a.nim", "x\ny\nz\n")
+  writeFile(dir / "b.txt", "q\n")
+  let answer = "Here:\n- src/a.nim:2: the loop\n* `b.txt:1`\nsrc/a.nim:3:4: with a column\nmissing.nim:1: gone\nnot a place\n`b.txt:1`: again\n"
+  let places = parsePlaces(answer, dir)
+  doAssert places.len == 4 and places[3].text == "again", $places
+  doAssert places[0].path == dir / "src" / "a.nim" and places[0].line == 1 and places[0].text == "the loop"
+  doAssert places[1].path == dir / "b.txt" and places[1].line == 0
+  doAssert places[2].line == 2 and places[2].col == 3 and places[2].text == "with a column"
+  let refs = findReferences("See src/a.nim:2 and b.txt:1, also src/a.nim:2 again; nothere.txt:4.", dir)
+  doAssert refs.len == 2 and refs[0].line == 1 and refs[1].path == dir / "b.txt", $refs
+  removeDir(dir)
 echo "grep ok"

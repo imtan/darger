@@ -1,6 +1,6 @@
 ## Searching text across files for consult-ripgrep: the command to run (ripgrep when
 ## installed, else grep) and the parsing of its `path:line:col:text` output.
-import std/[os, strutils, osproc]
+import std/[os, strutils, osproc, sequtils]
 
 type Hit* = object
   path*: string
@@ -50,6 +50,54 @@ proc hitRow*(h: Hit, base: string, width = 200): string =
   var text = h.text.strip
   if text.len > width: text = text[0..<width]
   rel & ":" & $(h.line + 1) & ": " & text
+
+proc resolvePlace(h: Hit, root: string): Hit =
+  ## A hit with its path made absolute under root; path "" when no such file.
+  result = h
+  var p = h.path.strip(chars = {'`', '\'', '"', ' '})
+  if p.startsWith("~/"): p = getHomeDir() / p[2..^1]
+  if not p.isAbsolute: p = root / p
+  result.path = if fileExists(p): normalizedPath(p) else: ""
+
+proc parsePlaces*(output, root: string): seq[Hit] =
+  ## Places an agent names, one per line: `path:line: note`, `path:line` or
+  ## `path:line:col: note`, with Markdown bullets or backticks around them tolerated;
+  ## lines that are not a place or name no existing file are skipped.
+  for raw in output.splitLines:
+    var l = raw.strip
+    while l.len > 0 and l[0] in {'-', '*', '>', ' '}: l = l[1..^1].strip
+    l = l.replace("`", "").strip
+    if l.len == 0: continue
+    var h = parseHit(l & (if l.count(':') == 1: ":" else: ""), false)
+    if h.path.len == 0: continue
+    # `path:line:col: note` when the text starts with a number and a colon
+    let t = h.text
+    let c = t.find(':')
+    if c > 0 and t[0..<c].strip.allCharsInSet({'0'..'9'}) and t[0..<c].strip.len > 0:
+      h.col = max(0, parseInt(t[0..<c].strip) - 1)
+      h.text = t[c+1..^1]
+    h.text = h.text.strip
+    h = resolvePlace(h, root)
+    if h.path.len > 0: result.add h
+
+proc findReferences*(text, root: string): seq[Hit] =
+  ## `path:line` references anywhere in a text (an agent's reply): existing files only,
+  ## each place once, with the rest of its line as the note.
+  for raw in text.splitLines:
+    var i = 0
+    while i < raw.len:
+      if raw[i] in {'/', '.', '~', '_', '-'} or raw[i].isAlphaNumeric:
+        var j = i
+        while j < raw.len and (raw[j].isAlphaNumeric or raw[j] in {'/', '.', '~', '_', '-'}): inc j
+        if j < raw.len and raw[j] == ':' and j + 1 < raw.len and raw[j+1] in {'0'..'9'}:
+          var k = j + 1
+          while k < raw.len and raw[k] in {'0'..'9'}: inc k
+          let h = resolvePlace(Hit(path: raw[i..<j], line: max(0, parseInt(raw[j+1..<k]) - 1), text: raw.strip), root)
+          if h.path.len > 0 and not result.anyIt(it.path == h.path and it.line == h.line): result.add h
+          i = k
+          continue
+        i = j
+      else: inc i
 
 proc runGrep*(dir, query: string): tuple[hits: seq[Hit], error: string] =
   ## Runs the search in dir; rg exits 1 for no match, which is not an error.

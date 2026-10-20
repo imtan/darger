@@ -22,18 +22,6 @@ var
 proc paint(faces: var seq[Face], a, z: int, face: Face) =
   for i in max(0, a)..<min(z, faces.len): faces[i] = face
 
-proc plusMinus(shortstat: string): string =
-  ## " 1 file changed, 2 insertions(+), 1 deletion(-)" -> "+2 -1".
-  var plus, minus = 0
-  for part in shortstat.split(','):
-    let words = part.strip.split(' ')
-    if words.len >= 2:
-      let n = try: parseInt(words[0]) except ValueError: 0
-      if words[1].startsWith("insertion"): plus = n
-      elif words[1].startsWith("deletion"): minus = n
-  result = (if plus > 0: "+" & $plus else: "") & (if plus > 0 and minus > 0: " " else: "") & (if minus > 0: "-" & $minus else: "")
-  if result.len == 0: result = "±0"
-
 proc buildUnderstanding(keepLine = -1) =
   uroot = currentRoot()
   ubranch = branchOf(uroot)
@@ -54,24 +42,14 @@ proc buildUnderstanding(keepLine = -1) =
     if base.len == 0:
       add("Branch " & ubranch & ": no base branch (setq understanding-base-branch \"name\")", Row(), fKeyword)
     else:
-      var mergeBase = base
-      if ubranch != base:
-        let (mb, ok) = git(uroot, "merge-base " & quoteShell(base) & " HEAD")
-        if ok and mb.len > 0: mergeBase = mb
-      let (names, ok) = git(uroot, "diff --name-only " & quoteShell(mergeBase))
-      let understood = understoodRevs(ledgerText, ubranch)
+      let changes = branchChanges(uroot, ubranch, base)
+      let mergeBase = changes.mergeBase
       var todo, done: seq[tuple[rel, text: string]]
-      if ok:
-        for rel in names.splitLines:
-          if rel.len == 0: continue
-          let path = uroot / rel
-          let rev = fileRev(uroot, path)
-          let dirty = not git(uroot, "diff --quiet -- " & quoteShell(rel)).ok
-          let (stat, _) = git(uroot, "diff --shortstat " & quoteShell(mergeBase) & " -- " & quoteShell(rel))
-          let text = "    " & rel & "   " & plusMinus(stat) & (if dirty: "   (uncommitted)" else: "")
-          if (path, rev) in understood and not dirty: done.add (rel, text)
-          else: todo.add (rel, text)
-      add("Branch " & ubranch & " vs " & base, Row(), fKeyword)
+      for f in changes.files:
+        let text = "    " & f.rel & "   " & plusMinus(f) & (if f.dirty: "   (uncommitted)" else: "")
+        if f.understood: done.add (f.rel, text)
+        else: todo.add (f.rel, text)
+      add("Branch " & ubranch & " vs " & base & (if changes.error.len > 0: "   git: " & changes.error else: ""), Row(), fKeyword)
       add("  To understand (" & $todo.len & ")", Row(), fConstant)
       for (rel, text) in todo:
         add(text, Row(kind: rkFile, rel: rel, base: mergeBase), (if "(uncommitted)" in text: fAnsi3 else: fPlain))
