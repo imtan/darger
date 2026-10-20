@@ -8,6 +8,7 @@ type
   Renderer* = ref object
     gpu: Boxy
     fonts: seq[Font]
+    boldFont: Font
     fallbacks: string  # set-fallback-fonts / DARGER_FALLBACK_FONTS entries; "" uses the defaults
     chosen: Table[int, int]
     glyphs: HashSet[string]
@@ -123,6 +124,20 @@ proc tryLoadFont(path: string): Font =
     result = nil
     stderr.writeLine("Skipping font " & path & ": " & e.msg)
 
+proc loadBoldFont(path: string): Font =
+  # Match the primary's family in the same directory, never an unrelated bold face.
+  let (dir, name, ext) = splitFile(path)
+  var family = name
+  for weight in ["ExtraLight", "Light", "Regular", "Bold", "SemiBold", "Medium"]:
+    if name.endsWith("-" & weight):
+      family = name[0..<name.len - weight.len - 1]
+      break
+  for weight in ["Bold", "SemiBold", "Medium"]:
+    let candidate = dir / (family & "-" & weight & ext)
+    if fileExists(candidate):
+      result = tryLoadFont(candidate)
+      if result != nil: return
+
 proc defaultFallbacks(): seq[string] =
   when defined(windows):
     result = @["C:/Windows/Fonts/BIZ-UDGothicR.ttc", "C:/Windows/Fonts/YuGothM.ttc",
@@ -190,6 +205,7 @@ proc newRenderer*(): Renderer =
     let font = tryLoadFont(path)
     if font != nil:
       result.fonts.add font
+      result.boldFont = loadBoldFont(path)
       loaded.incl extractFilename(path)
       break
   when not defined(windows) and not defined(macosx):
@@ -198,6 +214,7 @@ proc newRenderer*(): Renderer =
       let font = if path.len > 0: tryLoadFont(path) else: nil
       if font != nil:
         result.fonts.add font
+        result.boldFont = loadBoldFont(path)
         loaded.incl extractFilename(path)
   if result.fonts.len == 0:
     raise newException(IOError, "Set DARGER_FONT to a readable monospace font")
@@ -220,6 +237,7 @@ proc setFont*(r: Renderer, path: string) =
   var fonts = @[loadFont(path)]
   var loaded = toHashSet([extractFilename(path)])
   loadFallbacks(fonts, r.fallbacks, loaded)
+  r.boldFont = loadBoldFont(path)
   r.swapFonts(fonts)
 
 proc setFallbackFonts*(r: Renderer, fallbacks: string) =
@@ -272,6 +290,7 @@ proc resize*(r: Renderer, window: Window, b: Buffer) =
     r.glyphs.clear()
     r.scale = scale
     for font in r.fonts: font.size = 16 * r.scale
+    if r.boldFont != nil: r.boldFont.size = 16 * r.scale
     let primary = r.fonts[0]
     r.cellW = max(1, int(ceil(primary.typeface.getAdvance(Rune(77)) * primary.scale)))
     r.cellH = max(1, int(ceil(primary.typeface.lineHeight * primary.scale)))
@@ -290,7 +309,7 @@ proc resize*(r: Renderer, window: Window, b: Buffer) =
 proc titleHit*(r: Renderer, window: Window, pos: IVec2): TitleHit =
   titleHit(r.bar, window.size.x.int, pos.x.int, pos.y.int)
 
-proc glyph(r: Renderer, rune: Rune, x, y: int, tint: Color) =
+proc glyph(r: Renderer, rune: Rune, x, y: int, tint: Color, bold = false) =
   ## One rune with its top left at window pixel x, y.
   if rune in [Rune(9), Rune(32)]: return
   let code = int(rune)
@@ -303,12 +322,16 @@ proc glyph(r: Renderer, rune: Rune, x, y: int, tint: Color) =
         r.chosen[code] = i
         break
   let index = r.chosen[code]
-  let key = "g" & $index & ":" & $code
+  let useBold = bold and index == 0 and r.boldFont != nil and r.boldFont.typeface.hasGlyph(rune)
+  # Without a bold weight (SF Mono, fallback fonts) bold is synthesised: the outline
+  # filled twice, one pixel apart, as terminals do.
+  let synthetic = bold and not useBold and index >= 0
+  let key = "g" & $index & ":" & $code & (if useBold: ":B" elif synthetic: ":S" else: "")
   if key notin r.glyphs:
     let cells = runeWidth(rune)
     let img = newImage(r.cellW * max(1, cells), r.cellH)
     if index >= 0:
-      let font = r.fonts[index]
+      let font = if useBold: r.boldFont else: r.fonts[index]
       let primary = r.fonts[0]
       let ascent = font.typeface.ascent * font.scale
       let baselineOffset = primary.typeface.ascent * primary.scale - ascent
@@ -320,6 +343,8 @@ proc glyph(r: Renderer, rune: Rune, x, y: int, tint: Color) =
                     else: 0'f32
       # Glyph paths use baseline zero; the cell image clips taller fallback outlines.
       img.fillPath(path, color(1, 1, 1, 1), translate(vec2(xOffset, ascent + baselineOffset)))
+      if synthetic:
+        img.fillPath(path, color(1, 1, 1, 1), translate(vec2(xOffset + max(1'f32, r.scale * 0.6), ascent + baselineOffset)))
     else:
       let path = newPath()
       path.rect(1, 3, (img.width - 2).float32, (img.height - 6).float32)
@@ -377,7 +402,8 @@ proc drawLine(r: Renderer, line: seq[Rune], row, scroll: int, cursor = -1,
               selectionStart = -1, selectionEnd = -1, matchStart = -1, matchEnd = -1,
               composition: seq[Rune] = @[], imeCursor = 0,
               x0 = 0, width = -1, tint = theme.fg, faces: seq[Face] = @[],
-              marks: seq[int8] = @[], paren = [-1, -1], bgs: seq[int8] = @[]) =
+              marks: seq[int8] = @[], paren = [-1, -1], bgs: seq[int8] = @[],
+              bolds: seq[int8] = @[]) =
   let visible = if width < 0: r.pw else: width
   let rs = displayLine(line, composition, cursor)
   let caret = if composition.len > 0 and cursor >= 0: cursor + imeCursor else: cursor
@@ -413,7 +439,8 @@ proc drawLine(r: Renderer, line: seq[Rune], row, scroll: int, cursor = -1,
         else:
           let face = if composing or original >= faces.len: fPlain else: faces[original]
           r.glyph(rune, r.cellX(x0+at-scroll), r.rowY(row),
-            if underCursor: theme.bg elif matched: theme.searchFg else: faceColor(face, tint))
+            if underCursor: theme.bg elif matched: theme.searchFg else: faceColor(face, tint),
+            bold = not composing and original < bolds.len and bolds[original] == 1)
           let mark = if composing or original >= marks.len: 0'i8 else: marks[original]
           if mark in 1'i8..5'i8:  # a diagnostic (1-4) or a plain underline (5): 2 px at the bottom
             r.gpu.drawRect(rect(r.cellX(x0+at-scroll).float32,
@@ -629,6 +656,7 @@ type
     faces*: seq[seq[Face]]
     marks*: seq[seq[int8]]   # per rune: 1-4 diagnostic underlines, 5 a plain underline
     bgs*: seq[seq[int8]]     # per rune: 1-8 an ANSI background colour
+    bolds*: seq[seq[int8]]   # per rune: 1 = bold
     fold*: seq[int8]
     extra*: seq[int]         # rows under each line (inline images); missing = 0
     pictures*: seq[Picture]
@@ -802,7 +830,8 @@ proc drawPane(r: Renderer, window: Window, p: var PaneView, composition: seq[Run
       if at >= 0: comp else: @[], imeCursor,
       faces = if line < p.faces.len: p.faces[line] else: @[],
       marks = if line < p.marks.len: p.marks[line] else: @[], paren = paren,
-      x0 = gutter, width = cols, bgs = if line < p.bgs.len: p.bgs[line] else: @[])
+      x0 = gutter, width = cols, bgs = if line < p.bgs.len: p.bgs[line] else: @[],
+      bolds = if line < p.bolds.len: p.bolds[line] else: @[])
     offset += b.lines[line].len + 1
     inc row
     # The rows under a line hold its picture, cropped at the pane's bottom.

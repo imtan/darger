@@ -90,6 +90,20 @@ block colours:
   inv.feed("\x1b[32;7mG")                             # inverse swaps the colours
   doAssert inv.colors[0] == @[1'i8] and inv.backgrounds[0] == @[3'i8]
 
+block bold:
+  var s = initScreen(20, 2)
+  s.feed("\e[1mBold\e[0m plain")
+  doAssert s.lines == @["Bold plain", ""]
+  doAssert s.bolds == @[@[1'i8, 1, 1, 1, 0, 0, 0, 0, 0, 0], newSeq[int8]()]
+  s.feed("\r\n\e[1;4m日x\e[22my\e[0mz")  # wide filler skipped; 22 keeps underline
+  doAssert s.lines[1] == "日xyz"
+  doAssert s.bolds[1] == @[1'i8, 1, 0, 0]
+  doAssert s.underlines[1] == @[5'i8, 5, 5, 0]
+  s.resize(20, 1)                                   # flags follow the surviving row
+  doAssert s.bolds == @[@[1'i8, 1, 0, 0]]
+  s.feed("\e[2J")
+  doAssert s.bolds == @[newSeq[int8]()]
+
 block resizing:
   var s = initScreen(6, 3)
   s.feed("one\r\ntwo\r\nthree")

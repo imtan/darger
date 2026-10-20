@@ -48,15 +48,15 @@ R7. (done, first slice) Understanding ledger (user: "ドメイン知識も含め
 (2026-10-16: reordered after comparing ~/.emacs.d/config.org with darger. The user's
 rule: only add what is missing; never rebind or remove existing darger keys.)
 
-1. Terminal: a bold face (second font weight).
-2. Mode line polish (doom-modeline-ish): git branch, LSP state, SKK state grouped.
-3. Books viewer, skilltree / feynman menus, YouTube browse, nostr, elpher, calfw:
+1. Mode line polish (doom-modeline-ish): git branch, LSP state, SKK state grouped.
+2. Books viewer, skilltree / feynman menus, YouTube browse, nostr, elpher, calfw:
     personal Emacs tools; port only on request.
 
 ## Log
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-20 terminal: bold font weight (Bold / SemiBold / Medium), per-pane bold attributes and regular fallback; SGR reset and wide-rune flags covered by tscreen (synthetic bold when the font has no bold weight, e.g. SF Mono)
 - 2026-10-20 review R6: | toggles aligned read-only before/after panes, shared decisions and navigation, restores panes on exit; alignment, colours and refine covered by treview
 - 2026-10-20 review R3: e edits proposed hunk lines in *hunk*, C-c C-c applies and C-c C-k cancels; newline normalization and rediff covered by treview
 - 2026-10-20 olivetti-mode: per-buffer centred writing margin, configurable body width and automatic language activation; drawing, mouse mapping and Org images share the margin (tolivetti)

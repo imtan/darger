@@ -315,6 +315,9 @@ when not defined(windows):
   markProviders.add proc(buf: Buffer): seq[seq[int8]] =
     let t = terminalOf(buf)
     if t != nil: result = screenRows(buf, t.screen.underlines)
+  boldProviders.add proc(buf: Buffer): seq[seq[int8]] =
+    let t = terminalOf(buf)
+    if t != nil: result = screenRows(buf, t.screen.bolds)
 
   killHooks.add proc(buf: Buffer) =
     let t = terminalOf(buf)

@@ -565,9 +565,11 @@ mode line shows `[Line]` or `[Char]`, and `(term-send-input)` sends the typed
 input from Lisp. An init file that opens a file or a terminal is no longer covered
 by the dashboard. The buffer's cursor is the terminal's; wide (CJK) runes take two
 cells; the eight ANSI colours show as foreground and background, underline as an
-underline, inverse video by swapping the two (bold is recorded but drawn as regular
-text). The terminal has no line-number gutter, so the program owns every column of
-its window. A program that asks for mouse reports (`?1000`, `?1002`, `?1003`, SGR
+underline, inverse video by swapping the two. Bold text uses the primary font's Bold
+weight when installed (SemiBold, then Medium as fallbacks); without one (SF Mono,
+fallback fonts) the glyph is filled twice a pixel apart, as terminals synthesise bold.
+The terminal has no line-number gutter, so the program owns every column of its
+window. A program that asks for mouse reports (`?1000`, `?1002`, `?1003`, SGR
 `?1006`) gets clicks, releases and wheel notches on its cells instead of darger's
 cursor placement and scrolling; on the alternate screen without reports, the wheel
 sends arrow keys, as terminals do for `less` or `vim`. Killing the buffer or quitting

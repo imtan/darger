@@ -254,6 +254,7 @@ var
   faceProviders*: seq[proc(buf: Buffer): seq[seq[Face]]]  # a non-empty result replaces the
                                                              # language highlighting (a terminal's colours)
   backProviders*: seq[proc(buf: Buffer): seq[seq[int8]]]   # per-rune background colours (1-8), any pane
+  boldProviders*: seq[proc(buf: Buffer): seq[seq[int8]]]   # per-rune bold (1), any pane
   bandProviders*: seq[proc(buf: Buffer): seq[int8]]        # per-line bands (5 = highlighted line), any pane
   markProviders*: seq[proc(buf: Buffer): seq[seq[int8]]]   # per-rune underlines (5) when the buffer has
                                                              # no diagnostics
@@ -1623,6 +1624,7 @@ proc redraw*(hover = thNone, maximized = false) =
         faces: displayFaces, marks: if displayed == b: shownMarks else: @[],
         bgs: if displayed == b: provided(backProviders, b)
              elif view != nil and view.bgs != nil: view.bgs() else: @[],
+        bolds: provided(boldProviders, displayed),
         fold: if displayed == b: folds(b) else: @[],
         extra: if displayed == b: shownPictures.extra else: @[],
         pictures: if displayed == b: shownPictures.pictures else: @[],
@@ -1640,6 +1642,7 @@ proc redraw*(hover = thNone, maximized = false) =
         cursor: p.cursor, active: false, faces: facesOf(buf), fold: folds(buf), lineNumbers: gutterFor(buf) > 0,
         extra: pics.extra, pictures: pics.pictures, lineColors: bands(buf), margin: marginFor(buf, p.w),
         bgs: provided(backProviders, buf), marks: provided(markProviders, buf),
+        bolds: provided(boldProviders, buf),
         modeLine: modeLineText(buf, reg.displayName(buf), p.cursor, langOf(buf).name, ""),
         matchStart: -1)
   var thumbnail = ""

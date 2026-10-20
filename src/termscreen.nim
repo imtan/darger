@@ -88,6 +88,10 @@ proc underlines*(s: Screen): seq[seq[int8]] =
   ## 5 under every underlined rune (the renderer's plain underline mark), else 0.
   s.perRune(proc(c: Cell): int8 = (if (c.attr and 2) != 0: 5'i8 else: 0'i8))
 
+proc bolds*(s: Screen): seq[seq[int8]] =
+  ## 1 under every bold rune, else 0.
+  s.perRune(proc(c: Cell): int8 = (if (c.attr and 1) != 0: 1'i8 else: 0'i8))
+
 proc scrollbackLines*(s: Screen): seq[string] =
   for r in s.scrollback: result.add rowText(r)
 
