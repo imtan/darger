@@ -50,8 +50,7 @@ R7. (done, first slice) Understanding ledger (user: "ドメイン知識も含め
 rule: only add what is missing; never rebind or remove existing darger keys.)
 
 1. Terminal: a bold face (second font weight).
-2. Mode line polish (doom-modeline-ish): git branch, LSP state, SKK state grouped;
-    olivetti-style centred writing width for Org (`M-x olivetti-mode`).
+2. Mode line polish (doom-modeline-ish): git branch, LSP state, SKK state grouped.
 3. Books viewer, skilltree / feynman menus, YouTube browse, nostr, elpher, calfw:
     personal Emacs tools; port only on request.
 
@@ -59,6 +58,7 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-20 olivetti-mode: per-buffer centred writing margin, configurable body width and automatic language activation; drawing, mouse mapping and Org images share the margin (tolivetti)
 - 2026-10-20 agent prose wraps to pane width with Japanese kinsoku and list indents; cached Git branch in the mode line, including worktrees (twrap, tvcline)
 - 2026-10-20 magit, minimal: C-x g status, stage/unstage, HEAD review, confirmed discard, commit prompt, push / ff-only pull; porcelain -z parsing (tmagit)
 - 2026-10-20 writing helpers (C-c G): region/buffer translation, proofreading, tone, summaries, keywords and titles through hunk review; Markdown blog drafts in another window (twriting)

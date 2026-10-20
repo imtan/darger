@@ -830,6 +830,11 @@ webp、bmp も。`~` やファイルからの相対パス可。WebP は macOS �
 リセンターは絵の行数も数えます。ファイルが変わると読み直し、絵をクリックするとその行末に
 ポイントが移ります。M-x org-toggle-inline-images で非表示 / 表示を切り替えます。
 
+M-x olivetti-mode で、バッファごとに本文を中央へ寄せる表示を切り替えます。
+`olivetti-body-width` (既定 100 セル) より広いペインでは左余白を加え、行番号は本文のすぐ左に
+表示します。狭いペインでは余白を加えません。`(setq olivetti-languages '("Org" "Markdown"))`
+を設定すると、その言語のファイルを開いたときに自動で有効になります (既定 nil)。
+
 Eagle (eagle.cool) からの画像も Emacs と同じ手順で入れられます。C-M-e (`org-insert-eagle-image`) は
 キーワード (空なら新しい順) を尋ね、Eagle のローカル API から該当する画像を `name.ext  [タグ]` で
 一覧し、C-c e (`org-insert-eagle-image-from-folder`) は先に Eagle のフォルダ (`親/子`) を選びます。

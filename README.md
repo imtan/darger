@@ -909,6 +909,12 @@ wheel, C-v / M-v and recentring count its rows. Files are reloaded when they
 change; a click on a picture puts point at the end of its line.
 M-x org-toggle-inline-images hides and shows them.
 
+M-x olivetti-mode toggles a centred writing column for the current buffer.
+Set `olivetti-body-width` (default 100 cells) to choose the body width; wider
+panes add a left margin, with line numbers beside the text, while narrower panes
+keep their usual layout. Set `(setq olivetti-languages '("Org" "Markdown"))`
+to enable it automatically when visiting those languages (default nil).
+
 Images from Eagle (eagle.cool), as the user's Emacs does: C-M-e
 (`org-insert-eagle-image`) asks for a keyword (empty for the newest items) and lists
 the matching images from Eagle's local API as `name.ext  [tags]`; C-c e

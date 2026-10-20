@@ -634,6 +634,7 @@ type
     pictures*: seq[Picture]
     lineColors*: seq[int8]
     lineNumbers*: bool
+    margin*: int
     modeLine*: string
     box*: CursorBox
     matchStart*, matchLen*: int
@@ -736,7 +737,7 @@ proc drawPane(r: Renderer, window: Window, p: var PaneView, composition: seq[Run
   let showCursor = p.active and textCursor
   # The gutter: right-aligned numbers, at least 3 digits wide so it rarely shifts, and
   # 2 empty cells before the text.
-  let gutter = if p.lineNumbers: gutterWidth(b.lines.len) else: 0
+  let gutter = p.margin + (if p.lineNumbers: gutterWidth(b.lines.len) else: 0)
   let cols = max(1, r.cols - gutter)
   let comp = if showCursor: composition else: @[]
   let cursor = if p.active: b.cursor else: p.cursor
@@ -788,7 +789,7 @@ proc drawPane(r: Renderer, window: Window, p: var PaneView, composition: seq[Run
     var paren = [-1, -1]
     for i, pp in pair:
       if pp.line == line: paren[i] = pp.col
-    if gutter > 0:
+    if p.lineNumbers:
       r.drawLine(align($(line + 1), gutter - 2).toRunes, row, 0, width = gutter - 2,
         tint = if line == cursor.line: theme.lineNoNow else: theme.lineNo)
     # A folded headline ends in "..." like Emacs' ellipsis for hidden text.

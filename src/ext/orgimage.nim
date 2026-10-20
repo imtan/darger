@@ -16,7 +16,7 @@ proc resolve(buf: Buffer, link: string): string =
 proc orgPictures(buf: Buffer): tuple[extra: seq[int], pictures: seq[Picture]] =
   if not shown or langOf(buf).name != "Org" or renderer.cellH == 0: return
   let maxRows = max(1, interp.env.values["org-image-max-rows"].asNumber.int)
-  let maxW = max(4, renderer.cols - gutterFor(buf) - 2) * renderer.cellW
+  let maxW = max(4, renderer.cols - gutterFor(buf) - marginFor(buf, renderer.cols) - 2) * renderer.cellW
   let maxH = maxRows * renderer.cellH
   for n, line in buf.lines:
     let link = imageLink(line)
