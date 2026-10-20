@@ -430,6 +430,24 @@ C-c u (`understanding`) は `*understanding*` バッファを開きます。台�
 `review-previous`、`review-finish`、`review-explain-hunk`、`review-attest`)。init ファイルや
 エージェントからレビューを操作できます。
 
+## Git (magit, minimal)
+
+`C-x g` (`magit-status`) は現在のファイルのリポジトリを読み取り専用の `*magit*`
+バッファで表示します。HEAD、upstream との ahead/behind、未追跡・未ステージ・
+ステージ済みのファイル、直近 10 コミットが並びます。`n` / `p` で行を移動、
+`g` で更新、`q` で隣のウィンドウ (なければ前のバッファ) へ移動、`?` でキー一覧です。
+
+- `s` / `u`: ファイルを stage / unstage。未追跡・未ステージの見出しで `s` を押すと
+  全変更を stage (`git add -A`)、ステージ済みの見出しで `u` を押すと全件を unstage。
+- Enter: ファイルを開き、未ステージの変更があれば HEAD とレビューします (`git HEAD`)。
+  ハンクを採用するとバッファ内の該当部分が HEAD の内容に戻ります。
+  未追跡・ステージ済みのみのファイルは開くだけです。
+- `k`: y/n で確認して未ステージの変更を破棄 (index の内容に戻す)。
+- `c`: メッセージを入力して commit。`P`: push。`F`: `--ff-only` で pull。
+
+Git 操作は保存済みファイルに対して同期実行します。stage の前に編集を保存してください。
+操作後は表示を更新し、可能な範囲でカーソル行を維持します。
+
 ## ファイラ (Dired)
 
 C-x d はディレクトリを尋ねます。開始位置は現在のファイルのディレクトリ (scratch なら

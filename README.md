@@ -466,6 +466,24 @@ The review's keys are also commands (`review-take`, `review-keep`, `review-next`
 `review-previous`, `review-finish`, `review-explain-hunk`, `review-attest`), so an
 init file or an agent can drive a review.
 
+## Git (magit, minimal)
+
+`C-x g` (`magit-status`) opens the read-only `*magit*` buffer for the current
+file's repository: HEAD, upstream ahead/behind counts, untracked / unstaged /
+staged files, and the ten recent commits. `n` / `p` move, `g` refreshes, `q`
+leaves (the other window, or the previous buffer), and `?` lists the keys.
+
+- `s` / `u`: stage / unstage the file. On an untracked or unstaged heading,
+  `s` stages all changes (`git add -A`); on the staged heading, `u` unstages all.
+- Enter: visit the file; files with unstaged changes open a review against HEAD
+  (`git HEAD`, as in `vc-review`). Accepting a hunk restores its HEAD version in
+  the buffer. Untracked and staged-only files are just visited.
+- `k`: discard an unstaged file's changes after a y/n prompt (restore the index version).
+- `c`: prompt for a commit message; `P`: push; `F`: pull with `--ff-only`.
+
+Git operations run synchronously on saved files; save edits before staging.
+The status refreshes after operations and keeps the cursor row where possible.
+
 ## Filer (Dired)
 
 C-x d prompts for a directory, starting in the current file's directory (or the

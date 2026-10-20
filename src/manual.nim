@@ -191,6 +191,11 @@ C-c n d                  今日のデイリーノート daily/日付.org を開�
 C-c n j                  今日のデイリーに時刻の見出しを足す
 C-c n s                  Org ディレクトリを全文検索 (M-x consult-ripgrep はプロジェクト)
 C-x p f / p / b          プロジェクトのファイルを開く / プロジェクト切替 / プロジェクトのバッファ
+C-x g                    Git status (*magit*): HEAD / upstream / 未追跡 / 未ステージ / ステージ済み / 履歴
+  s / u                  ファイルを stage / unstage (見出しでは全変更を stage / 全件を unstage)
+  Enter / k              ファイルを開き HEAD とレビュー / 未ステージの変更を y/n 確認後に破棄
+  c / P / F              メッセージを入力して commit / push / pull --ff-only
+  n / p / g / q / ?      行移動 / 更新 / 離れる / キー一覧 (Git 操作は保存済みの内容が対象)
 C-c l                    エージェントに「どこ?」と聞き、答えを *places* (grep バッファ風) で開く
   n / p / Enter / o / q  場所を移動 (隣のウィンドウが追従) / そこへ移動 / 編集切替 / 離れる (普通のバッファ。C-x o 可)
 M-x places               今のバッファを places 一覧として開く (-*- mode: grep -*- のファイルは自動)

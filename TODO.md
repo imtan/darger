@@ -49,18 +49,17 @@ R7. (done, first slice) Understanding ledger (user: "ドメイン知識も含め
 (2026-10-16: reordered after comparing ~/.emacs.d/config.org with darger. The user's
 rule: only add what is missing; never rebind or remove existing darger keys.)
 
-1. magit, minimal: `C-x g` status buffer (branch, staged/unstaged files, untracked),
-   `s`/`u` stage/unstage, `c c` commit with a message buffer, `P p` push, diff on Enter.
-2. Terminal: a bold face (second font weight).
-3. Mode line polish (doom-modeline-ish): git branch, LSP state, SKK state grouped;
+1. Terminal: a bold face (second font weight).
+2. Mode line polish (doom-modeline-ish): git branch, LSP state, SKK state grouped;
     olivetti-style centred writing width for Org (`M-x olivetti-mode`).
-4. Books viewer, skilltree / feynman menus, YouTube browse, nostr, elpher, calfw:
+3. Books viewer, skilltree / feynman menus, YouTube browse, nostr, elpher, calfw:
     personal Emacs tools; port only on request.
 
 ## Log
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-20 magit, minimal: C-x g status, stage/unstage, HEAD review, confirmed discard, commit prompt, push / ff-only pull; porcelain -z parsing (tmagit)
 - 2026-10-20 writing helpers (C-c G): region/buffer translation, proofreading, tone, summaries, keywords and titles through hunk review; Markdown blog drafts in another window (twriting)
 - 2026-10-20 dashboard like nvim's start screens (user request): solid-cell DARGER logo with shadow (bgs 13/14), centred menu with real bindings, recent files, footer with the understanding debt, relaid on resize
 - 2026-10-20 understanding-repay: explain the nearest recorded debt, mark it DONE, and merge glossary terms; x on understanding debt rows (ledger tests)
