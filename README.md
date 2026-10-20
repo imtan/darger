@@ -415,12 +415,13 @@ are gone; before a merge it answers "what did I do here that I do not yet
 understand?".
 
 C-c u (`understanding`) opens the `*understanding*` buffer, the ledger as a view to
-work from (a magit status for understanding debt): the branch against its base with
+work from (a magit status for understanding debt), an ordinary read-only buffer with
+its own keys, so C-x o, splits and C-x b work as usual: the branch against its base with
 the files still to understand (`+n -m`, `(uncommitted)`) and the ones understood,
 the open debt entries on the branch, and the glossary size. Enter on a file opens
 the base comparison and the buffer comes back when it closes; Enter on a debt entry
 goes to the spot; U marks a whole file understood; o opens the ledger file; g
-rebuilds; q closes. The first time in a repository the buffer asks which branch to
+rebuilds; q leaves it. The first time in a repository the buffer asks which branch to
 understand the work against (local and remote-tracking branches, the usual main /
 master / develop first) instead of silently comparing with master; the choice is
 remembered per repository in `~/.darger-understanding-bases`, b changes it, and

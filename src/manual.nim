@@ -134,7 +134,7 @@ M-x understanding-debt   理解台帳 (~/.darger-understanding.org) の今のブ
 M-x branch-debt          このブランチで base から変わったファイルのうち未理解のもの。Enter で base と比較レビュー
 C-c u                    *understanding* バッファ: ブランチの未理解 / 理解済みファイル、未返済エントリ、用語集
                          Enter で比較 (閉じると戻る) / 負債の場所へ、b で base ブランチ選択、U でファイル全体を理解済み、
-                         o 台帳、g 再構築、q 閉じる
+                         o 台帳、g 再構築、q 離れる (普通のバッファ。C-x o 可)
 M-x glossary             説明から集めた用語集 (~/.darger-glossary.org) を引く
                          実行中は C-g で中止
                          差分: y:採用 k:見送り a:全採用

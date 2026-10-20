@@ -1,10 +1,12 @@
 ## The *understanding* buffer: the ledger as a view to work from, like a magit
 ## status for understanding debt. The branch's files still to understand (with the
 ## ones already understood), the open debt entries on the branch, the glossary size.
-## Enter opens a comparison or the spot, U attests a whole file, g rebuilds, q closes.
+## An ordinary read-only buffer with its own keys (window and buffer commands work as
+## usual): Enter opens a comparison or the spot, b picks the base branch, U attests a
+## whole file, o opens the ledger, g rebuilds, q leaves.
 import std/[os, strutils, tables, times, sequtils, unicode]
 import ../[core, buffer, buffers, lisp, syntax, chat, ledger]
-import agent, web
+import agent
 
 type
   RowKind = enum rkNone, rkFile, rkDoneFile, rkDebt, rkLedger
@@ -83,8 +85,11 @@ proc buildUnderstanding(keepLine = -1) =
   let terms = if glossary.len > 0 and fileExists(glossary): glossaryTerms(readFile(glossary)).len else: 0
   add("Glossary: " & $terms & " terms (M-x glossary)   Ledger: " & (if ledger.len > 0: shortPath(ledger) else: "nil") & " (o)",
     Row(kind: rkLedger, file: ledger), fComment)
-  ubuf = newBuffer(lines.join("\n"))
-  ubuf.path = "*understanding*"
+  if ubuf == nil or ubuf notin reg:
+    ubuf = newBuffer()
+    reg.add(ubuf, "*understanding*")
+  ubuf.splice(0, ubuf.text.runeLen, lines.join("\n"))
+  ubuf.modified = false
   ufaces = faces
   var line = if keepLine >= 0: keepLine else: 2
   while line < urows.len and urows[line].kind == rkNone and line < urows.high: inc line
@@ -105,10 +110,9 @@ proc chooseBase(first = false) =
     return
   beginMini("understanding-base", (if first: "Understand " & ubranch & " against: " else: "Compare " & ubranch & " with: "))
 
-definePrompt(Prompt(kind: "understanding-base", text: true, over: "understanding",
+definePrompt(Prompt(kind: "understanding-base", text: true,
   candidates: proc(): seq[string] = baseRows,
   onAccept: proc(value: string): bool =
-    mode = "understanding"
     if value.len == 0: return true
     ubase = value
     rememberBase(basesPath(), uroot, value)
@@ -118,20 +122,22 @@ definePrompt(Prompt(kind: "understanding-base", text: true, over: "understanding
     true))
 
 proc openUnderstanding*() =
-  ## C-c u: the first time in a repository (and when nothing is remembered) the base
-  ## branch is asked for, so the comparison is never silently against master.
-  if mode notin ["", "eval", "execute"]: closeOverlay()
-  beginOverlay("understanding")
+  ## C-c u: the buffer for the current file's repository, shown in this window; the
+  ## first time in a repository (nothing remembered) the base branch is asked for, so
+  ## the comparison is never silently against master.
   uroot = currentRoot()
   ubranch = branchOf(uroot)
   ubase = settingBase()
   if ubase.len == 0: ubase = baseFor(loadBases(basesPath()), uroot)
   buildUnderstanding()
+  switchTo(ubuf)
   if ubase.len == 0 and ubranch.len > 0: chooseBase(first = true)
 
-proc finishUnderstanding() =
-  finishOverlay()
-  ubuf = nil
+proc leaveUnderstanding() =
+  ## q: the other window when there is one, else the previous buffer.
+  let other = otherPaneFor()
+  if other != nil and other != pane: selectPane(other)
+  else: discard interp.evalString("(previous-buffer)", "<understanding>")
 
 proc attestFile(rel, base: string) =
   ## U: the whole file understood, as one DONE entry at its current commit.
@@ -144,35 +150,32 @@ proc attestFile(rel, base: string) =
     branch: ubranch, rev: fileRev(uroot, file), explanation: "(understood by the reviewer, whole file)", at: now())])
   echoLine = rel & " marked understood"
 
-proc dispatchUnderstanding(c: string) =
-  if c in ["q", "C-g", "escape"]:
-    finishUnderstanding()
-    return
-  let full = overlayKey(c)
-  if full.len == 0: return
-  let command = keymap.getOrDefault(full).symName
-  if full != "C-l": recenterCycle = 0
+keyFilters.add proc(c: string): bool =
+  ## The buffer's keys, while it is current and no prefix is pending; everything else
+  ## (C-x o, C-x b, splits) is the editor's as usual.
+  if mode.len > 0 or prefix.len > 0 or ubuf == nil or b != ubuf: return false
   let row = if ubuf.cursor.line < urows.len: urows[ubuf.cursor.line] else: Row()
   let here = ubuf.cursor.line
-  case full
+  case c
   of "enter", "C-m", "C-j", "f":
     case row.kind
     of rkFile, rkDoneFile:
-      finishOverlay()
       branchRoot = uroot
-      afterReview = proc() = openUnderstanding()
+      afterReview = proc() =
+        switchTo(ubuf)
+        buildUnderstanding(here)
       reviewBranchFile(row.rel, row.base)
-      if mode != "review": afterReview = nil; openUnderstanding()  # nothing to compare: stay here
+      if mode != "review":  # nothing to compare: stay here
+        afterReview = nil
+        switchTo(ubuf)
+        buildUnderstanding(here)
     of rkDebt:
-      finishOverlay()
       try:
         visit(row.file)
         b.cursor = (min(row.line - 1, b.lines.high), 0)
       except CatchableError as e: echoLine = e.msg
     of rkLedger:
-      if row.file.len > 0:
-        finishOverlay()
-        visit(row.file)
+      if row.file.len > 0: visit(row.file)
     of rkNone: echoLine = "Nothing to open here"
   of "b": chooseBase()
   of "U":
@@ -183,46 +186,45 @@ proc dispatchUnderstanding(c: string) =
   of "o":
     let path = ledgerPath()
     if path.len == 0: echoLine = "understanding-ledger is nil"
-    else:
-      finishOverlay()
-      visit(path)
+    else: visit(path)
   of "g":
     buildUnderstanding(here)
     echoLine = "Rebuilt"
-  of "?": echoLine = "Enter: compare the file with the base / go to the debt   b: choose the base branch   U: whole file understood   o: the ledger   g: rebuild   q: close"
-  of "f1":
-    finishUnderstanding()
-    dispatch(full)
-  of "C-x C-c": quitEditor()
-  else:
-    if command == "understanding": finishUnderstanding()
-    elif command in ["other-window", "windmove-left", "windmove-right", "windmove-up", "windmove-down",
-                     "switch-to-buffer", "find-file", "delete-window", "delete-other-windows",
-                     "split-window-below", "split-window-right"]:
-      finishUnderstanding()  # the buffer comes back with C-c u
-      dispatch(full)
-    elif overlayMove(ubuf, full, command): discard
-    else: echoLine = full & " is undefined"
-
-defineMode(Mode(name: "understanding", modeName: "Understanding", buffer: proc(): Buffer = ubuf,
-  faces: proc(): seq[seq[Face]] = ufaces,
-  message: proc(): string = (if echoLine.len > 0: echoLine else: "Understanding  Enter:open b:base U:understood o:ledger g:rebuild q:close ?:help"),
-  onKey: dispatchUnderstanding, onClose: finishUnderstanding))
+  of "q": leaveUnderstanding()
+  of "?": echoLine = "Enter: compare the file with the base / go to the debt   b: base branch   U: whole file understood   o: the ledger   g: rebuild   q: leave"
+  else: return false
+  true
+runeFilters.add proc(r: Rune): bool =
+  # Read-only: typed characters are keys or nothing.
+  if mode.len > 0 or prefix.len > 0 or ubuf == nil or b != ubuf: return false
+  if r.int < 128 and char(r.int) in {'f', 'b', 'U', 'o', 'g', 'q', '?'}: return false
+  echoLine = "The understanding buffer is read-only (? for its keys)"
+  true
+faceProviders.add proc(buf: Buffer): seq[seq[Face]] =
+  if buf == ubuf and ubuf != nil: ufaces else: @[]
+bandProviders.add proc(buf: Buffer): seq[int8] =
+  # The row under the cursor when it is a file or an entry.
+  if buf == ubuf and ubuf != nil and ubuf.cursor.line < urows.len and urows[ubuf.cursor.line].kind != rkNone:
+    result = newSeq[int8](ubuf.lines.len)
+    result[ubuf.cursor.line] = 5
+killHooks.add proc(buf: Buffer) =
+  if buf == ubuf: ubuf = nil
 
 interp.defPrimitive("understanding-base", proc(args: seq[Value]): Value =
   ## (understanding-base) asks for the base branch inside the buffer; (understanding-base "name") sets it.
   args.arity(0, 1)
   if args.len == 1:
     interp.env.values["understanding-base-branch"] = stringValue(args[0].asString)
-    if mode == "understanding": buildUnderstanding()
-  elif mode == "understanding": chooseBase()
+    ubase = args[0].asString
+    if ubuf != nil and b == ubuf: buildUnderstanding()
+  elif ubuf != nil and b == ubuf: chooseBase()
   else: echoLine = "Open the understanding buffer first (C-c u)"
   nilValue())
 
 interp.defPrimitive("understanding", proc(args: seq[Value]): Value =
-  ## M-x understanding / C-c u: the understanding buffer; from inside it, closes it.
+  ## M-x understanding / C-c u: the understanding buffer; from inside it, leaves it.
   args.arity(0, 0)
-  if mode == "understanding": finishUnderstanding()
+  if ubuf != nil and b == ubuf: leaveUnderstanding()
   elif mode in ["", "eval", "execute"]: openUnderstanding()
   else: echoLine = "understanding is unavailable here"
   nilValue())
