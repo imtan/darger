@@ -1,6 +1,6 @@
 ## Writing helpers share the one-shot agent and its hunk review.
 import std/[strutils, tables]
-import ../[core, buffer, buffers, lisp, writing]
+import ../[core, buffer, buffers, lisp, writing, wrap, render]
 import agent
 
 proc writingReady(): bool =
@@ -10,10 +10,19 @@ proc writingReady(): bool =
     echoLine = "agent-command is empty"
   else: return true
 
+var draftSources: seq[tuple[buf: Buffer, text: string]]
+
 proc showDraft(text: string) =
-  let draft = newBuffer(text)
-  reg.add(draft, "*agent draft*")
+  # Retain each open draft's unwrapped source; discard sources of closed drafts.
+  var sources: seq[tuple[buf: Buffer, text: string]]
+  for source in draftSources:
+    if source.buf in reg: sources.add source
   let other = otherPaneFor()
+  let width = max(20, (if other != nil: other.w else: renderer.cols) - gutterWidth(text.countLines + 1) - 2)
+  let draft = newBuffer(wrapText(text, width))
+  sources.add (draft, text)
+  draftSources = sources
+  reg.add(draft, "*agent draft*")
   if other != nil and other != pane:
     other.buf = draft
     other.top = 0

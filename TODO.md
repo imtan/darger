@@ -59,6 +59,7 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-20 agent prose wraps to pane width with Japanese kinsoku and list indents; cached Git branch in the mode line, including worktrees (twrap, tvcline)
 - 2026-10-20 magit, minimal: C-x g status, stage/unstage, HEAD review, confirmed discard, commit prompt, push / ff-only pull; porcelain -z parsing (tmagit)
 - 2026-10-20 writing helpers (C-c G): region/buffer translation, proofreading, tone, summaries, keywords and titles through hunk review; Markdown blog drafts in another window (twriting)
 - 2026-10-20 dashboard like nvim's start screens (user request): solid-cell DARGER logo with shadow (bgs 13/14), centred menu with real bindings, recent files, footer with the understanding debt, relaid on resize

@@ -2,7 +2,7 @@
 ## chat per project root with a live transcript (C-c c, chat.nim).
 import std/[os, osproc, tempfiles, strutils, unicode, times, tables, sequtils]
 from windy import closeIme
-import ../[core, buffer, buffers, render, lisp, review, chat, lsp, changes, ledger]
+import ../[core, buffer, buffers, render, lisp, review, chat, lsp, changes, ledger, wrap]
 
 when defined(windows):
   import std/[winlean, streams]
@@ -60,6 +60,7 @@ var
   explained: seq[bool]        # per hunk: an explanation was read
   explanations: seq[string]   # per hunk: the explanation
   explainBuf: Buffer          # *explain*, shown beside the review
+  explainText: string         # unwrapped source, independent of pane width
 
 proc resetUnderstanding() =
   explained = newSeq[bool](reviewState.hunks.len)
@@ -78,10 +79,13 @@ proc showExplain(text: string) =
   if explainBuf == nil or explainBuf notin reg:
     explainBuf = newBuffer()
     reg.add(explainBuf, "*explain*")
-  explainBuf.splice(0, explainBuf.text.runeLen, text)
+  explainText = text
+  let other = otherPaneFor()
+  # the pane's text width: its cells less the line-number gutter and a margin
+  let width = max(20, (if other != nil: other.w else: renderer.cols) - gutterFor(explainBuf) - 2)
+  explainBuf.splice(0, explainBuf.text.runeLen, wrapText(explainText, width))
   explainBuf.modified = false
   explainBuf.cursor = (0, 0)
-  let other = otherPaneFor()
   if other != nil and other != pane:
     other.buf = explainBuf
     other.top = 0

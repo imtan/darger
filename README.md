@@ -235,6 +235,10 @@ modus-themes); `(load-theme "catppuccin")` switches to the previous Catppuccin
 Mocha colours and `(load-theme "modus-vivendi")` back, at any time (M-: or
 `~/.darger.el`). Unknown names report `No such theme: …`.
 
+For a file inside a Git repository, the selected window’s mode line also shows
+` git:<branch>` (a short commit hash for detached HEAD). Branch information is
+checked at most once a second, without starting Git, including in worktrees.
+
 Syntax highlighting is built in (no external grammars or libraries, so it works the
 same on Windows). The language comes from the file extension, case-insensitively,
 or a `#!` line for Python, Ruby and shell scripts, and is shown in the mode line:
@@ -371,6 +375,12 @@ flattened edits favor small files.
 
 Translations, proofreading and tone changes propose replacing the selected text. Summaries, keywords and titles propose insertion immediately after it (at the end for a whole buffer). Both open an `Agent writing` review: `y` takes a hunk, `k` keeps the original, and `q` applies decisions. Blog drafts open in `*agent draft*` in the other window without changing the source; `d d` uses the entered topic and selected text as context. If the source changes while waiting, the result is saved in `*agent draft*` instead of opening a stale review. Commands refuse to start while an agent is running or when `agent-command` is empty.
 
+Agent prose in `*agent draft*` and `*explain*` wraps to the destination window’s
+width when shown (minimum 20 cells). Japanese characters count as two cells;
+wrapping respects Japanese opening/closing punctuation, preserves blank lines,
+and gives `- `, `* ` and numbered list items a hanging indent. The original text
+is retained; resizing alone does not reflow an already displayed buffer.
+
 ## Review
 
 A review shows the buffer with another version's changes as hunks, the way the
@@ -413,7 +423,7 @@ these open a review:
 Code taken from an agent without understanding it is a debt; the review keeps the
 books. x asks the agent to explain the current hunk (what it changes, why, what to
 watch out for, and the domain or technical terms it relies on as `- term ::
-definition` items); the explanation shows in `*explain*` in the other window and
+definition` items); the explanation shows in `*explain*`, wrapped to the other window’s width, and
 the hunk counts as understood. When a review of an agent's or the disk's changes
 ends, every hunk taken becomes an Org entry in `understanding-ledger` (default
 `~/.darger-understanding.org`, `nil` to disable): `* TODO file:line  taken without
