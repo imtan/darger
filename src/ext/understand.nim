@@ -79,6 +79,31 @@ proc buildUnderstanding(keepLine = -1) =
   while line < urows.len and urows[line].kind == rkNone and line < urows.high: inc line
   ubuf.cursor = (min(line, ubuf.lines.high), 0)
 
+var baseRows: seq[string]
+
+proc chooseBase() =
+  ## b: the base branch to compare with, from the local and remote-tracking branches;
+  ## kept in understanding-base-branch for this session, so branch-debt uses it too.
+  let (output, ok) = git(uroot, "for-each-ref --format=" & quoteShell("%(refname:short)") & " refs/heads refs/remotes")
+  baseRows = @[]
+  if ok:
+    for l in output.splitLines:
+      if l.len > 0 and l != ubranch and not l.endsWith("/HEAD") and l notin baseRows: baseRows.add l
+  if baseRows.len == 0:
+    echoLine = "No other branch to compare with"
+    return
+  beginMini("understanding-base", "Compare " & ubranch & " with: ")
+
+definePrompt(Prompt(kind: "understanding-base", text: true, over: "understanding",
+  candidates: proc(): seq[string] = baseRows,
+  onAccept: proc(value: string): bool =
+    mode = "understanding"
+    if value.len == 0: return true
+    interp.env.values["understanding-base-branch"] = stringValue(value)
+    buildUnderstanding()
+    echoLine = "Comparing with " & value & " (setq understanding-base-branch to keep it)"
+    true))
+
 proc openUnderstanding*() =
   if mode notin ["", "eval", "execute"]: closeOverlay()
   beginOverlay("understanding")
@@ -129,6 +154,7 @@ proc dispatchUnderstanding(c: string) =
         finishOverlay()
         visit(row.file)
     of rkNone: echoLine = "Nothing to open here"
+  of "b": chooseBase()
   of "U":
     if row.kind == rkFile:
       attestFile(row.rel, row.base)
@@ -143,7 +169,7 @@ proc dispatchUnderstanding(c: string) =
   of "g":
     buildUnderstanding(here)
     echoLine = "Rebuilt"
-  of "?": echoLine = "Enter: compare the file with the base / go to the debt   U: whole file understood   o: the ledger   g: rebuild   q: close"
+  of "?": echoLine = "Enter: compare the file with the base / go to the debt   b: choose the base branch   U: whole file understood   o: the ledger   g: rebuild   q: close"
   of "f1":
     finishUnderstanding()
     dispatch(full)
@@ -155,8 +181,18 @@ proc dispatchUnderstanding(c: string) =
 
 defineMode(Mode(name: "understanding", modeName: "Understanding", buffer: proc(): Buffer = ubuf,
   faces: proc(): seq[seq[Face]] = ufaces,
-  message: proc(): string = (if echoLine.len > 0: echoLine else: "Understanding  Enter:open U:understood o:ledger g:rebuild q:close ?:help"),
+  message: proc(): string = (if echoLine.len > 0: echoLine else: "Understanding  Enter:open b:base U:understood o:ledger g:rebuild q:close ?:help"),
   onKey: dispatchUnderstanding, onClose: finishUnderstanding))
+
+interp.defPrimitive("understanding-base", proc(args: seq[Value]): Value =
+  ## (understanding-base) asks for the base branch inside the buffer; (understanding-base "name") sets it.
+  args.arity(0, 1)
+  if args.len == 1:
+    interp.env.values["understanding-base-branch"] = stringValue(args[0].asString)
+    if mode == "understanding": buildUnderstanding()
+  elif mode == "understanding": chooseBase()
+  else: echoLine = "Open the understanding buffer first (C-c u)"
+  nilValue())
 
 interp.defPrimitive("understanding", proc(args: seq[Value]): Value =
   ## M-x understanding / C-c u: the understanding buffer; from inside it, closes it.

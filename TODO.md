@@ -64,6 +64,7 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-20 understanding: b chooses the base branch (user request), understanding-base primitive
 - 2026-10-20 understanding / branch-debt: one git numstat for the whole branch instead of three calls per file (the user: it hung with many changes)
 - 2026-10-20 agent-locate (C-c l): ask the agent where, answer parsed as path:line places in a consult list (grep.parsePlaces / findReferences tested); agent-references; onAgentResult hook
 - 2026-10-17 *understanding* buffer (ext/understand.nim): branch files to understand / understood, open debt, glossary; comparison returns to it (afterReview)

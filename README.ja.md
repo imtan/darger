@@ -377,7 +377,9 @@ C-c u (`understanding`) は `*understanding*` バッファを開きます。台�
 ビュー (理解負債の magit status) で、ブランチと base の比較 (まだ理解していないファイルを `+n -m` と
 `(uncommitted)` 付きで、理解済みのファイルも)、ブランチの未返済エントリ、用語集の語数が並びます。
 ファイルの行で Enter すると base との比較が開き、閉じるとバッファに戻ります。負債の行で Enter で
-その場所へ、U でファイル全体を理解済みに、o で台帳ファイルを開く、g で再構築、q で閉じる。
+その場所へ、b で比較相手の base ブランチを選択 (ローカルとリモート追跡ブランチから。選択はセッション中
+有効で、`(setq understanding-base-branch "名前")` で固定)、U でファイル全体を理解済みに、o で
+台帳ファイルを開く、g で再構築、q で閉じる。
 ポップアップ版 (`understanding-debt`、`branch-debt`) は素早く飛ぶ用に残っています。
 
 レビューのキーはコマンドでもあります (`review-take`、`review-keep`、`review-next`、
