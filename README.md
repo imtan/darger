@@ -84,6 +84,7 @@ nim r tests/tproject.nim  # project file listing (git and plain) and known proje
 nim r tests/tmigemo.nim   # romaji -> kana -> dictionary words for migemo
 nim r tests/tpictures.nim # PNG conversion cache for pictures pixie cannot decode
 nim r tests/tchanges.nim  # files changed under a project between two snapshots
+nim r tests/texecpath.nim # the login shell's PATH merged for GUI launches
 nim r tests/tledger.nim   # understanding ledger entries and the glossary
 nim r tests/tmonkey.nim   # fuzz: random input into Buffer, SKK, Lisp, HTML, the terminal, panes
 tests/editormonkey/run.sh 1 16 300   # whole editor: random command sequences per seed (opens windows)
@@ -110,6 +111,12 @@ the running darger when there is one, instead of the dashboard. Launched this wa
 the window also takes focus, which a bare `./darger` started from another program
 does not get on recent macOS; for a script, `open -n -W -a darger --args FILE`
 starts a new instance with FILE and waits until it closes.
+
+When started from the Finder, Spotlight or the Dock, darger takes the PATH of the
+login shell (`$SHELL -l -c 'printf %s "$PATH"'`) and adds the usual tool directories
+(Homebrew, `~/.local/bin`, `~/.bun/bin`, …) that exist, so `agent-command`
+(`claude`), `rg` and `git` are found as in a terminal; macOS otherwise gives
+applications only the bare system PATH.
 
 ## Updating darger
 

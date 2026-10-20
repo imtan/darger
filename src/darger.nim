@@ -4,6 +4,7 @@ import std/[os, times, unicode, strutils, tables]
 import windy, vmath
 when defined(macosx): import macwin
 import core, buffer, buffers, render, skk, update
+import execpath
 import ext/[org, web, rss, dired, help, dash, blist, agent, selfupdate, langserver, revert, shader, term, claude, grep, eagle, project, migemo, pasteimage, orgimage, understand, locate]
 
 when defined(macosx):
@@ -234,6 +235,10 @@ if args.len >= 1:
   if firstPath.len > 0 and dirExists(firstPath):
     try: visit(firstPath)  # a directory opens in dired
     except CatchableError as e: echoLine = e.msg
+when defined(macosx):
+  # From the Finder, Spotlight or the Dock the PATH is the bare system one: take the
+  # login shell's, so agent-command, rg and git are found as in a terminal.
+  fixPath()
 let startBuffer = core.b
 loadInit()
 

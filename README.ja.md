@@ -78,6 +78,7 @@ nim r tests/tproject.nim  # プロジェクトのファイル列挙 (git / 素) 
 nim r tests/tmigemo.nim   # migemo のローマ字 → かな → 辞書語
 nim r tests/tpictures.nim # pixie が読めない画像の PNG 変換キャッシュ
 nim r tests/tchanges.nim  # 2 時点のスナップショット間で変わったプロジェクトのファイル
+nim r tests/texecpath.nim # GUI 起動向けにログインシェルの PATH を取り込む
 nim r tests/tledger.nim   # 理解台帳のエントリと用語集
 nim r tests/tmonkey.nim   # ファズ: Buffer、SKK、Lisp、HTML、端末、ペインにランダム入力
 tests/editormonkey/run.sh 1 16 300   # エディタ全体: seed ごとにランダムなコマンド列 (ウィンドウが開く)
@@ -102,6 +103,11 @@ Downloads も) 配下の実行ファイルの LaunchServices 経由の起動を�
 macOS では、他のプログラムから素の `./darger` を起動してもフォーカスは来ません。スクリプトからは
 `open -n -W -a darger --args FILE` で、FILE を開いた新しいインスタンスを起動して閉じるまで
 待てます。
+
+Finder、Spotlight、Dock から起動したとき、darger はログインシェルの PATH (`$SHELL -l -c 'printf %s
+"$PATH"'`) を取り込み、存在する定番のツールディレクトリ (Homebrew、`~/.local/bin`、`~/.bun/bin` など) を
+足します。macOS はアプリに最小限の PATH しか渡さないため、そのままだと `agent-command` の `claude` や
+`rg`、`git` が「not found」になるからです。
 
 ## darger の更新
 
