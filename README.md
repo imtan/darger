@@ -236,8 +236,9 @@ or a `#!` line for Python, Ruby and shell scripts, and is shown in the mode line
 Nim (`.nim .nims .nimble`), GLSL (`.glsl .frag .vert .fs .vs`), Python (`.py .pyi`), Ruby (`.rb .rake`, Gemfile,
 Rakefile), GDScript (`.gd`), JS/TS (`.js .mjs .ts .tsx .jsx`), C/C++ (`.c .h .cpp
 .hpp .cc`), Rust (`.rs`), Go (`.go`), Shell (`.sh .bash .zsh`), Lisp (`.el .lisp .scm
-.clj`, `.emacs`), JSON, TOML, YAML (`.yaml .yml`), Markdown (`.md .markdown`) and
-Org (`.org`); anything else, and `*scratch*`, is Text. It is re-detected after
+.clj`, `.emacs`), JSON, TOML, YAML (`.yaml .yml`), Markdown (`.md .markdown`), ERB
+(`.erb .rhtml`: HTML tags, attributes and comments, with the Ruby inside `<% %>`,
+`<%= %>` and `<%# %>` highlighted as Ruby) and Org (`.org`); anything else, and `*scratch*`, is Text. It is re-detected after
 visiting or writing a file. Comments, strings, keywords, function and variable
 names, types, constants/numbers and builtins take the theme's faces (for
 modus-vivendi: fg-dim, blue-warmer, magenta-cooler, magenta, cyan, cyan-cooler,

@@ -183,4 +183,24 @@ block:
   let wide = toLines("（「あ\n」\n）")
   doAssert matchParen(wide, [], 2, 1) == @[(line: 2, col: 0), (line: 0, col: 0)]
   doAssert matchParen(wide, [], 0, 1) == @[(line: 0, col: 1), (line: 1, col: 0)]
+block erb:
+  let lang = detect("app/views/top/_info.html.erb", "")
+  doAssert lang.name == "ERB"
+  let src = @["<div class=\"box\"><%= link_to \"Open\", path if @hold %></div>".toRunes,
+              "<%# note %> <!-- c -->".toRunes,
+              "<% items.each do |i| %>".toRunes,
+              "  <p><%= i %></p>".toRunes,
+              "<% end %>".toRunes]
+  let f = lang.highlight(src)
+  doAssert f[0][0] == fFnname and f[0][1] == fFnname          # <div
+  doAssert f[0][5] == fVariable                                # class
+  doAssert f[0][11] == fString                                 # "box"
+  doAssert f[0][17] == fKeyword and f[0][18] == fKeyword and f[0][19] == fKeyword  # <%=
+  let s0 = $src[0]
+  doAssert f[0][s0.find("\"Open\"")] == fString                 # the Ruby string
+  doAssert f[0][s0.find(" if ") + 1] == fKeyword                # Ruby keyword
+  doAssert f[0][s0.find("%>")] == fKeyword
+  doAssert f[1][4] == fComment and f[1][14] == fComment        # <%# %> and <!-- -->
+  doAssert f[2][($src[2]).find("do")] == fKeyword and f[4][3] == fKeyword   # do / end
+  doAssert f[3][2] == fFnname                                  # <p>
 echo "All syntax checks passed"

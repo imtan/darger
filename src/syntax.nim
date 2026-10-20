@@ -10,7 +10,7 @@ type
     multiline: bool
     isChar: bool  # only 'x' or '\…': Rust lifetimes and stray quotes stay plain
     escape: char  # '\0': none
-  Special = enum spText, spCode, spMarkdown, spOrg
+  Special = enum spText, spCode, spMarkdown, spOrg, spErb
   Lang* = object
     name*: string
     lineComment: string
@@ -180,6 +180,7 @@ let
   toml = confLang("TOML")
   yaml = confLang("YAML")
   markdown = Lang(name: "Markdown", special: spMarkdown)
+  erb = Lang(name: "ERB", special: spErb, lineComment: "")  # HTML with <% Ruby %>
   org = Lang(name: "Org", special: spOrg)
 
 var orgTodoFaces*: seq[(string, Face)] = @[("TODO", fConstant), ("DONE", fConstant)]
@@ -202,6 +203,7 @@ proc detect*(path: string, firstLine: string): Lang =
   of ".toml": toml
   of ".yaml", ".yml": yaml
   of ".md", ".markdown": markdown
+  of ".erb", ".rhtml": erb
   of ".org": org
   else:
     case extractFilename(path)
@@ -586,6 +588,85 @@ proc orgLines(lines: seq[seq[Rune]], faces: var seq[seq[Face]]) =
         i = if e > 0: e else: i + 1
       else: inc i
 
+proc erbLines(lines: seq[seq[Rune]], faces: var seq[seq[Face]]) =
+  ## ERB: the Ruby inside <% %> (also <%= and <%#, comments) is highlighted as Ruby
+  ## through a shadow document that blanks everything else; the HTML around it gets
+  ## tags, attribute names, attribute strings and <!-- comments -->.
+  var shadow = newSeq[seq[Rune]](lines.len)
+  var inRuby, inHtmlComment, rubyComment = false
+  let sp = Rune(' ')
+  for n, line in lines:
+    shadow[n] = newSeq[Rune](line.len)
+    for i in 0..<line.len: shadow[n][i] = sp
+    var i = 0
+    var inTag = false
+    var attrQuote = Rune(0)
+    while i < line.len:
+      let c = line[i]
+      if inRuby:
+        if c == Rune('%') and i + 1 < line.len and line[i+1] == Rune('>'):
+          faces[n].paint(i, i + 2, fKeyword)
+          inRuby = false
+          rubyComment = false
+          i += 2
+        else:
+          if rubyComment: faces[n][i] = fComment
+          else: shadow[n][i] = c
+          inc i
+      elif inHtmlComment:
+        faces[n][i] = fComment
+        if c == Rune('-') and i + 2 < line.len and line[i+1] == Rune('-') and line[i+2] == Rune('>'):
+          faces[n].paint(i, i + 3, fComment)
+          inHtmlComment = false
+          i += 3
+        else: inc i
+      elif c == Rune('<') and i + 1 < line.len and line[i+1] == Rune('%'):
+        var z = i + 2
+        if z < line.len and line[z] in [Rune('='), Rune('-'), Rune('#')]:
+          rubyComment = line[z] == Rune('#')
+          inc z
+        faces[n].paint(i, z, fKeyword)
+        inRuby = true
+        inTag = false
+        i = z
+      elif c == Rune('<') and i + 3 < line.len and line[i+1] == Rune('!') and line[i+2] == Rune('-') and line[i+3] == Rune('-'):
+        inHtmlComment = true
+        faces[n].paint(i, i + 4, fComment)
+        i += 4
+      elif inTag:
+        if attrQuote.int != 0:
+          faces[n][i] = fString
+          if c == attrQuote: attrQuote = Rune(0)
+          inc i
+        elif c == Rune('"') or c == Rune('\''):
+          attrQuote = c
+          faces[n][i] = fString
+          inc i
+        elif c == Rune('>'):
+          faces[n][i] = fFnname
+          inTag = false
+          inc i
+        elif c.isAlpha or c == Rune('-') or c == Rune(':') or c == Rune('@'):
+          var z = i
+          while z < line.len and (line[z].isAlpha or line[z].int in ord('0')..ord('9') or line[z] in [Rune('-'), Rune(':'), Rune('@'), Rune('_')]): inc z
+          faces[n].paint(i, z, fVariable)
+          i = z
+        else: inc i
+      elif c == Rune('<') and i + 1 < line.len and (line[i+1].isAlpha or line[i+1] == Rune('/')):
+        var z = i + 1
+        if line[z] == Rune('/'): inc z
+        while z < line.len and (line[z].isAlpha or line[z].int in ord('0')..ord('9') or line[z] in [Rune('-'), Rune(':')]): inc z
+        faces[n].paint(i, z, fFnname)
+        inTag = true
+        i = z
+      else: inc i
+  var rubyFaces = newSeq[seq[Face]](lines.len)
+  for n, line in lines: rubyFaces[n] = newSeq[Face](line.len)
+  code(ruby, shadow, rubyFaces)
+  for n, line in lines:
+    for i in 0..<line.len:
+      if shadow[n][i] != sp and rubyFaces[n][i] != fPlain: faces[n][i] = rubyFaces[n][i]
+
 proc highlight*(lang: Lang, lines: seq[seq[Rune]]): seq[seq[Face]] =
   result = newSeq[seq[Face]](lines.len)
   for n, line in lines: result[n] = newSeq[Face](line.len)
@@ -594,6 +675,7 @@ proc highlight*(lang: Lang, lines: seq[seq[Rune]]): seq[seq[Face]] =
   of spCode: code(lang, lines, result)
   of spMarkdown: markdownLines(lines, result)
   of spOrg: orgLines(lines, result)
+  of spErb: erbLines(lines, result)
 
 const brackets = "()[]{}（）「」『』【】".toRunes  # opening at even indexes, its closing next
 

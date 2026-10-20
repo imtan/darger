@@ -64,6 +64,7 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-20 ERB mode (user request): HTML tags/attributes/comments + Ruby inside <% %> via a shadow document (tsyntax)
 - 2026-10-20 places: the followed line and the current list row are highlighted (bandProviders, band 5 = theme.region)
 - 2026-10-20 *places* (grep-mode style, user's example): n/p follow in the other window, Enter, o, cookie files open as places, agent-locate answers go there (src/places.nim tested)
 - 2026-10-20 PATH from the login shell on macOS GUI launches (user: "/bin/sh claude not found"), src/execpath.nim tested
