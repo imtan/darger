@@ -2,7 +2,7 @@
 ## A hunk taken without asking for an explanation is a TODO (understanding debt);
 ## one taken after the explanation is DONE with the explanation under it, so the
 ## user's Org tools (agenda, TODO keywords) track what is still to be understood.
-import std/[strutils, times, os]
+import std/[strutils, times, os, sequtils]
 
 type LedgerEntry* = object
   file*: string         ## the file the hunk changed
@@ -101,6 +101,26 @@ proc debtCount*(text: string): tuple[debt, understood: int] =
   for l in text.splitLines:
     if l.startsWith("* TODO "): inc result.debt
     elif l.startsWith("* DONE "): inc result.understood
+
+proc loadBases*(path: string): seq[tuple[root, base: string]] =
+  ## The base branch chosen for each repository, one `root<TAB>base` per line.
+  var text: string
+  try: text = readFile(path)
+  except CatchableError: return
+  for l in text.splitLines:
+    let parts = l.split('\t')
+    if parts.len == 2 and parts[0].len > 0 and parts[1].len > 0: result.add (parts[0], parts[1])
+
+proc baseFor*(bases: seq[tuple[root, base: string]], root: string): string =
+  for (r, b) in bases:
+    if r == root: return b
+
+proc rememberBase*(path, root, base: string) =
+  var bases = loadBases(path).filterIt(it.root != root)
+  bases.insert((root, base), 0)
+  if bases.len > 100: bases.setLen(100)
+  try: writeFile(path, bases.mapIt(it.root & "\t" & it.base).join("\n") & "\n")
+  except CatchableError: discard
 
 proc glossaryTerms*(explanation: string): seq[tuple[term, definition: string]] =
   ## `- term :: definition` lines of an explanation, as Org description items.

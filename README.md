@@ -410,10 +410,12 @@ work from (a magit status for understanding debt): the branch against its base w
 the files still to understand (`+n -m`, `(uncommitted)`) and the ones understood,
 the open debt entries on the branch, and the glossary size. Enter on a file opens
 the base comparison and the buffer comes back when it closes; Enter on a debt entry
-goes to the spot; b chooses the base branch to compare with (local and
-remote-tracking branches; the choice holds for the session, `(setq
-understanding-base-branch "name")` keeps it); U marks a whole file understood; o
-opens the ledger file; g rebuilds; q closes. The popup lists (`understanding-debt`, `branch-debt`) stay for
+goes to the spot; U marks a whole file understood; o opens the ledger file; g
+rebuilds; q closes. The first time in a repository the buffer asks which branch to
+understand the work against (local and remote-tracking branches, the usual main /
+master / develop first) instead of silently comparing with master; the choice is
+remembered per repository in `~/.darger-understanding-bases`, b changes it, and
+`(setq understanding-base-branch "name")` fixes it for every repository. The popup lists (`understanding-debt`, `branch-debt`) stay for
 quick jumps.
 
 The review's keys are also commands (`review-take`, `review-keep`, `review-next`,

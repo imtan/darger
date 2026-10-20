@@ -18,13 +18,24 @@ var
   ufaces: seq[seq[Face]]
   urows: seq[Row]
   uroot, ubranch: string
+  ubase: string   # the base branch compared with: the setting, else the one remembered for this repository
+
+proc basesPath(): string = getHomeDir() / ".darger-understanding-bases"
+
+proc settingBase(): string =
+  let v = interp.env.values["understanding-base-branch"]
+  if v.kind != vNil and v.asString.len > 0: v.asString else: ""
+
+proc otherBranches(): seq[string] =
+  let (output, ok) = git(uroot, "for-each-ref --format=" & quoteShell("%(refname:short)") & " refs/heads refs/remotes")
+  if ok:
+    for l in output.splitLines:
+      if l.len > 0 and l != ubranch and not l.endsWith("/HEAD") and l notin result: result.add l
 
 proc paint(faces: var seq[Face], a, z: int, face: Face) =
   for i in max(0, a)..<min(z, faces.len): faces[i] = face
 
 proc buildUnderstanding(keepLine = -1) =
-  uroot = currentRoot()
-  ubranch = branchOf(uroot)
   var lines: seq[string]
   var faces: seq[seq[Face]]
   urows = @[]
@@ -38,9 +49,9 @@ proc buildUnderstanding(keepLine = -1) =
   let ledgerText = if ledger.len > 0 and fileExists(ledger): readFile(ledger) else: ""
   let inGit = dirExists(uroot / ".git") or fileExists(uroot / ".git")
   if inGit:
-    let base = baseBranch(uroot)
+    let base = ubase
     if base.len == 0:
-      add("Branch " & ubranch & ": no base branch (setq understanding-base-branch \"name\")", Row(), fKeyword)
+      add("Branch " & ubranch & ": no base branch chosen (b)", Row(), fKeyword)
     else:
       let changes = branchChanges(uroot, ubranch, base)
       let mergeBase = changes.mergeBase
@@ -81,33 +92,42 @@ proc buildUnderstanding(keepLine = -1) =
 
 var baseRows: seq[string]
 
-proc chooseBase() =
-  ## b: the base branch to compare with, from the local and remote-tracking branches;
-  ## kept in understanding-base-branch for this session, so branch-debt uses it too.
-  let (output, ok) = git(uroot, "for-each-ref --format=" & quoteShell("%(refname:short)") & " refs/heads refs/remotes")
-  baseRows = @[]
-  if ok:
-    for l in output.splitLines:
-      if l.len > 0 and l != ubranch and not l.endsWith("/HEAD") and l notin baseRows: baseRows.add l
+proc chooseBase(first = false) =
+  ## The base branch to compare with, from the local and remote-tracking branches, the
+  ## usual one (main / master / develop) first; remembered for this repository.
+  baseRows = otherBranches()
+  let usual = baseBranch(uroot)
+  if usual.len > 0 and usual in baseRows:
+    baseRows.delete(baseRows.find(usual))
+    baseRows.insert(usual, 0)
   if baseRows.len == 0:
     echoLine = "No other branch to compare with"
     return
-  beginMini("understanding-base", "Compare " & ubranch & " with: ")
+  beginMini("understanding-base", (if first: "Understand " & ubranch & " against: " else: "Compare " & ubranch & " with: "))
 
 definePrompt(Prompt(kind: "understanding-base", text: true, over: "understanding",
   candidates: proc(): seq[string] = baseRows,
   onAccept: proc(value: string): bool =
     mode = "understanding"
     if value.len == 0: return true
-    interp.env.values["understanding-base-branch"] = stringValue(value)
+    ubase = value
+    rememberBase(basesPath(), uroot, value)
+    interp.env.values["understanding-base-branch"] = stringValue(value)  # branch-debt follows, this session
     buildUnderstanding()
-    echoLine = "Comparing with " & value & " (setq understanding-base-branch to keep it)"
+    echoLine = "Comparing with " & value & " (remembered for " & extractFilename(uroot) & "; b changes it)"
     true))
 
 proc openUnderstanding*() =
+  ## C-c u: the first time in a repository (and when nothing is remembered) the base
+  ## branch is asked for, so the comparison is never silently against master.
   if mode notin ["", "eval", "execute"]: closeOverlay()
   beginOverlay("understanding")
+  uroot = currentRoot()
+  ubranch = branchOf(uroot)
+  ubase = settingBase()
+  if ubase.len == 0: ubase = baseFor(loadBases(basesPath()), uroot)
   buildUnderstanding()
+  if ubase.len == 0 and ubranch.len > 0: chooseBase(first = true)
 
 proc finishUnderstanding() =
   finishOverlay()

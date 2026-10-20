@@ -64,6 +64,7 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-20 understanding asks for the base branch on first open per repository and remembers it (~/.darger-understanding-bases) (user: "無意味に master と毎回比較されるのは面倒")
 - 2026-10-20 understanding: b chooses the base branch (user request), understanding-base primitive
 - 2026-10-20 understanding / branch-debt: one git numstat for the whole branch instead of three calls per file (the user: it hung with many changes)
 - 2026-10-20 agent-locate (C-c l): ask the agent where, answer parsed as path:line places in a consult list (grep.parsePlaces / findReferences tested); agent-references; onAgentResult hook

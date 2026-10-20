@@ -43,6 +43,18 @@ appendEntries(path, @[])
 doAssert readFile(path) == all
 removeDir(dir)
 
+block baseMemory:
+  let p = getTempDir() / "darger-tledger-bases.txt"
+  removeFile(p)
+  doAssert loadBases(p).len == 0 and baseFor(loadBases(p), "/r") == ""
+  rememberBase(p, "/r/one", "develop")
+  rememberBase(p, "/r/two", "main")
+  rememberBase(p, "/r/one", "release")      # replaced, moved to the top
+  let bases = loadBases(p)
+  doAssert bases == @[("/r/one", "release"), ("/r/two", "main")], $bases
+  doAssert baseFor(bases, "/r/one") == "release" and baseFor(bases, "/r/none") == ""
+  removeFile(p)
+
 doAssert glossaryTerms("text\n- okuri :: kana after the stem\n  - nested :: ignored?\n- bad line\n- x ::\n") ==
   @[("okuri", "kana after the stem"), ("nested", "ignored?")]
 let g = mergeGlossary("", @[("Okuri", "a"), ("Hunk", "b")])
