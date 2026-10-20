@@ -60,6 +60,9 @@ var
   explained: seq[bool]        # per hunk: an explanation was read
   explanations: seq[string]   # per hunk: the explanation
   explainBuf: Buffer          # *explain*, shown beside the review
+  hunkBuf: Buffer
+  reviewPane: Pane
+  reviewSuspended = false
   explainText: string         # unwrapped source, independent of pane width
 
 proc resetUnderstanding() =
@@ -131,7 +134,7 @@ proc reviewMessage*(): string =
   let head = (if reviewReadOnly: "Understand " else: "Review ") & reviewSource & ": hunk " & $(currentHunk + 1) & "/" &
     $reviewState.hunks.len & " (-" & $removed & " +" & $added & ")"
   if reviewReadOnly: head & "  x:explain X:ask U:understood n/p l:list q:record ?:help"
-  else: head & "  y:take k:keep u:undo n/p l:list r:request a:all q:done ?:help"
+  else: head & "  y:take k:keep u:undo n/p l:list e:edit r:request a:all q:done ?:help"
 
 proc rebuildReview*() =
   let display = reviewState.view(currentHunk)
@@ -147,6 +150,7 @@ proc rebuildReview*() =
 proc beginReviewText(proposed, source: string)  # forward: the review replaced in place
 
 proc openReview() =
+  reviewSuspended = false
   closeOverlay()  # the agent finished while the manual or dashboard was open
   b.finish()
   savedTop = renderer.top
@@ -161,6 +165,7 @@ proc openReview() =
 proc beginReview*(proposed: string, source = "Agent") =
   ## A hunk-by-hunk review of the current buffer against `proposed`: y takes the
   ## proposed version of a hunk, k keeps the buffer's. Any source can propose text.
+  reviewSuspended = false
   reviewSource = source
   reviewReadOnly = false
   reviewState = newReview(b.text, proposed)
@@ -173,6 +178,7 @@ proc beginReview*(proposed: string, source = "Agent") =
 proc beginComparison*(base: string, source: string) =
   ## The buffer as the outcome of work from `base` (a branch's base version): hunks
   ## read base -> buffer, nothing is taken; x, X and U build understanding, q records.
+  reviewSuspended = false
   reviewSource = source
   reviewReadOnly = true
   reviewState = newReview(base, b.text)
@@ -182,17 +188,81 @@ proc beginComparison*(base: string, source: string) =
     return
   openReview()
 
-proc beginReviewText(proposed, source: string) =
-  ## The open review's proposal replaced (decisions start over); closes it when nothing differs.
+proc replaceReview(next: Review, source: string, at = 0) =
+  ## Share proposal replacement between agent replies and manual hunk edits.
   reviewSource = source
-  reviewState = newReview(b.text, proposed)
+  reviewState = next
   resetUnderstanding()
   if reviewState.hunks.len == 0:
     mode = ""
     reviewBuf = nil
+    renderer.top = savedTop
+    renderer.left = savedLeft
+    echoLine = source & ": no changes"
   else:
-    currentHunk = 0
+    currentHunk = min(at, reviewState.hunks.high)
     rebuildReview()
+
+proc beginReviewText(proposed, source: string) =
+  ## The open review's proposal replaced (decisions start over); closes it when nothing differs.
+  replaceReview(newReview(b.text, proposed), source)
+
+proc resumeHunkReview(): bool =
+  result = reviewSuspended and reviewBuf != nil and reviewPane in layout.leaves
+  reviewSuspended = false
+  if result:
+    selectPane(reviewPane)
+    mode = "review"
+
+proc editHunk() =
+  reviewPane = pane
+  let other = otherPaneFor()
+  if other == nil or other == reviewPane: return
+  hunkBuf = newBuffer(reviewState.hunkText(currentHunk).added)
+  reg.add(hunkBuf, "*hunk*")
+  reviewSuspended = true
+  mode = ""  # overlays follow the selected pane; edit as an ordinary buffer
+  renderer.top = savedTop
+  renderer.left = savedLeft
+  selectPane(other)
+  switchTo(hunkBuf)
+  echoLine = "Edit the proposed lines; C-c C-c applies, C-c C-k cancels"
+
+proc finishHunkEdit(apply: bool) =
+  ## C-c C-c (apply) or C-c C-k (cancel) in *hunk*: back to the review, with the
+  ## hunk's proposed lines replaced by the buffer's text when applying.
+  let buf = hunkBuf
+  let added = buf.text
+  hunkBuf = nil
+  killBuffer(buf)
+  if resumeHunkReview():
+    if apply: replaceReview(reviewState.withHunk(currentHunk, added), reviewSource, currentHunk)
+    else: rebuildReview()
+  else:
+    echoLine = "The review was closed"
+
+keyFilters.add proc(c: string): bool =
+  if mode.len > 0 or hunkBuf == nil or b != hunkBuf or prefix != "C-c" or c notin ["C-c", "C-k"]:
+    return false
+  prefix = ""
+  finishHunkEdit(c == "C-c")
+  true
+for (name, apply) in [("review-hunk-apply", true), ("review-hunk-cancel", false)]:
+  closureScope:
+    let apply = apply
+    interp.defPrimitive(name, proc(args: seq[Value]): Value =
+      ## The *hunk* buffer's C-c C-c / C-c C-k as commands, for scripts and agents.
+      args.arity(0, 0)
+      if hunkBuf == nil or b != hunkBuf: echoLine = "Not editing a hunk"
+      else: finishHunkEdit(apply)
+      nilValue())
+
+killHooks.add proc(buf: Buffer) =
+  if buf == hunkBuf:
+    hunkBuf = nil
+    if resumeHunkReview(): rebuildReview()
+  elif reviewSuspended and reviewPane != nil and buf == reviewPane.buf:
+    reviewSuspended = false
 
 proc applyDecisions(): int =
   ## The accepted hunks into the buffer; returns how many.
@@ -225,6 +295,7 @@ proc applyAndContinue() =
   echoLine = "Applied " & $taken & " hunks; " & $reviewState.hunks.len & " left"
 
 proc finishReview*(cancel = false) =
+  reviewSuspended = false
   if cancel: echoLine = "Review cancelled"
   elif reviewReadOnly:
     var understood = 0
@@ -870,7 +941,8 @@ interp.defPrimitive("glossary", proc(args: seq[Value]): Value =
 proc dispatchReview*(c: string)  # forward: the review's keys, also driven from Lisp
 
 for (name, key) in [("review-take", "y"), ("review-keep", "k"), ("review-next", "n"), ("review-previous", "p"),
-                    ("review-finish", "q"), ("review-explain-hunk", "x"), ("review-attest", "U")]:
+                    ("review-finish", "q"), ("review-explain-hunk", "x"), ("review-attest", "U"),
+                    ("review-edit-hunk", "e")]:
   closureScope:
     let key = key
     interp.defPrimitive(name, proc(args: seq[Value]): Value =
@@ -890,7 +962,7 @@ definePrompt(Prompt(kind: "review-hunks", text: true, over: "review", candidates
     true))
 
 proc dispatchReview*(c: string) =
-  if reviewReadOnly and c in ["y", "k", "a", "A", "w", "r"]:
+  if reviewReadOnly and c in ["y", "k", "a", "A", "w", "r", "e"]:
     echoLine = "A comparison: nothing to take. x explains, X asks, U marks understood, q records"
     return
   case c
@@ -910,6 +982,9 @@ proc dispatchReview*(c: string) =
     return
   of "w":
     applyAndContinue()
+    return
+  of "e":
+    editHunk()
     return
   of "r":
     if agentProcess != nil: echoLine = "Agent already running"
@@ -938,7 +1013,7 @@ proc dispatchReview*(c: string) =
   of "?":
     echoLine = "y: take the proposed hunk  k: keep the buffer's  u: undo the decision  " &
       "n / p: move  l: list  x: explain this hunk  X: ask a question about it  U: I understand it  " &
-      "r: ask the agent to change it  w: apply so far, go on  " &
+      "e: edit proposed lines (C-c C-c applies, C-c C-k cancels)  r: ask the agent to change it  w: apply so far, go on  " &
       "a / A: take / keep all pending and finish  q / Enter: apply decisions  C-g: cancel"
     return
   of "a":

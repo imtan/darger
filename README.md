@@ -395,6 +395,11 @@ are compared and the part that differs is highlighted brighter, like
 diff-refine-hunk. The echo line names the source, the hunk and its `-removed
 +added` line counts.
 
+e opens the current hunk's proposed lines as plain text in an editable `*hunk*`
+buffer in the other pane. C-c C-c replaces those lines and restarts the decisions;
+C-c C-k cancels the edit. Both return to the review. An empty replacement removes
+the additions. This key is unavailable in read-only comparisons.
+
 r asks the agent for a change to the current hunk: the instruction goes to
 `agent-command` with that hunk and the whole proposal, and the agent's complete new
 text replaces the proposal (decisions start over, the hunk position is kept), so a

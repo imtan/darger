@@ -27,8 +27,7 @@ human gate for agent edits, so it grows before the other items:
 R1. (done) Reviews from any source: diff-buffer-with-file, vc-review (git HEAD), review-file;
     the supersede prompt's `r`; u / ? keys.
 R2. (done) Word-level refine highlighting, per-hunk +/- counts, `l` hunk list.
-R3. `e`: edit the proposed hunk in place before taking it (needs a multi-line edit
-    buffer over the review). (`A` keep all and `w` apply-and-continue are done.)
+R3. (done) `e` edits the proposed hunk in a *hunk* buffer, C-c C-c applies
 R4. (done) `r`: request changes to the hunk through the agent; the reply replaces the proposal.
 R5. (done) Edited buffer changed on disk: offered once / auto-revert-review opens it;
     agent-changes lists the files a chat turn changed, Enter reviews each.
@@ -58,6 +57,7 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-20 review R3: e edits proposed hunk lines in *hunk*, C-c C-c applies and C-c C-k cancels; newline normalization and rediff covered by treview
 - 2026-10-20 olivetti-mode: per-buffer centred writing margin, configurable body width and automatic language activation; drawing, mouse mapping and Org images share the margin (tolivetti)
 - 2026-10-20 agent prose wraps to pane width with Japanese kinsoku and list indents; cached Git branch in the mode line, including worktrees (twrap, tvcline)
 - 2026-10-20 magit, minimal: C-x g status, stage/unstage, HEAD review, confirmed discard, commit prompt, push / ff-only pull; porcelain -z parsing (tmagit)

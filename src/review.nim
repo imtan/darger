@@ -59,6 +59,21 @@ proc hunkText*(r: Review, i: int): tuple[removed, added: string] =
   let h = r.hunks[i]
   (r.original[h.startA ..< h.startA + h.deletedA].join(""), r.proposed[h.startB ..< h.startB + h.insertedB].join(""))
 
+proc withHunk*(r: Review, i: int, added: string): Review =
+  ## Replace only this hunk's additions, preserving the original and resetting decisions.
+  let h = r.hunks[i]
+  let old = r.hunkText(i)
+  var replacement = added
+  if replacement.len > 0 and replacement[^1] notin {'\r', '\n'}:
+    let ending = if old.added.endsWith("\r\n") or old.removed.endsWith("\r\n"): "\r\n"
+                 elif old.added.endsWith("\n") or old.removed.endsWith("\n"): "\n"
+                 elif old.added.endsWith("\r") or old.removed.endsWith("\r"): "\r"
+                 else: ""
+    replacement.add ending
+  let proposed = r.proposed[0 ..< h.startB].join("") & replacement &
+    r.proposed[h.startB + h.insertedB ..< r.proposed.len].join("")
+  newReview(r.original.join(""), proposed)
+
 proc stats*(r: Review, i: int): tuple[removed, added: int] =
   (r.hunks[i].deletedA, r.hunks[i].insertedB)
 

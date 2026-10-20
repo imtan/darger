@@ -89,4 +89,29 @@ block texts:
   doAssert r.proposedText() == "keep\nline ONE\nline two\nadded\n"
   doAssert r.hunkText(0) == ("line one\n", "line ONE\n") and r.hunkText(1) == ("", "added\n")
 
+block editHunk:
+  var r = newReview("a\nb\nc\nd\ne\n", "A\nb\nC\nd\nE\n")
+  r.decisions[0] = accepted
+  r.decisions[2] = rejected
+  let edited = r.withHunk(1, "new\nlines\n")
+  doAssert edited.proposedText() == "A\nb\nnew\nlines\nd\nE\n"
+  doAssert edited.appliedText() == "a\nb\nc\nd\ne\n"
+  doAssert edited.hunks.len == 3
+  doAssert edited.decisions == @[pending, pending, pending]
+  doAssert r.proposedText() == "A\nb\nC\nd\nE\n"
+  doAssert r.decisions == @[accepted, pending, rejected]
+  doAssert newReview("a\nb\nc\n", "A\nB\nC\n").withHunk(0, "A\nb\nC").hunks.len == 2
+  doAssert r.withHunk(1, "c").hunks.len == 2
+  doAssert r.withHunk(1, "").proposedText() == "A\nb\nd\nE\n"
+  doAssert r.withHunk(1, "").hunks.len == 3
+  doAssert newReview("a\n", "a\nadded\n").withHunk(0, "").hunks.len == 0
+  doAssert newReview("a\nb\nc\n", "a\nc\n").withHunk(0, "b").hunks.len == 0
+  doAssert newReview("a\n", "A").withHunk(0, "B").proposedText() == "B\n"
+  doAssert newReview("a", "A\n").withHunk(0, "B").proposedText() == "B\n"
+  doAssert newReview("a", "A").withHunk(0, "B").proposedText() == "B"
+  doAssert newReview("a\r\n", "A\r\n").withHunk(0, "B").proposedText() == "B\r\n"
+  doAssert newReview("", "A\n").withHunk(0, "B\n").proposedText() == "B\n"
+  doAssert newReview("日本語\n", "変更\n").withHunk(0, "編集").proposedText() == "編集\n"
+  echo "Hunk edit checks passed"
+
 echo "All review checks passed"
