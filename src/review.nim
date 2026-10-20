@@ -7,6 +7,11 @@ type
     original, proposed: seq[string]
     hunks*: seq[Item]
     decisions*: seq[Decision]
+  SideView* = object
+    text*: string
+    colors*: seq[int8]
+    bgs*: seq[seq[int8]]
+    starts*: seq[int]
   ReviewView* = object
     text*: string
     colors*: seq[int8] # 1/2: removed/added, 3/4: current removed/added
@@ -126,3 +131,43 @@ proc view*(r: Review, current: int): ReviewView =
   result.text = rows.join("\n")
   result.colors = colors
   result.bgs = bgs
+
+proc sideBySide*(r: Review, current: int): tuple[left, right: SideView] =
+  ## Keep each hunk's rows aligned, including blank rows for hidden or absent lines.
+  var left, right: seq[string]
+  proc add(v: var SideView, rows: var seq[string], line: string, color: int8) =
+    rows.add line.strip(leading = false, chars = {'\r', '\n'})
+    v.colors.add color
+    v.bgs.add @[]
+  var pos = 0
+  for i, h in r.hunks:
+    for n in pos..<h.startA:
+      add(result.left, left, r.original[n], 0)
+      add(result.right, right, r.original[n], 0)
+    result.left.starts.add left.len
+    result.right.starts.add right.len
+    let highlight = if i == current: 2'i8 else: 0'i8
+    for k in 0..<max(h.deletedA, h.insertedB):
+      let showA = k < h.deletedA and r.decisions[i] != accepted
+      let showB = k < h.insertedB and r.decisions[i] != rejected
+      add(result.left, left, (if showA: r.original[h.startA + k] else: ""),
+          (if showA: 1 + highlight else: 0))
+      add(result.right, right, (if showB: r.proposed[h.startB + k] else: ""),
+          (if showB: 2 + highlight else: 0))
+      if showA and showB:
+        let a = left[^1].toRunes
+        let b = right[^1].toRunes
+        let span = changedSpan(a, b)
+        if span.a.a <= span.a.b or span.b.a <= span.b.b:
+          var ra = newSeq[int8](a.len)
+          var rb = newSeq[int8](b.len)
+          for c in span.a: ra[c] = 9 + highlight
+          for c in span.b: rb[c] = 10 + highlight
+          result.left.bgs[^1] = ra
+          result.right.bgs[^1] = rb
+    pos = h.startA + h.deletedA
+  for n in pos..<r.original.len:
+    add(result.left, left, r.original[n], 0)
+    add(result.right, right, r.original[n], 0)
+  result.left.text = left.join("\n")
+  result.right.text = right.join("\n")

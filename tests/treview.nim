@@ -114,4 +114,41 @@ block editHunk:
   doAssert newReview("日本語\n", "変更\n").withHunk(0, "編集").proposedText() == "編集\n"
   echo "Hunk edit checks passed"
 
+block sides:
+  var r = newReview("head\nold one\nold two\nmiddle\nlast\ntail\n",
+                    "head\nnew one\nmiddle\nnew last\nextra\ntail\n")
+  let v = r.sideBySide(1)
+  doAssert v.left.text == "head\nold one\nold two\nmiddle\nlast\n\ntail"
+  doAssert v.right.text == "head\nnew one\n\nmiddle\nnew last\nextra\ntail"
+  doAssert v.left.starts == @[1, 4] and v.right.starts == v.left.starts
+  doAssert v.left.colors == @[0'i8, 1, 1, 0, 3, 0, 0]
+  doAssert v.right.colors == @[0'i8, 2, 0, 0, 4, 4, 0]
+  doAssert v.left.bgs[1] == @[9'i8, 9, 9, 0, 0, 0, 0]
+  doAssert v.right.bgs[1] == @[10'i8, 10, 10, 0, 0, 0, 0]
+  doAssert v.right.bgs[4] == @[12'i8, 12, 12, 12, 0, 0, 0, 0]
+  doAssert v.left.bgs[5].len == 0 and v.right.bgs[5].len == 0
+  r.decisions[0] = accepted
+  r.decisions[1] = rejected
+  let decided = r.sideBySide(0)
+  doAssert decided.left.colors == @[0'i8, 0, 0, 0, 1, 0, 0]
+  doAssert decided.right.colors == @[0'i8, 4, 0, 0, 0, 0, 0]
+  doAssert decided.left.starts == v.left.starts
+  doAssert decided.left.bgs[1].len == 0 and decided.right.bgs[1].len == 0
+  let inserted = newReview("", "a\nb\n").sideBySide(0)
+  doAssert inserted.left.text == "\n" and inserted.right.text == "a\nb"
+  doAssert inserted.left.colors == @[0'i8, 0] and inserted.right.colors == @[4'i8, 4]
+  let deleted = newReview("a\nb", "").sideBySide(0)
+  doAssert deleted.left.text == "a\nb" and deleted.right.text == "\n"
+  doAssert deleted.left.colors == @[3'i8, 3] and deleted.right.colors == @[0'i8, 0]
+  let unicode = newReview("日本語の文\r\n", "日本の文\r\n").sideBySide(0)
+  doAssert unicode.left.bgs[0] == @[0'i8, 0, 11, 0, 0]
+  doAssert unicode.right.bgs[0] == @[0'i8, 0, 0, 0]
+  let ending = newReview("a\n", "a").sideBySide(0)
+  doAssert ending.left.text == "a" and ending.right.text == "a"
+  doAssert ending.left.bgs[0].len == 0
+  doAssert newReview("", "").sideBySide(0).left.starts.len == 0
+  let same = newReview("same\n", "same\n").sideBySide(0)
+  doAssert same.left.text == "same" and same.right.colors == @[0'i8]
+  echo "Side-by-side review checks passed"
+
 echo "All review checks passed"

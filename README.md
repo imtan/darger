@@ -395,6 +395,12 @@ are compared and the part that differs is highlighted brighter, like
 diff-refine-hunk. The echo line names the source, the hunk and its `-removed
 +added` line counts.
 
+`|` toggles two read-only panes: `*review: before*` on the left and
+`*review: after*` on the right, with blank padding to align the lines. n / p move
+both panes to the current hunk; y / k / u decide, a / A / q finish, C-g cancels,
+and ? shows help. Press `|` again to return to the unified review. A split made
+by this toggle is closed when leaving; existing panes are restored.
+
 e opens the current hunk's proposed lines as plain text in an editable `*hunk*`
 buffer in the other pane. C-c C-c replaces those lines and restarts the decisions;
 C-c C-k cancels the edit. Both return to the review. An empty replacement removes

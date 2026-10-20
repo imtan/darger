@@ -31,7 +31,7 @@ R3. (done) `e` edits the proposed hunk in a *hunk* buffer, C-c C-c applies
 R4. (done) `r`: request changes to the hunk through the agent; the reply replaces the proposal.
 R5. (done) Edited buffer changed on disk: offered once / auto-revert-review opens it;
     agent-changes lists the files a chat turn changed, Enter reviews each.
-R6. Side-by-side layout toggle (`|`) using two panes.
+R6. (done) `|` side-by-side view
 R7c. (done) *understanding* buffer (user: "バッファにして"): C-c u, magit-status-like view of
     branch files to understand / understood, open debt, glossary; Enter / U / o / g / q.
     Next: x on a file row (explain the whole file's change), debt count in the mode line.
@@ -57,6 +57,7 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-20 review R6: | toggles aligned read-only before/after panes, shared decisions and navigation, restores panes on exit; alignment, colours and refine covered by treview
 - 2026-10-20 review R3: e edits proposed hunk lines in *hunk*, C-c C-c applies and C-c C-k cancels; newline normalization and rediff covered by treview
 - 2026-10-20 olivetti-mode: per-buffer centred writing margin, configurable body width and automatic language activation; drawing, mouse mapping and Org images share the margin (tolivetti)
 - 2026-10-20 agent prose wraps to pane width with Japanese kinsoku and list indents; cached Git branch in the mode line, including worktrees (twrap, tvcline)

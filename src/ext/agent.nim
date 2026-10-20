@@ -63,6 +63,14 @@ var
   hunkBuf: Buffer
   reviewPane: Pane
   reviewSuspended = false
+  sidesOn = false
+  sidesSplit = false
+  sideBufs: array[2, Buffer]
+  sidePanes: array[2, Pane]
+  sideViews: array[2, SideView]
+  sideOriginal: Buffer
+  sideReused: Pane
+  sideOther: Pane
   explainText: string         # unwrapped source, independent of pane width
 
 proc resetUnderstanding() =
@@ -133,8 +141,9 @@ proc reviewMessage*(): string =
   let (removed, added) = reviewState.stats(currentHunk)
   let head = (if reviewReadOnly: "Understand " else: "Review ") & reviewSource & ": hunk " & $(currentHunk + 1) & "/" &
     $reviewState.hunks.len & " (-" & $removed & " +" & $added & ")"
-  if reviewReadOnly: head & "  x:explain X:ask U:understood n/p l:list q:record ?:help"
-  else: head & "  y:take k:keep u:undo n/p l:list e:edit r:request a:all q:done ?:help"
+  if sidesOn: head & "  n/p y:take k:keep u:undo a/A q:done |:unified ?:help"
+  elif reviewReadOnly: head & "  x:explain X:ask U:understood n/p l:list q:record |:sides ?:help"
+  else: head & "  y:take k:keep u:undo n/p l:list e:edit r:request a:all q:done |:sides ?:help"
 
 proc rebuildReview*() =
   let display = reviewState.view(currentHunk)
@@ -146,6 +155,72 @@ proc rebuildReview*() =
   renderer.top = max(0, reviewBuf.cursor.line - 3)  # a few lines of context above the hunk
   renderer.left = 0
   echoLine = reviewMessage()
+
+proc refreshSides() =
+  if not sidesOn: return
+  let views = reviewState.sideBySide(currentHunk)
+  sideViews = [views.left, views.right]
+  for i in 0..1:
+    let buf = sideBufs[i]
+    buf.splice(0, buf.text.runeLen, sideViews[i].text)
+    buf.modified = false
+    let row = sideViews[i].starts[currentHunk]
+    buf.cursor = (row, 0)
+    sidePanes[i].cursor = buf.cursor
+    sidePanes[i].top = max(0, row - min(3, max(0, sidePanes[i].h - 2)))
+    sidePanes[i].left = 0
+    if pane == sidePanes[i]:
+      renderer.top = sidePanes[i].top
+      renderer.left = 0
+  echoLine = reviewMessage()
+
+proc closeSides() =
+  if not sidesOn: return
+  sidesOn = false
+  reviewSuspended = false
+  selectPane(reviewPane)
+  switchTo(sideOriginal)
+  if sidesSplit:
+    deleteOtherPanes()
+  elif sideReused in layout.leaves:
+    sideReused.buf = sideOther.buf
+    sideReused.cursor = sideOther.cursor
+    sideReused.top = sideOther.top
+    sideReused.left = sideOther.left
+  for buf in sideBufs: killBuffer(buf)
+  sideBufs = [Buffer(nil), Buffer(nil)]
+
+proc toggleSides() =
+  if sidesOn:
+    closeSides()
+    mode = "review"
+    rebuildReview()
+    return
+  reviewPane = pane
+  sideOriginal = b
+  sidesSplit = layout.leaves.len == 1
+  let other = otherPaneFor()
+  if other == nil or other == reviewPane: return
+  sideReused = other
+  sideOther = Pane(buf: other.buf, cursor: other.cursor, top: other.top, left: other.left)
+  sidePanes = if other.x < reviewPane.x: [other, reviewPane] else: [reviewPane, other]
+  for i, name in ["*review: before*", "*review: after*"]:
+    sideBufs[i] = newBuffer()
+    reg.add(sideBufs[i], name)
+  sidesOn = true
+  reviewSuspended = true
+  mode = ""
+  selectPane(sidePanes[0])
+  switchTo(sideBufs[0])
+  sidePanes[1].buf = sideBufs[1]
+  refreshSides()
+
+bandProviders.add proc(buf: Buffer): seq[int8] =
+  for i in 0..1:
+    if sidesOn and buf == sideBufs[i]: return sideViews[i].colors
+backProviders.add proc(buf: Buffer): seq[seq[int8]] =
+  for i in 0..1:
+    if sidesOn and buf == sideBufs[i]: return sideViews[i].bgs
 
 proc beginReviewText(proposed, source: string)  # forward: the review replaced in place
 
@@ -295,6 +370,7 @@ proc applyAndContinue() =
   echoLine = "Applied " & $taken & " hunks; " & $reviewState.hunks.len & " left"
 
 proc finishReview*(cancel = false) =
+  closeSides()  # decisions and ledger entries belong to the original buffer
   reviewSuspended = false
   if cancel: echoLine = "Review cancelled"
   elif reviewReadOnly:
@@ -942,13 +1018,13 @@ proc dispatchReview*(c: string)  # forward: the review's keys, also driven from 
 
 for (name, key) in [("review-take", "y"), ("review-keep", "k"), ("review-next", "n"), ("review-previous", "p"),
                     ("review-finish", "q"), ("review-explain-hunk", "x"), ("review-attest", "U"),
-                    ("review-edit-hunk", "e")]:
+                    ("review-edit-hunk", "e"), ("review-toggle-sides", "|")]:
   closureScope:
     let key = key
     interp.defPrimitive(name, proc(args: seq[Value]): Value =
       ## The review's keys as commands, so an init file or an agent can drive a review.
       args.arity(0, 0)
-      if mode != "review": echoLine = "No review is open"
+      if mode != "review" and not sidesOn: echoLine = "No review is open"
       else: dispatchReview(key)
       nilValue())
 
@@ -983,6 +1059,9 @@ proc dispatchReview*(c: string) =
   of "w":
     applyAndContinue()
     return
+  of "|":
+    toggleSides()
+    return
   of "e":
     editHunk()
     return
@@ -1011,9 +1090,12 @@ proc dispatchReview*(c: string) =
     beginMini("review-hunks", "Hunk: ")
     return
   of "?":
+    if sidesOn:
+      echoLine = "n / p: move  y / k / u: take / keep / undo  a / A: take / keep all  q: finish  |: unified view  C-g: cancel"
+      return
     echoLine = "y: take the proposed hunk  k: keep the buffer's  u: undo the decision  " &
       "n / p: move  l: list  x: explain this hunk  X: ask a question about it  U: I understand it  " &
-      "e: edit proposed lines (C-c C-c applies, C-c C-k cancels)  r: ask the agent to change it  w: apply so far, go on  " &
+      "|: side-by-side view  e: edit proposed lines (C-c C-c applies, C-c C-k cancels)  r: ask the agent to change it  w: apply so far, go on  " &
       "a / A: take / keep all pending and finish  q / Enter: apply decisions  C-g: cancel"
     return
   of "a":
@@ -1027,7 +1109,18 @@ proc dispatchReview*(c: string) =
   else:
     echoLine = c & " is undefined"
     return
-  if mode == "review": rebuildReview()
+  if sidesOn: refreshSides()
+  elif mode == "review": rebuildReview()
+
+proc sideKey(c: string): bool =
+  if mode.len > 0 or prefix.len > 0 or not sidesOn or b notin sideBufs: return false
+  if c in ["n", "p", "y", "k", "u", "a", "A", "q", "|", "?", "C-g"]:
+    dispatchReview(c)
+  # All other keys are consumed: these ordinary buffers are read-only.
+  true
+
+keyFilters.add sideKey
+runeFilters.add proc(r: Rune): bool = sideKey($r)
 
 interp.defPrimitive("agent", proc(args: seq[Value]): Value =
   args.arity(1, 1)
