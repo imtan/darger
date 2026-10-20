@@ -326,6 +326,29 @@ kill/コピーはクリップボードを更新し、60 件の kill リングが
 使います。undo は 200 個のスナップショットを保持し、空白以外の連続した self-insert を
 まとめます。スナップショット方式の undo と平坦化された編集は小さなファイル向きです。
 
+## エージェントで文章を書く
+
+`C-c G` 以下のコマンドは `agent-command` に選択範囲（有効なマークがなければバッファ全体）を送ります。`s b` は常に全体を使います。自動翻訳は、ひらがな・カタカナ・漢字を含めば英語へ、それ以外は日本語へ翻訳します。
+
+| キー | コマンド | 動作 |
+| --- | --- | --- |
+| C-c G t t | `agent-translate-auto` | 日英自動翻訳 |
+| C-c G t j | `agent-translate-to-japanese` | 日本語へ翻訳 |
+| C-c G t e | `agent-translate-to-english` | 英語へ翻訳 |
+| C-c G p p | `agent-proofread` | 校正・推敲 |
+| C-c G p e | `agent-proofread-en` | 英文校正 |
+| C-c G p f | `agent-rewrite-formal` | 丁寧なビジネス文体 |
+| C-c G p c | `agent-rewrite-casual` | 親しみやすい文体 |
+| C-c G s r | `agent-summarize-region` | 箇条書き要約 |
+| C-c G s b | `agent-summarize-buffer` | バッファ全体を要約 |
+| C-c G s k | `agent-extract-keywords` | キーワードをカンマ区切りで抽出 |
+| C-c G d t | `agent-suggest-title` | タイトル候補を3つ提案 |
+| C-c G d n | `agent-draft-blog-from-notes` | メモから Markdown のブログ下書き |
+| C-c G d d | `agent-draft-blog-interactive` | テーマを入力してブログ下書き |
+| C-c G g | `agent-chat` | 既存のエージェントチャット |
+
+翻訳・校正・文体変更は対象範囲の置換案、要約・キーワード・タイトルは対象範囲の直後（全体なら末尾）への追記案を `Agent writing` レビューで表示します。`y` で採用、`k` で見送り、`q` で決定を適用します。ブログ下書きは別ウィンドウの `*agent draft*` に表示し、元の文章は変更しません。`d d` は入力したテーマと対象の文章を使います。処理中に元の文章が変更された場合も、結果を `*agent draft*` に保存します。実行中のエージェントがある場合や `agent-command` が空の場合は開始しません。
+
 ## レビュー
 
 レビューは、別バージョンとの差分をハンクとして重ねたバッファです。エージェントの編集と同じ見せ方で、

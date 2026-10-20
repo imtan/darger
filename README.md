@@ -343,6 +343,29 @@ C-y uses the clipboard when the 60-entry kill ring is empty. Undo keeps 200
 snapshots and groups runs of non-whitespace self-inserts. Snapshot undo and
 flattened edits favor small files.
 
+## Writing with the agent
+
+`C-c G` sends the active region (otherwise the whole buffer) to `agent-command`. `s b` always uses the whole buffer. Auto translation chooses English when the text contains hiragana, katakana or kanji, and Japanese otherwise.
+
+| Key | Command | Action |
+| --- | --- | --- |
+| C-c G t t | `agent-translate-auto` | Auto Japanese ↔ English |
+| C-c G t j | `agent-translate-to-japanese` | Translate to Japanese |
+| C-c G t e | `agent-translate-to-english` | Translate to English |
+| C-c G p p | `agent-proofread` | Proofread and refine |
+| C-c G p e | `agent-proofread-en` | Proofread English |
+| C-c G p f | `agent-rewrite-formal` | Formal business tone |
+| C-c G p c | `agent-rewrite-casual` | Casual, friendly tone |
+| C-c G s r | `agent-summarize-region` | Bullet summary |
+| C-c G s b | `agent-summarize-buffer` | Summarize the whole buffer |
+| C-c G s k | `agent-extract-keywords` | Comma-separated keywords |
+| C-c G d t | `agent-suggest-title` | Three title candidates |
+| C-c G d n | `agent-draft-blog-from-notes` | Markdown blog draft from notes |
+| C-c G d d | `agent-draft-blog-interactive` | Ask for a topic, then draft |
+| C-c G g | `agent-chat` | Existing agent chat |
+
+Translations, proofreading and tone changes propose replacing the selected text. Summaries, keywords and titles propose insertion immediately after it (at the end for a whole buffer). Both open an `Agent writing` review: `y` takes a hunk, `k` keeps the original, and `q` applies decisions. Blog drafts open in `*agent draft*` in the other window without changing the source; `d d` uses the entered topic and selected text as context. If the source changes while waiting, the result is saved in `*agent draft*` instead of opening a stale review. Commands refuse to start while an agent is running or when `agent-command` is empty.
+
 ## Review
 
 A review shows the buffer with another version's changes as hunks, the way the

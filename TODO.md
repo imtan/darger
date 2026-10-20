@@ -49,21 +49,19 @@ R7. (done, first slice) Understanding ledger (user: "ドメイン知識も含め
 (2026-10-16: reordered after comparing ~/.emacs.d/config.org with darger. The user's
 rule: only add what is missing; never rebind or remove existing darger keys.)
 
-1. Writing helpers through the agent (their Gemini/gptel map `C-c G`): translate,
-   proofread, summarize, keywords, blog draft on the region, through `agent-command`
-   with prompt templates; result replaces the region or opens a buffer.
-2. magit, minimal: `C-x g` status buffer (branch, staged/unstaged files, untracked),
+1. magit, minimal: `C-x g` status buffer (branch, staged/unstaged files, untracked),
    `s`/`u` stage/unstage, `c c` commit with a message buffer, `P p` push, diff on Enter.
-3. Terminal: a bold face (second font weight).
-4. Mode line polish (doom-modeline-ish): git branch, LSP state, SKK state grouped;
+2. Terminal: a bold face (second font weight).
+3. Mode line polish (doom-modeline-ish): git branch, LSP state, SKK state grouped;
     olivetti-style centred writing width for Org (`M-x olivetti-mode`).
-5. Books viewer, skilltree / feynman menus, YouTube browse, nostr, elpher, calfw:
+4. Books viewer, skilltree / feynman menus, YouTube browse, nostr, elpher, calfw:
     personal Emacs tools; port only on request.
 
 ## Log
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-20 writing helpers (C-c G): region/buffer translation, proofreading, tone, summaries, keywords and titles through hunk review; Markdown blog drafts in another window (twriting)
 - 2026-10-20 understanding-repay: explain the nearest recorded debt, mark it DONE, and merge glossary terms; x on understanding debt rows (ledger tests)
 - 2026-10-20 understanding is an ordinary read-only buffer too (keyFilters / providers), q leaves, the comparison returns to it
 - 2026-10-20 places is an ordinary read-only buffer with its own keys instead of an overlay (user: C-x o did not work); understanding lets window commands through
