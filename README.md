@@ -797,7 +797,9 @@ the SKK dictionary and romaji rules are used, loaded on first use. On by default
 
 While a prompt is open, `(insert "text")` types into the minibuffer (a one-key
 prompt takes the first character) and `(exit-minibuffer)` accepts it as Enter does,
-so an init file or an agent can drive prompts.
+so an init file or an agent can drive prompts. `(type-string "n")` types as the
+keyboard would, through the rune filters, so the keys of read-only buffers
+(places, understanding, magit) and terminals can be driven too.
 
 ## Projects
 

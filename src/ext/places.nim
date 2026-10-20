@@ -93,8 +93,9 @@ proc leave(buf: Buffer) =
   if other != nil and other != pane: selectPane(other)
   else: discard interp.evalString("(previous-buffer)", "<places>")
 
-keyFilters.add proc(c: string): bool =
+proc placesKey(c: string): bool =
   # The list's keys, only while the list is current, read-only, and no prefix is pending.
+  # Named keys arrive through keyFilters, typed letters through runeFilters (below).
   if mode.len > 0 or prefix.len > 0 or b notin placesOf or placesOf[b].editing: return false
   case c
   of "n": moveTo(b, nextPlace(info(b).places, b.cursor.line, 1))
@@ -110,11 +111,11 @@ keyFilters.add proc(c: string): bool =
   of "?": echoLine = "n / p: next / previous place (the other window follows)   Enter: go there   o: edit   g: re-read   q: leave"
   else: return false
   true
+keyFilters.add placesKey
 runeFilters.add proc(r: Rune): bool =
-  # Read-only: typed characters do not change the list (o makes it editable).
+  # Typed letters are the list's keys; anything else is swallowed (read-only; o edits).
   if mode.len > 0 or prefix.len > 0 or b notin placesOf or placesOf[b].editing: return false
-  if r == Rune('o') or r == Rune('g') or r == Rune('n') or r == Rune('p') or r == Rune('q') or r == Rune('?') or r == Rune('f'):
-    return false  # handled as keys above
+  if placesKey($r): return true
   echoLine = "The places list is read-only (o to edit)"
   true
 

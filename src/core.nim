@@ -1413,6 +1413,18 @@ for name in ["kill-emacs", "save-buffers-kill-terminal"]:
     args.arity(0, 0)
     quitEditor()
     nilValue())
+interp.defPrimitive("type-string", proc(args: seq[Value]): Value =
+  ## Types the string as if at the keyboard: every rune passes the rune filters (a
+  ## terminal, a read-only list's keys) before being inserted, so scripts and agents
+  ## can exercise what typing does; the input method is not involved.
+  args.arity(1, 1)
+  for r in args[0].asString.runes:
+    if filterRune(r): continue
+    if inMini():
+      mini.insert($r, true)
+      if mode == "search": search() else: refreshCandidates()
+    else: b.insert($r, true)
+  nilValue())
 interp.defPrimitive("exit-minibuffer", proc(args: seq[Value]): Value =
   ## Accepts the open prompt with what is typed, as Enter does; for scripts and agents.
   args.arity(0, 0)

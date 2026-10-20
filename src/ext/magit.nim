@@ -114,7 +114,8 @@ proc visitRow(row: Row) =
     else: echoLine = strutils.strip(head.output)
   buildStatus(here)
 
-keyFilters.add proc(c: string): bool =
+proc magitKey(c: string): bool =
+  ## Named keys arrive through keyFilters, typed letters through runeFilters.
   if mode.len > 0 or prefix.len > 0 or mbuf == nil or b != mbuf: return false
   let here = mbuf.cursor.line
   let row = mrows[here]
@@ -156,9 +157,10 @@ keyFilters.add proc(c: string): bool =
   except CatchableError as e: echoLine = e.msg
   true
 
+keyFilters.add magitKey
 runeFilters.add proc(r: Rune): bool =
   if mode.len > 0 or prefix.len > 0 or mbuf == nil or b != mbuf: return false
-  if r.int < 128 and char(r.int) in {'s', 'u', 'k', 'c', 'P', 'F', 'g', 'n', 'p', 'q', '?'}: return false
+  if magitKey($r): return true
   echoLine = "The magit buffer is read-only (? for keys)"
   true
 faceProviders.add proc(buf: Buffer): seq[seq[Face]] =

@@ -150,9 +150,10 @@ proc attestFile(rel, base: string) =
     branch: ubranch, rev: fileRev(uroot, file), explanation: "(understood by the reviewer, whole file)", at: now())])
   echoLine = rel & " marked understood"
 
-keyFilters.add proc(c: string): bool =
+proc understandingKey(c: string): bool =
   ## The buffer's keys, while it is current and no prefix is pending; everything else
-  ## (C-x o, C-x b, splits) is the editor's as usual.
+  ## (C-x o, C-x b, splits) is the editor's as usual. Named keys arrive through
+  ## keyFilters, typed letters through runeFilters.
   if mode.len > 0 or prefix.len > 0 or ubuf == nil or b != ubuf: return false
   let row = if ubuf.cursor.line < urows.len: urows[ubuf.cursor.line] else: Row()
   let here = ubuf.cursor.line
@@ -202,10 +203,11 @@ keyFilters.add proc(c: string): bool =
   of "?": echoLine = "Enter: compare the file with the base / go to the debt   x: explain debt   b: base branch   U: whole file understood   o: the ledger   g: rebuild   q: leave"
   else: return false
   true
+keyFilters.add understandingKey
 runeFilters.add proc(r: Rune): bool =
-  # Read-only: typed characters are keys or nothing.
+  # Typed letters are the buffer's keys; anything else is swallowed (read-only).
   if mode.len > 0 or prefix.len > 0 or ubuf == nil or b != ubuf: return false
-  if r.int < 128 and char(r.int) in {'f', 'x', 'b', 'U', 'o', 'g', 'q', '?'}: return false
+  if understandingKey($r): return true
   echoLine = "The understanding buffer is read-only (? for its keys)"
   true
 faceProviders.add proc(buf: Buffer): seq[seq[Face]] =
