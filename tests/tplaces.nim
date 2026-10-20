@@ -18,5 +18,10 @@ doAssert nextPlace(trail, 0, 1) == 0 and nextPlace(trail, 4, 1) == 1 and nextPla
 doAssert nextPlace(trail, 8, -1) == 1 and nextPlace(trail, 4, -1) == -1
 doAssert placeAt(trail, 5) == 1 and placeAt(trail, 6) == -1
 doAssert parsePlacesList("no cookie\nb.erb:1: ok\n", dir).len == 1   # the fallback directory
+doAssert looksLikeGrep("app/a.rb:1: x\napp/a.rb:2: y\nb.erb:1: z\n", dir)
+doAssert looksLikeGrep("== section\napp/a.rb:1: x\n\napp/a.rb:2: y\nb.erb:1: z\nprose line\n", dir)   # 3 of 4
+doAssert looksLikeGrep("app/a.rb:1: x\nb.erb:1: z\n", dir)                                  # two places suffice
+doAssert not looksLikeGrep("app/a.rb:1: x\n", dir)                                            # one is not a list
+doAssert not looksLikeGrep("a\nb\nc\nd\ne\nf\napp/a.rb:1: x\napp/a.rb:2: y\nb.erb:1: z\n", dir)  # mostly prose
 removeDir(dir)
 echo "places ok"

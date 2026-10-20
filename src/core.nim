@@ -256,6 +256,7 @@ var
   backProviders*: seq[proc(buf: Buffer): seq[seq[int8]]]   # per-rune background colours (1-8), any pane
   boldProviders*: seq[proc(buf: Buffer): seq[seq[int8]]]   # per-rune bold (1), any pane
   bandProviders*: seq[proc(buf: Buffer): seq[int8]]        # per-line bands (5 = highlighted line), any pane
+  modeNameProviders*: seq[proc(buf: Buffer): string]       # the mode line's name for a buffer ("Grep"); "" = the language
   markProviders*: seq[proc(buf: Buffer): seq[seq[int8]]]   # per-rune underlines (5) when the buffer has
                                                              # no diagnostics
   marginProviders*: seq[proc(buf: Buffer, paneWidth: int): int]
@@ -1622,7 +1623,12 @@ proc redraw*(hover = thNone, maximized = false) =
   let editing = view == nil or view.editing
   let name = if editing: reg.displayName(b)
     elif displayed.path.len == 0: "*scratch*" else: displayed.path
-  let modeName = if displayed == b: lang.name & (if modeLineHook != nil: modeLineHook() else: "")
+  proc modeNameOf(buf: Buffer): string =
+    for provider in modeNameProviders:
+      result = provider(buf)
+      if result.len > 0: return
+    result = langOf(buf).name
+  let modeName = if displayed == b: modeNameOf(b) & (if modeLineHook != nil: modeLineHook() else: "")
     elif view.modeName.len > 0: view.modeName else: "Text"
   let tag = if view != nil and view.tag.len > 0: view.tag else: inputMethod.tag()
   # The selected pane shows the view or b with everything; the others their buffer plainly.
@@ -1655,7 +1661,7 @@ proc redraw*(hover = thNone, maximized = false) =
         extra: pics.extra, pictures: pics.pictures, lineColors: bands(buf), margin: marginFor(buf, p.w),
         bgs: provided(backProviders, buf), marks: provided(markProviders, buf),
         bolds: provided(boldProviders, buf),
-        modeLine: modeLineText(buf, reg.displayName(buf), p.cursor, langOf(buf).name, ""),
+        modeLine: modeLineText(buf, reg.displayName(buf), p.cursor, modeNameOf(buf), ""),
         matchStart: -1)
   var thumbnail = ""
   if inMini() and listed and candIndex >= 0 and mode in prompts and prompts[mode].thumbnail != nil:

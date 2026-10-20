@@ -769,7 +769,7 @@ selection previews the spot, Enter jumps there (M-, comes back) and C-g returns.
 
 C-c l (`agent-locate`) asks `agent-command` a question about the project ("where is
 the retry logic?", "どこで日報のテンプレートを埋めている?") and opens the answer as a
-`*places*` buffer, the way Emacs shows a grep buffer: the agent is told to reply with
+`*grep*` buffer in Grep mode, the way Emacs shows a grep buffer: the agent is told to reply with
 `path:line: note` lines, grouped under `== 1. Heading` lines when that helps. It is
 an ordinary buffer in its window (C-x o, splits and C-x b work as usual), read-only
 with its own keys: n / p move between the places while the other window follows to
@@ -781,8 +781,13 @@ mentions the same way.
 
 Any text in that shape works: a file whose first line is the Emacs cookie `-*- mode:
 grep; default-directory: "/the/project/" -*-` (Claude Code can write one as a trail
-through a question) becomes a places buffer when visited (`(setq places-auto-open
-nil)` turns that off), and `M-x places` makes the current buffer one. Relative paths resolve under the cookie's directory, else
+through a question) becomes a grep buffer when visited, and so does a file that
+reads like grep output (`rg` / `grep -n` saved to a file: at least two
+`path:line` lines naming existing files, on at least half of its lines); `(setq
+grep-auto-open nil)` turns that off, and `M-x grep-mode` makes the current buffer
+one by hand. `M-x rgrep` (or `(rgrep "query")`) searches the project like
+consult-ripgrep but lists the matches in a `*grep*` buffer instead of the popup,
+for walking through them with n / p. The mode line shows `(Grep)`. Relative paths resolve under the cookie's directory, else
 the file's own.
 
 ## Migemo

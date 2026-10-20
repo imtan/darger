@@ -1,10 +1,11 @@
-## *places*: a grep-mode-like list that is an ordinary buffer, so it stays in its
-## window while C-x o, splits and buffer switching work as usual. In a places buffer
+## Grep mode: a grep-mode-like list that is an ordinary buffer, so it stays in its
+## window while C-x o, splits and buffer switching work as usual. In a grep buffer
 ## n / p move between the `path:line: note` lines while the other window follows to
 ## that spot (both lines highlighted), Enter goes there, o toggles editing (the list
 ## is read-only otherwise), g re-reads the list, q leaves it. A file with the
-## `-*- mode: grep ... -*-` cookie becomes one when visited, M-x places makes the
-## current buffer one, and the agent's answers (C-c l) open as one.
+## `-*- mode: grep ... -*-` cookie, or one that reads like grep output, becomes one
+## when visited; M-x grep-mode makes the current buffer one; M-x rgrep and the
+## agent's answers (C-c l) open as one.
 import std/[os, strutils, unicode, tables]
 import ../[core, buffer, buffers, lisp, syntax, chat, places]
 
@@ -77,15 +78,32 @@ proc makePlaces*(buf: Buffer, dir, title: string) =
 proc openPlacesText*(text, dir, title: string) =
   ## A fresh *places* buffer with the text, shown in the selected window.
   let buf = newBuffer(text)
-  reg.add(buf, "*places*")
+  reg.add(buf, "*grep*")
   switchTo(buf)
   buf.modified = false
   makePlaces(buf, dir, title)
 
+proc placesDir*(buf: Buffer): string =
+  ## The directory relative paths resolve under: the cookie's when there is one, else
+  ## whichever of the file's directory, its project root and the working directory
+  ## makes the most lines into places (grep output is usually relative to the project).
+  if buf.lines.len > 0 and cookieDirectory($buf.lines[0]).len > 0: return expandTilde(cookieDirectory($buf.lines[0]))
+  var candidates: seq[string]
+  if buf.path.len > 0 and not buf.path.startsWith("*"):
+    candidates.add parentDir(buf.path)
+    candidates.add rootFromDir(parentDir(buf.path))
+  candidates.add getCurrentDir()
+  candidates.add rootFromDir(getCurrentDir())
+  result = candidates[0]
+  var best = -1
+  for dir in candidates:
+    let n = parsePlacesList(buf.text, dir).len
+    if n > best:
+      best = n
+      result = dir
+
 proc placesFromBuffer*(buf: Buffer) =
-  let dir = if buf.path.len > 0 and not buf.path.startsWith("*"): parentDir(buf.path)
-            else: rootFromDir(getCurrentDir())
-  makePlaces(buf, dir, (if buf.path.len > 0: extractFilename(buf.path) else: "places"))
+  makePlaces(buf, placesDir(buf), (if buf.path.len > 0: extractFilename(buf.path) else: "grep"))
 
 proc leave(buf: Buffer) =
   ## q: the other window when there is one, else the previous buffer.
@@ -116,7 +134,7 @@ runeFilters.add proc(r: Rune): bool =
   # Typed letters are the list's keys; anything else is swallowed (read-only; o edits).
   if mode.len > 0 or prefix.len > 0 or b notin placesOf or placesOf[b].editing: return false
   if placesKey($r): return true
-  echoLine = "The places list is read-only (o to edit)"
+  echoLine = "The grep buffer is read-only (o to edit)"
   true
 
 faceProviders.add proc(buf: Buffer): seq[seq[Face]] =
@@ -148,29 +166,38 @@ killHooks.add proc(buf: Buffer) =
   placesOf.del buf
   if buf == followed: followed = nil
 
-interp.defPrimitive("places", proc(args: seq[Value]): Value =
-  ## M-x places: the current buffer as a places list; in one already, toggles editing.
-  args.arity(0, 0)
-  if b in placesOf:
-    placesOf[b].editing = not placesOf[b].editing
-    if not placesOf[b].editing: reparse(b)
-    echoLine = if placesOf[b].editing: "Editing the list" else: "Places keys: n / p / Enter / q"
-  else: placesFromBuffer(b)
-  nilValue())
-for (name, direction) in [("places-next", 1), ("places-previous", -1)]:
+modeNameProviders.add proc(buf: Buffer): string = (if buf in placesOf: "Grep" else: "")
+
+for name in ["grep-mode", "places"]:
+  interp.defPrimitive(name, proc(args: seq[Value]): Value =
+    ## M-x grep-mode: the current buffer as a grep buffer; in one already, toggles editing.
+    args.arity(0, 0)
+    if b in placesOf:
+      placesOf[b].editing = not placesOf[b].editing
+      if not placesOf[b].editing: reparse(b)
+      echoLine = if placesOf[b].editing: "Editing the list" else: "Grep keys: n / p / Enter / q"
+    else: placesFromBuffer(b)
+    nilValue())
+for (name, direction) in [("grep-next", 1), ("grep-previous", -1), ("places-next", 1), ("places-previous", -1)]:
   closureScope:
     let direction = direction
     interp.defPrimitive(name, proc(args: seq[Value]): Value =
       args.arity(0, 0)
-      if b notin placesOf: echoLine = "Not a places list"
+      if b notin placesOf: echoLine = "Not a grep buffer"
       else: moveTo(b, nextPlace(info(b).places, b.cursor.line, direction))
       nilValue())
 
+proc autoOpen(): bool =
+  let v = interp.env.values.getOrDefault("grep-auto-open")
+  let old = interp.env.values.getOrDefault("places-auto-open")
+  (v == nil or v.kind != vNil) and (old == nil or old.kind != vNil)
+
 visitHooks.add proc() =
-  # A file written as a grep-mode buffer is a places list from the start.
-  if b.lines.len > 0 and isPlacesText($b.lines[0]) and b notin placesOf and
-      interp.env.values["places-auto-open"].kind != vNil: placesFromBuffer(b)
+  # A file written as a grep-mode buffer (the cookie), or one that reads like grep
+  # output (rg / grep -n saved, an agent's trail), is a grep buffer from the start.
+  if b notin placesOf and b.lines.len > 0 and autoOpen():
+    if isPlacesText($b.lines[0]) or (b.lines.len <= 5000 and looksLikeGrep(b.text, placesDir(b))): placesFromBuffer(b)
 
 defaults.add """
-(setq places-auto-open t)
+(setq grep-auto-open t)
 """

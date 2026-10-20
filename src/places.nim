@@ -34,6 +34,18 @@ proc parsePlacesList*(text, fallbackDir: string): seq[Place] =
     let hits = parsePlaces(l, dir)
     if hits.len == 1: result.add Place(row: i, path: hits[0].path, line: hits[0].line, col: hits[0].col, note: hits[0].text)
 
+proc looksLikeGrep*(text, dir: string): bool =
+  ## Grep output without the cookie (rg / grep -n saved to a file, an agent's trail):
+  ## at least two places naming existing files, and places on at least half of the
+  ## lines that are not blank or `==` headings.
+  let places = parsePlacesList(text, dir)
+  if places.len < 2: return false
+  var lines = 0
+  for l in text.splitLines:
+    let s = l.strip
+    if s.len > 0 and not s.startsWith("=="): inc lines
+  places.len * 2 >= lines
+
 proc placeRows*(places: seq[Place]): seq[int] =
   for p in places: result.add p.row
 
