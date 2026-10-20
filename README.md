@@ -694,8 +694,9 @@ C-c l (`agent-locate`) asks `agent-command` a question about the project ("where
 the retry logic?", "どこで日報のテンプレートを埋めている?") and opens the answer as a
 `*places*` list, the way Emacs shows a grep buffer: the agent is told to reply with
 `path:line: note` lines, grouped under `== 1. Heading` lines when that helps. In the
-list, n / p move between the places while the other window follows to each spot,
-Enter jumps there, q closes, ? lists the keys. `(agent-locate "question")` does it
+list, n / p move between the places while the other window follows to each spot
+(the line there and the row here are highlighted), Enter jumps there, q closes, ?
+lists the keys. `(agent-locate "question")` does it
 from Lisp. `M-x agent-references` lists every `path:line` the current buffer
 mentions the same way.
 

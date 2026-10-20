@@ -254,6 +254,7 @@ var
   faceProviders*: seq[proc(buf: Buffer): seq[seq[Face]]]  # a non-empty result replaces the
                                                              # language highlighting (a terminal's colours)
   backProviders*: seq[proc(buf: Buffer): seq[seq[int8]]]   # per-rune background colours (1-8), any pane
+  bandProviders*: seq[proc(buf: Buffer): seq[int8]]        # per-line bands (5 = highlighted line), any pane
   markProviders*: seq[proc(buf: Buffer): seq[seq[int8]]]   # per-rune underlines (5) when the buffer has
                                                              # no diagnostics
   noGutter*: seq[proc(buf: Buffer): bool]   # true: the buffer shows without line numbers (a terminal)
@@ -1580,6 +1581,10 @@ proc redraw*(hover = thNone, maximized = false) =
     for provider in providers:
       result = provider(buf)
       if result.len > 0: return
+  proc bands(buf: Buffer): seq[int8] =
+    for provider in bandProviders:
+      result = provider(buf)
+      if result.len > 0: return
   if shownMarks.len == 0: shownMarks = provided(markProviders, b)
   # From the 5th candidate SKK's page hangs from the cursor like a completion popup
   # (in a prompt, where no box fits, it is the echo line above).
@@ -1614,7 +1619,7 @@ proc redraw*(hover = thNone, maximized = false) =
         fold: if displayed == b: folds(b) else: @[],
         extra: if displayed == b: shownPictures.extra else: @[],
         pictures: if displayed == b: shownPictures.pictures else: @[],
-        lineColors: if view != nil and view.colors != nil: view.colors() else: @[],
+        lineColors: if view != nil and view.colors != nil: view.colors() else: bands(displayed),
         lineNumbers: displayed == b and gutterFor(b) > 0,
         modeLine: modeLineText(displayed, name, displayed.cursor, modeName, tag),
         box: if displayed == b: box else: CursorBox(),
@@ -1626,7 +1631,7 @@ proc redraw*(hover = thNone, maximized = false) =
       let pics = pictures(buf)
       views.add PaneView(b: buf, x: p.x, y: p.y, w: p.w, h: p.h, top: p.top, left: p.left,
         cursor: p.cursor, active: false, faces: facesOf(buf), fold: folds(buf), lineNumbers: gutterFor(buf) > 0,
-        extra: pics.extra, pictures: pics.pictures,
+        extra: pics.extra, pictures: pics.pictures, lineColors: bands(buf),
         bgs: provided(backProviders, buf), marks: provided(markProviders, buf),
         modeLine: modeLineText(buf, reg.displayName(buf), p.cursor, langOf(buf).name, ""),
         matchStart: -1)

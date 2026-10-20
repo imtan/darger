@@ -7,6 +7,8 @@ import ../[core, buffer, buffers, lisp, syntax, chat, places, panes]
 import web
 
 var
+  followed: Buffer     # the buffer the other window shows for the current place
+  followedLine = -1
   pbuf: Buffer         # the list shown
   pfaces: seq[seq[Face]]
   pplaces: seq[Place]
@@ -44,6 +46,8 @@ proc follow() =
     visit(p.path)
     b.cursor = (min(p.line, b.lines.high), min(p.col, b.lines[min(p.line, b.lines.high)].len))
     renderer.top = max(0, b.cursor.line - max(1, renderer.rows) div 2)
+    followed = b
+    followedLine = b.cursor.line
   except CatchableError as e: echoLine = e.msg
   selectPane(keep)
   echoLine = shortPath(p.path, 50) & ":" & $(p.line + 1) & (if p.note.len > 0: "  " & p.note else: "")
@@ -58,6 +62,14 @@ proc moveTo(i: int) =
 proc finishPlaces() =
   finishOverlay()
   pbuf = nil
+  followed = nil
+  followedLine = -1
+
+bandProviders.add proc(buf: Buffer): seq[int8] =
+  # The place followed is highlighted in the other window while the list is open.
+  if mode == "places" and buf == followed and followedLine >= 0 and followedLine < buf.lines.len:
+    result = newSeq[int8](buf.lines.len)
+    result[followedLine] = 5
 
 proc openPlacesText*(text, dir, title: string, source: Buffer = nil) =
   ## The list over the editor; the first place is followed at once.
@@ -107,6 +119,11 @@ proc dispatchPlaces(c: string) =
 
 defineMode(Mode(name: "places", modeName: "Places", buffer: proc(): Buffer = pbuf,
   faces: proc(): seq[seq[Face]] = pfaces,
+  colors: proc(): seq[int8] =
+    # the current place's row, when the cursor is on one
+    if pbuf != nil and placeAt(pplaces, pbuf.cursor.line) >= 0:
+      result = newSeq[int8](pbuf.lines.len)
+      result[pbuf.cursor.line] = 5,
   message: proc(): string = (if echoLine.len > 0: echoLine else: ptitle & "  n/p:move Enter:go o:edit q:close ?:help"),
   onKey: dispatchPlaces, onClose: finishPlaces))
 

@@ -64,6 +64,7 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
+- 2026-10-20 places: the followed line and the current list row are highlighted (bandProviders, band 5 = theme.region)
 - 2026-10-20 *places* (grep-mode style, user's example): n/p follow in the other window, Enter, o, cookie files open as places, agent-locate answers go there (src/places.nim tested)
 - 2026-10-20 PATH from the login shell on macOS GUI launches (user: "/bin/sh claude not found"), src/execpath.nim tested
 - 2026-10-20 understanding asks for the base branch on first open per repository and remembers it (~/.darger-understanding-bases) (user: "無意味に master と毎回比較されるのは面倒")

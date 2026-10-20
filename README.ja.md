@@ -635,8 +635,8 @@ rg がなければ `grep -rni`) で検索し、結果を `path:line: text` と�
 C-c l (`agent-locate`) はプロジェクトについての質問 (「リトライ処理はどこ?」「日報のテンプレートを
 埋めているのはどこ?」) を `agent-command` に送り、答えを Emacs の grep バッファのような `*places*`
 一覧で開きます。エージェントには `path:line: メモ` の行で、必要なら `== 1. 見出し` で区切って
-答えるよう指示します。一覧では n / p で場所を移動しながら隣のウィンドウがその場所に追従し、Enter で
-ジャンプ、q で閉じる、? でキー一覧。`(agent-locate "質問")` で Lisp からも。`M-x agent-references`
+答えるよう指示します。一覧では n / p で場所を移動しながら隣のウィンドウがその場所に追従し (追従先の行と
+一覧の現在行は帯で強調)、Enter でジャンプ、q で閉じる、? でキー一覧。`(agent-locate "質問")` で Lisp からも。`M-x agent-references`
 は今のバッファが言及する `path:line` を同じ形で一覧にします。
 
 同じ形のテキストなら何でも使えます。1 行目が Emacs のクッキー `-*- mode: grep; default-directory:

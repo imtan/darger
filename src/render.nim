@@ -780,6 +780,8 @@ proc drawPane(r: Renderer, window: Window, p: var PaneView, composition: seq[Run
       continue
     if line < p.lineColors.len and p.lineColors[line] in 1'i8..4'i8:
       r.band(row, theme.review[p.lineColors[line]])
+    elif line < p.lineColors.len and p.lineColors[line] == 5:  # a highlighted line (the place followed)
+      r.band(row, theme.region)
     let at = if showCursor and line == cursor.line: cursor.col else: -1
     var paren = [-1, -1]
     for i, pp in pair:
