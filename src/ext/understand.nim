@@ -196,6 +196,11 @@ proc dispatchUnderstanding(c: string) =
   of "C-x C-c": quitEditor()
   else:
     if command == "understanding": finishUnderstanding()
+    elif command in ["other-window", "windmove-left", "windmove-right", "windmove-up", "windmove-down",
+                     "switch-to-buffer", "find-file", "delete-window", "delete-other-windows",
+                     "split-window-below", "split-window-right"]:
+      finishUnderstanding()  # the buffer comes back with C-c u
+      dispatch(full)
     elif overlayMove(ubuf, full, command): discard
     else: echoLine = full & " is undefined"
 

@@ -693,19 +693,20 @@ selection previews the spot, Enter jumps there (M-, comes back) and C-g returns.
 
 C-c l (`agent-locate`) asks `agent-command` a question about the project ("where is
 the retry logic?", "どこで日報のテンプレートを埋めている?") and opens the answer as a
-`*places*` list, the way Emacs shows a grep buffer: the agent is told to reply with
-`path:line: note` lines, grouped under `== 1. Heading` lines when that helps. In the
-list, n / p move between the places while the other window follows to each spot
-(the line there and the row here are highlighted), Enter jumps there, q closes, ?
-lists the keys. `(agent-locate "question")` does it
+`*places*` buffer, the way Emacs shows a grep buffer: the agent is told to reply with
+`path:line: note` lines, grouped under `== 1. Heading` lines when that helps. It is
+an ordinary buffer in its window (C-x o, splits and C-x b work as usual), read-only
+with its own keys: n / p move between the places while the other window follows to
+each spot (the line there and the row here are highlighted), Enter goes there and
+selects that window, o makes the list editable (M-x places toggles back), g re-reads
+it, q leaves it, ? lists the keys. `(agent-locate "question")` does it
 from Lisp. `M-x agent-references` lists every `path:line` the current buffer
 mentions the same way.
 
 Any text in that shape works: a file whose first line is the Emacs cookie `-*- mode:
 grep; default-directory: "/the/project/" -*-` (Claude Code can write one as a trail
-through a question) opens as a places list over itself (o edits the file; `(setq
-places-auto-open nil)` turns the automatic opening off), and `M-x places` shows the
-current buffer that way. Relative paths resolve under the cookie's directory, else
+through a question) becomes a places buffer when visited (`(setq places-auto-open
+nil)` turns that off), and `M-x places` makes the current buffer one. Relative paths resolve under the cookie's directory, else
 the file's own.
 
 ## Migemo
