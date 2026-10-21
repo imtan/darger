@@ -10,7 +10,7 @@ type
     multiline: bool
     isChar: bool  # only 'x' or '\…': Rust lifetimes and stray quotes stay plain
     escape: char  # '\0': none
-  Special = enum spText, spCode, spMarkdown, spOrg, spErb
+  Special = enum spText, spCode, spMarkdown, spOrg, spErb, spCss, spHaml
   Lang* = object
     name*: string
     lineComment: string
@@ -20,6 +20,9 @@ type
     keywords, builtins, types, constants: HashSet[string]
     identExtra: set[char]  # besides letters, digits and '_'
     lisp: bool             # extras may start a symbol; the head of a list is a call
+    caseInsensitive: bool
+    extraLineComment: string
+    makefile: bool
     capitalTypes: bool
     preproc: bool          # C '#include' lines
     macroBang: bool        # Rust 'name!'
@@ -181,16 +184,59 @@ let
   yaml = confLang("YAML")
   markdown = Lang(name: "Markdown", special: spMarkdown)
   erb = Lang(name: "ERB", special: spErb, lineComment: "")  # HTML with <% Ruby %>
+  html = Lang(name: "HTML", special: spErb)
+  vue = Lang(name: "Vue", special: spErb)
+  svelte = Lang(name: "Svelte", special: spErb)
+  xml = Lang(name: "XML", special: spErb)
+  css = Lang(name: "CSS", special: spCss)
+  scss = Lang(name: "SCSS", special: spCss, lineComment: "//")
+  sass = Lang(name: "Sass", special: spCss, lineComment: "//")
+  less = Lang(name: "Less", special: spCss, lineComment: "//")
+  haml = Lang(name: "Haml", special: spHaml)
+  slim = Lang(name: "Slim", special: spHaml)
+  sql = Lang(name: "SQL", special: spCode, caseInsensitive: true,
+    lineComment: "--", blockComments: @[("/*", "*/")],
+    strings: @[rule("'", multiline = true, escape = '\0')],
+    keywords: words"""select from where join left right inner outer on group by order having
+      limit offset insert into values update set delete create table index drop alter add
+      primary key foreign references not default unique and or in is as distinct union all
+      exists between like case when then else end begin commit rollback transaction with
+      returning asc desc cross full using cascade constraint check view replace truncate
+      over partition recursive conflict do nothing ilike""",
+    types: words"""integer int smallint bigint varchar char text boolean bool timestamp
+      timestamptz date time interval json jsonb uuid serial bigserial numeric decimal real
+      double precision float bytea""",
+    constants: words"true false null")
+  docker = Lang(name: "Dockerfile", special: spCode, lineComment: "#",
+    caseInsensitive: true, strings: @[rule("\""), rule("'")],
+    keywords: words"""from run cmd label expose env add copy entrypoint volume user workdir
+      arg onbuild stopsignal healthcheck shell as""")
+  make = Lang(name: "Makefile", special: spCode, lineComment: "#", makefile: true,
+    strings: @[rule("\""), rule("'")], identExtra: {'-', '.', '/', '%'}, keys: {':', '='})
+  ini = Lang(name: "INI", special: spCode, lineComment: "#", extraLineComment: ";",
+    strings: @[rule("\""), rule("'")], sections: true, keys: {'='}, identExtra: {'-', '.'})
+  procfile = Lang(name: "Procfile", special: spCode, lineComment: "#",
+    strings: @[rule("\""), rule("'")], keys: {':'}, identExtra: {'-', '.'})
+  graphql = Lang(name: "GraphQL", special: spCode, lineComment: "#",
+    strings: @[rule("\"\"\"", multiline = true), rule("\"")],
+    keywords: words"""query mutation subscription fragment on type input interface enum
+      union scalar schema extend implements directive""",
+    builtins: words"Int Float String Boolean ID", constants: words"true false null")
   org = Lang(name: "Org", special: spOrg)
 
 var orgTodoFaces*: seq[(string, Face)] = @[("TODO", fConstant), ("DONE", fConstant)]
   ## Org TODO keywords and their faces; the Org extension sets them from org-todo-keywords
 
 proc detect*(path: string, firstLine: string): Lang =
-  case splitFile(path).ext.toLowerAscii
+  let filename = extractFilename(path)
+  let ext = splitFile(path).ext.toLowerAscii
+  if ext in [".erb", ".rhtml"]: return erb
+  if filename.startsWith("Dockerfile."): return docker
+  if filename == ".env" or filename.startsWith(".env."): return ini
+  case ext
   of ".nim", ".nims", ".nimble": nimLang
   of ".py", ".pyi": python
-  of ".rb", ".rake": ruby
+  of ".rb", ".rake", ".jbuilder", ".rabl", ".gemspec", ".ru", ".thor": ruby
   of ".gd": gdscript
   of ".js", ".mjs", ".ts", ".tsx", ".jsx": js
   of ".c", ".h", ".cpp", ".hpp", ".cc": c
@@ -203,11 +249,30 @@ proc detect*(path: string, firstLine: string): Lang =
   of ".toml": toml
   of ".yaml", ".yml": yaml
   of ".md", ".markdown": markdown
-  of ".erb", ".rhtml": erb
   of ".org": org
+  of ".html", ".htm", ".xhtml": html
+  of ".vue": vue
+  of ".svelte": svelte
+  of ".xml", ".svg", ".plist", ".xsd", ".xsl", ".xslt": xml
+  of ".css": css
+  of ".scss": scss
+  of ".sass": sass
+  of ".less": less
+  of ".haml": haml
+  of ".slim": slim
+  of ".sql": sql
+  of ".dockerfile": docker
+  of ".mk": make
+  of ".ini", ".cfg", ".conf", ".env", ".properties": ini
+  of ".graphql", ".gql": graphql
   else:
     case extractFilename(path)
-    of "Gemfile", "Rakefile": return ruby
+    of "Gemfile", "Rakefile", "Capfile", "Guardfile", ".pryrc", ".irbrc": return ruby
+    of "Dockerfile": return docker
+    of "Makefile", "makefile", "GNUmakefile": return make
+    of ".editorconfig", ".gitconfig", ".npmrc", ".yarnrc": return ini
+    of "Procfile": return procfile
+    of ".rspec", "Gemfile.lock": return text
     of ".emacs": return lisp
     else: discard
     if firstLine.startsWith("#!"):
@@ -359,7 +424,8 @@ proc code(lang: Lang, lines: seq[seq[Rune]], faces: var seq[seq[Face]]) =
             i = e
             hit = true
             break
-      if not hit and lang.lineComment.len > 0 and matchAt(line, i, lang.lineComment) and
+      if not hit and ((lang.lineComment.len > 0 and matchAt(line, i, lang.lineComment)) or
+          (lang.extraLineComment.len > 0 and matchAt(line, i, lang.extraLineComment))) and
           (not lang.spacedComment or i == 0 or line[i-1].isSpace):
         faces[n].paint(i, line.len, fComment)
         break
@@ -380,6 +446,15 @@ proc code(lang: Lang, lines: seq[seq[Rune]], faces: var seq[seq[Face]]) =
           i = e
           hit = true
           break
+      if not hit and lang.makefile and ch == '$' and i + 1 < line.len and
+          ascii(line[i+1]) in {'(', '{'}:
+        let closer = if line[i+1] == Rune('('): Rune(')') else: Rune('}')
+        var e = i + 2
+        while e < line.len and line[e] != closer: inc e
+        e = min(e + 1, line.len)
+        faces[n].paint(i, e, fVariable)
+        i = e
+        hit = true
       if not hit and ch in lang.sigils and i + 1 < line.len:
         var e = i + 1
         while ch == '@' and e < line.len and line[e] == r: inc e
@@ -437,8 +512,14 @@ proc code(lang: Lang, lines: seq[seq[Rune]], faces: var seq[seq[Face]]) =
         while e < line.len and identPart(line[e]): inc e
         var word = newStringOfCap(e - i)
         for k in i..<e: word.add line[k]
+        if lang.caseInsensitive: word = word.toLowerAscii
+        var keyEnd = e
+        if lang.makefile:
+          while keyEnd < line.len and line[keyEnd].isSpace: inc keyEnd
         var face =
-          if lang.keys != {} and first and keyAt(line, e, lang.keys): fVariable
+          if lang.makefile and first and indent(line) == 0 and keyAt(line, e, {':'}) and
+              not keyAt(line, keyEnd + 1, {'='}): fFnname
+          elif lang.keys != {} and first and keyAt(line, e, lang.keys): fVariable
           elif word in lang.keywords: fKeyword
           elif word in lang.constants: fConstant
           elif word in lang.builtins: fBuiltin
@@ -667,6 +748,157 @@ proc erbLines(lines: seq[seq[Rune]], faces: var seq[seq[Face]]) =
     for i in 0..<line.len:
       if shadow[n][i] != sp and rubyFaces[n][i] != fPlain: faces[n][i] = rubyFaces[n][i]
 
+proc cssLines(lang: Lang, lines: seq[seq[Rune]], faces: var seq[seq[Face]]) =
+  var depth = 0
+  var comment = false
+  var selector = true
+  var value = false
+  for n, line in lines:
+    var i = 0
+    var start = true
+    while i < line.len:
+      let ch = ascii(line[i])
+      if comment or matchAt(line, i, "/*"):
+        let a = i
+        if not comment: i += 2
+        comment = true
+        while i < line.len and not matchAt(line, i, "*/"): inc i
+        if i < line.len:
+          i += 2
+          comment = false
+        faces[n].paint(a, i, fComment)
+      elif lang.lineComment.len > 0 and matchAt(line, i, lang.lineComment):
+        faces[n].paint(i, line.len, fComment)
+        break
+      elif line[i].isSpace: inc i
+      elif ch in {'\'', '"'}:
+        let (e, _) = scanString(line, i + 1, rule($ch))
+        faces[n].paint(i, e, fString)
+        i = e
+      elif ch == '{':
+        inc depth
+        value = false
+        start = true
+        selector = false
+        inc i
+      elif ch == '}':
+        depth = max(0, depth - 1)
+        value = false
+        start = true
+        selector = depth == 0
+        inc i
+      elif ch == ';':
+        value = false
+        start = true
+        inc i
+      else:
+        if start:
+          # A brace before the declaration ends identifies nested rules and pseudo-classes.
+          var j = i
+          while j < line.len and ascii(line[j]) notin {'{', ';', '}'}:
+            if ascii(line[j]) in {'\'', '"'}:
+              j = scanString(line, j + 1, rule($ascii(line[j])))[0]
+            elif matchAt(line, j, "/*"): break
+            else: inc j
+          selector = (j < line.len and line[j] == Rune('{')) or
+            (depth == 0 and lang.name != "Sass")
+          if lang.name == "Sass":
+            var e = i
+            while e < line.len and (line[e].isWord or ascii(line[e]) == '-'): inc e
+            selector = not keyAt(line, e, {':'})
+            value = false
+          if ch in {'@', '$'}: selector = false
+          start = false
+        if ch in {'@', '$'}:
+          var e = i + 1
+          while e < line.len and (line[e].isWord or ascii(line[e]) == '-'): inc e
+          faces[n].paint(i, e, fKeyword)
+          i = e
+        elif not selector and ch == '#' and i + 1 < line.len and ascii(line[i+1]) in HexDigits:
+          var e = i + 1
+          while e < line.len and ascii(line[e]) in HexDigits: inc e
+          faces[n].paint(i, e, fConstant)
+          i = e
+        elif not selector and (ch in Digits or
+            (ch in {'.', '-', '+'} and i + 1 < line.len and ascii(line[i+1]) in Digits)):
+          var e = i + 1
+          while e < line.len and (line[e].isWord or ascii(line[e]) in {'.', '%', '-'}): inc e
+          faces[n].paint(i, e, fConstant)
+          i = e
+        elif line[i].isLetter or ch in {'_', '-'}:
+          var e = i + 1
+          while e < line.len and (line[e].isWord or ascii(line[e]) == '-'): inc e
+          if selector: faces[n].paint(i, e, fFnname)
+          elif not value and keyAt(line, e, {':'}): faces[n].paint(i, e, fVariable)
+          i = e
+        else:
+          if selector: faces[n][i] = fFnname
+          elif ch == ':': value = true
+          inc i
+
+proc hamlLines(lang: Lang, lines: seq[seq[Rune]], faces: var seq[seq[Face]]) =
+  var shadow = newSeq[seq[Rune]](lines.len)
+  var hashDepth = 0
+  var quote = '\0'
+  let sp = Rune(' ')
+  for n, line in lines:
+    shadow[n] = newSeq[Rune](line.len)
+    for i in 0..<line.len: shadow[n][i] = sp
+    var i = indent(line)
+    if i == line.len: continue
+    if hashDepth == 0:
+      if matchAt(line, i, "-#") or line[i] == Rune('/'):
+        faces[n].paint(i, line.len, fComment)
+        continue
+      if (ascii(line[i]) in {'-', '='}) and i + 1 < line.len and line[i+1].isSpace:
+        faces[n][i] = fKeyword
+        for j in i + 1..<line.len: shadow[n][j] = line[j]
+        continue
+      if lang.name == "Slim" and line[i] == Rune('|'): continue
+      if line[i] == Rune('%') or (lang.name == "Slim" and line[i].isLetter):
+        let a = i
+        if line[i] == Rune('%'): inc i
+        while i < line.len and (line[i].isWord or ascii(line[i]) in {'-', ':'}): inc i
+        faces[n].paint(a, i, fFnname)
+      elif ascii(line[i]) notin {'.', '#'}: continue
+    while i < line.len:
+      let ch = ascii(line[i])
+      if hashDepth > 0 or ch == '{':
+        shadow[n][i] = line[i]
+        if quote != '\0':
+          if ch == '\\' and i + 1 < line.len:
+            inc i
+            shadow[n][i] = line[i]
+          elif ch == quote: quote = '\0'
+        elif ch in {'\'', '"'}: quote = ch
+        elif ch == '{': inc hashDepth
+        elif ch == '}': dec hashDepth
+        elif ch == '#':
+          for j in i..<line.len: shadow[n][j] = line[j]
+          break
+        inc i
+      elif ch in {'.', '#'}:
+        let a = i
+        inc i
+        while i < line.len and (line[i].isWord or ascii(line[i]) == '-'): inc i
+        faces[n].paint(a, i, fVariable)
+      elif ch == '=':
+        faces[n][i] = fKeyword
+        for j in i + 1..<line.len: shadow[n][j] = line[j]
+        break
+      elif line[i].isSpace:
+        inc i
+        # Only an attribute hash or inline Ruby follows the tag shorthand.
+        while i < line.len and line[i].isSpace: inc i
+        if i < line.len and ascii(line[i]) notin {'{', '='}: break
+      else: break
+  var rubyFaces = newSeq[seq[Face]](lines.len)
+  for n, line in lines: rubyFaces[n] = newSeq[Face](line.len)
+  code(ruby, shadow, rubyFaces)
+  for n, line in lines:
+    for i in 0..<line.len:
+      if shadow[n][i] != sp and rubyFaces[n][i] != fPlain: faces[n][i] = rubyFaces[n][i]
+
 proc highlight*(lang: Lang, lines: seq[seq[Rune]]): seq[seq[Face]] =
   result = newSeq[seq[Face]](lines.len)
   for n, line in lines: result[n] = newSeq[Face](line.len)
@@ -676,6 +908,8 @@ proc highlight*(lang: Lang, lines: seq[seq[Rune]]): seq[seq[Face]] =
   of spMarkdown: markdownLines(lines, result)
   of spOrg: orgLines(lines, result)
   of spErb: erbLines(lines, result)
+  of spCss: cssLines(lang, lines, result)
+  of spHaml: hamlLines(lang, lines, result)
 
 const brackets = "()[]{}（）「」『』【】".toRunes  # opening at even indexes, its closing next
 

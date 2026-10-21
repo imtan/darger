@@ -242,12 +242,20 @@ checked at most once a second, without starting Git, including in worktrees.
 Syntax highlighting is built in (no external grammars or libraries, so it works the
 same on Windows). The language comes from the file extension, case-insensitively,
 or a `#!` line for Python, Ruby and shell scripts, and is shown in the mode line:
-Nim (`.nim .nims .nimble`), GLSL (`.glsl .frag .vert .fs .vs`), Python (`.py .pyi`), Ruby (`.rb .rake`, Gemfile,
-Rakefile), GDScript (`.gd`), JS/TS (`.js .mjs .ts .tsx .jsx`), C/C++ (`.c .h .cpp
+Nim (`.nim .nims .nimble`), GLSL (`.glsl .frag .vert .fs .vs`), Python (`.py .pyi`), Ruby (`.rb .rake .jbuilder .rabl .gemspec .ru .thor`, Gemfile,
+Rakefile, Capfile, Guardfile, `.pryrc .irbrc`), GDScript (`.gd`), JS/TS (`.js .mjs .ts .tsx .jsx`), C/C++ (`.c .h .cpp
 .hpp .cc`), Rust (`.rs`), Go (`.go`), Shell (`.sh .bash .zsh`), Lisp (`.el .lisp .scm
 .clj`, `.emacs`), JSON, TOML, YAML (`.yaml .yml`), Markdown (`.md .markdown`), ERB
 (`.erb .rhtml`: HTML tags, attributes and comments, with the Ruby inside `<% %>`,
-`<%= %>` and `<%# %>` highlighted as Ruby) and Org (`.org`); anything else, and `*scratch*`, is Text. It is re-detected after
+`<%= %>` and `<%# %>` highlighted as Ruby; also `.yml.erb`), HTML (`.html .htm .xhtml`), Vue (`.vue`),
+Svelte (`.svelte`), XML/SVG/plist (`.xml .svg .plist .xsd .xsl .xslt`), CSS (`.css`),
+SCSS (`.scss`), Sass (`.sass`), Less (`.less`), SQL (`.sql`, case-insensitive keywords),
+Haml (`.haml`), Slim (`.slim`), Dockerfile (`Dockerfile`, `Dockerfile.*`, `*.dockerfile`),
+Makefile (`Makefile`, `makefile`, `GNUmakefile`, `*.mk`), INI/conf/env
+(`.ini .cfg .conf .env .env.* .properties`, `.editorconfig .gitconfig .npmrc .yarnrc`),
+Procfile (INI-like keys), GraphQL (`.graphql .gql`) and Org (`.org`);
+Vue/Svelte use HTML highlighting without script/style sub-highlighting.
+`Gemfile.lock` and `.rspec` remain Text; anything else, and `*scratch*`, is Text. It is re-detected after
 visiting or writing a file. Comments, strings, keywords, function and variable
 names, types, constants/numbers and builtins take the theme's faces (for
 modus-vivendi: fg-dim, blue-warmer, magenta-cooler, magenta, cyan, cyan-cooler,

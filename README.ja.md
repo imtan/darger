@@ -229,11 +229,20 @@ Git リポジトリ内のファイルでは、選択中のウィンドウのモ�
 同じように動きます)。言語はファイル拡張子 (大文字小文字を区別しない) か、Python、Ruby、
 シェルスクリプトの `#!` 行から決まり、モードラインに表示されます。Nim (`.nim .nims .nimble`)、
 GLSL (`.glsl .frag .vert .fs .vs`)、
-Python (`.py .pyi`)、Ruby (`.rb .rake`、Gemfile、Rakefile)、GDScript (`.gd`)、
+Python (`.py .pyi`)、Ruby (`.rb .rake .jbuilder .rabl .gemspec .ru .thor`、Gemfile、Rakefile、Capfile、Guardfile、`.pryrc .irbrc`)、GDScript (`.gd`)、
 JS/TS (`.js .mjs .ts .tsx .jsx`)、C/C++ (`.c .h .cpp .hpp .cc`)、Rust (`.rs`)、Go (`.go`)、
 Shell (`.sh .bash .zsh`)、Lisp (`.el .lisp .scm .clj`、`.emacs`)、JSON、TOML、
 YAML (`.yaml .yml`)、Markdown (`.md .markdown`)、ERB (`.erb .rhtml`: HTML のタグ・属性・コメントに加え、`<% %>`
-`<%= %>` `<%# %>` の中を Ruby として色付け)、Org (`.org`) です。それ以外と `*scratch*` は
+`<%= %>` `<%# %>` の中を Ruby として色付け。`.yml.erb` も対応)、
+HTML (`.html .htm .xhtml`)、Vue (`.vue`)、Svelte (`.svelte`)、
+XML/SVG/plist (`.xml .svg .plist .xsd .xsl .xslt`)、CSS (`.css`)、SCSS (`.scss`)、
+Sass (`.sass`)、Less (`.less`)、SQL (`.sql`、キーワードの大文字小文字を区別しない)、
+Haml (`.haml`)、Slim (`.slim`)、Dockerfile (`Dockerfile`、`Dockerfile.*`、`*.dockerfile`)、
+Makefile (`Makefile`、`makefile`、`GNUmakefile`、`*.mk`)、INI/conf/env
+(`.ini .cfg .conf .env .env.* .properties`、`.editorconfig .gitconfig .npmrc .yarnrc`)、
+Procfile (INI と同様にキーを色付け)、GraphQL (`.graphql .gql`)、Org (`.org`) です。
+Vue/Svelte は HTML として扱い、script/style 内の言語は個別に色付けしません。
+`Gemfile.lock` と `.rspec`、それ以外の形式、`*scratch*` は
 Text です。ファイルを開いたり書いたりした後に再判定されます。コメント、文字列、キーワード、
 関数名と変数名、型、定数/数値、組み込みはテーマのフェイス (modus-vivendi では Emacs と同じく
 fg-dim、blue-warmer、magenta-cooler、magenta、cyan、cyan-cooler、blue-cooler、magenta-warmer)

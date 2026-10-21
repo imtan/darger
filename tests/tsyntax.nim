@@ -203,4 +203,103 @@ block erb:
   doAssert f[1][4] == fComment and f[1][14] == fComment        # <%# %> and <!-- -->
   doAssert f[2][($src[2]).find("do")] == fKeyword and f[4][3] == fKeyword   # do / end
   doAssert f[3][2] == fFnname                                  # <p>
+block html:
+  for path in ["a.html", "a.htm", "a.xhtml"]:
+    doAssert detect(path, "").name == "HTML"
+    check(path, "<p class=\"日本\">hello</p>\n<!-- open\nclose -->",
+      {"<p": fFnname, "class": fVariable, "\"日本": fString, "hello": fPlain, "close": fComment})
+block vue:
+  doAssert detect("a.vue", "").name == "Vue"
+  check("a.vue", "<template id=\"app\"><!-- c --></template>",
+    {"<template": fFnname, "id": fVariable, "\"app": fString, "<!--": fComment})
+block svelte:
+  doAssert detect("a.svelte", "").name == "Svelte"
+  check("a.svelte", "<button class=\"go\">Go</button>",
+    {"<button": fFnname, "class": fVariable, "\"go": fString})
+block xml:
+  for path in ["a.xml", "a.svg", "a.plist", "a.xsd", "a.xsl", "a.xslt"]:
+    doAssert detect(path, "").name == "XML"
+    check(path, "<svg xmlns=\"url\"><!-- c --></svg>",
+      {"<svg": fFnname, "xmlns": fVariable, "\"url": fString, "<!--": fComment})
+block css:
+  doAssert detect("a.css", "").name == "CSS"
+  check("a.css", "#app:hover,\n.box {\n color: #aabbcc; margin: 1.5rem;\n content: \"/* text */\";\n /* open\n close */ width: 20%;\n display: block;\n}\n@import \"theme.css\";\n// not a comment",
+    {"#app": fFnname, ".box": fFnname, "color": fVariable, "#aabbcc": fConstant,
+     "1.5rem": fConstant, "rem": fConstant, "\"/* text": fString, "close": fComment,
+     "width": fVariable, "20%": fConstant, "display": fVariable, "block;": fPlain,
+     "@import": fKeyword, "// not": fFnname})
+block scss:
+  doAssert detect("a.scss", "").name == "SCSS"
+  check("a.scss", "$gap: 2px;\n@media screen {\n .box:hover {\n padding: $gap;\n &:focus { color: #fff; }\n }\n}\n@mixin box { margin: 0; }\n@include box; // c",
+    {"$gap": fKeyword, "2px": fConstant, "@media": fKeyword, ".box": fFnname, "padding": fVariable,
+     "&:focus": fFnname, "color": fVariable, "#fff": fConstant, "@mixin": fKeyword,
+     "@include": fKeyword, "// c": fComment})
+block sass:
+  doAssert detect("a.sass", "").name == "Sass"
+  check("a.sass", "$gap: 2px\n.box\n  color: #fff\n  margin: 2rem\n  // c",
+    {"$gap": fKeyword, "2px": fConstant, ".box": fFnname, "color": fVariable, "#fff": fConstant,
+     "margin": fVariable, "2rem": fConstant, "// c": fComment})
+block less:
+  doAssert detect("a.less", "").name == "Less"
+  check("a.less", "@gap: 2px;\n.box { width: 10px; /* c */ } // c",
+    {"@gap": fKeyword, "2px": fConstant, ".box": fFnname, "width": fVariable, "10px": fConstant,
+     "/* c": fComment, "// c": fComment})
+block sql:
+  doAssert detect("a.sql", "").name == "SQL"
+  check("a.sql", "SELECT name FROM users WhErE active IS TRUE AND gone IS NULL;\ncreate table t (id UUID, title VarChar(10));\n-- note\n/* open\nclose */ SELECT 'it''s 日本' AS label, false;",
+    {"SELECT": fKeyword, "FROM": fKeyword, "WhErE": fKeyword, "TRUE": fConstant,
+     "NULL": fConstant, "create": fKeyword, "UUID": fType, "VarChar": fType,
+     "-- note": fComment, "close": fComment, "'it": fString, "s 日本": fString,
+     "AS": fKeyword, "false": fConstant})
+block haml:
+  doAssert detect("a.haml", "").name == "Haml"
+  check("a.haml", "  %div.box#main{title: \"}\", data: {ok: true}} Hello .plain\n  - if @user\n  = puts \"日本\"\n  -# hidden\n  / comment\n%p{\n title: \"hello\",\n active: true\n} text",
+    {"%div": fFnname, ".box": fVariable, "#main": fVariable, "\"}\"": fString,
+     "true": fConstant, ".plain": fPlain, "if": fKeyword, "@user": fVariable,
+     "puts": fBuiltin, "\"日本": fString, "-#": fComment, "/ comment": fComment,
+     "\"hello": fString, "active": fPlain, "text": fPlain})
+block slim:
+  doAssert detect("a.slim", "").name == "Slim"
+  check("a.slim", "  div.box#main Hello\n  | plain .text\n  / comment\n  - if @user\n  = puts \"hi\"\n  p{active: true}",
+    {"div": fFnname, ".box": fVariable, "#main": fVariable, "plain": fPlain,
+     ".text": fPlain, "/ comment": fComment, "if": fKeyword, "@user": fVariable,
+     "puts": fBuiltin, "\"hi": fString, "true": fConstant})
+block dockerfile:
+  for path in ["Dockerfile", "Dockerfile.dev", "Dockerfile.rb", "app.dockerfile"]:
+    doAssert detect(path, "").name == "Dockerfile"
+    check(path, "FROM ruby AS build\nRUN echo \"hi\" # c",
+      {"FROM": fKeyword, "AS": fKeyword, "RUN": fKeyword, "\"hi": fString, "# c": fComment})
+block makefile:
+  for path in ["Makefile", "makefile", "GNUmakefile", "rules.mk"]:
+    doAssert detect(path, "").name == "Makefile"
+    check(path, "build-app: main.o\n\techo $(NAME) ${OTHER} # c\nNAME := \"app\"",
+      {"build-app": fFnname, "$(NAME)": fVariable, "${OTHER}": fVariable,
+       "# c": fComment, "NAME :=": fVariable, "\"app": fString})
+block ini:
+  for path in ["a.ini", "a.cfg", "a.conf", ".env", ".env.local", ".env.test.rb",
+      "a.env", "a.properties", ".editorconfig", ".gitconfig", ".npmrc", ".yarnrc"]:
+    doAssert detect(path, "").name == "INI"
+    check(path, "[section]\nkey=\"value\"\n; note\n# comment",
+      {"[section]": fKeyword, "key": fVariable, "\"value": fString,
+       "; note": fComment, "# comment": fComment})
+block procfile:
+  doAssert detect("Procfile", "").name == "Procfile"
+  check("Procfile", "web: bundle exec rails server\nworker: \"command\" # c",
+    {"web": fVariable, "worker": fVariable, "\"command": fString, "# c": fComment})
+block graphql:
+  for path in ["a.graphql", "a.gql"]:
+    doAssert detect(path, "").name == "GraphQL"
+    check(path, "query Get { name } # c\ntype User { id: ID name: String }\n\"\"\"doc\nmore\"\"\"\nmutation { set(name: \"hi\") }",
+      {"query": fKeyword, "# c": fComment, "type": fKeyword, "ID": fBuiltin,
+       "String": fBuiltin, "more": fString, "mutation": fKeyword, "\"hi": fString})
+block rails:
+  for path in ["config.ru", "Capfile", "Guardfile", "a.jbuilder", "a.rabl", "a.gemspec",
+      "a.ru", "a.thor", ".pryrc", ".irbrc"]:
+    doAssert detect(path, "").name == "Ruby"
+    check(path, "puts \"hi\" if @user", {"puts": fBuiltin, "\"hi": fString,
+      "if": fKeyword, "@user": fVariable})
+  for path in ["config.yml.erb", ".env.local.erb", "Dockerfile.erb"]:
+    doAssert detect(path, "").name == "ERB"
+  doAssert detect(".rspec", "").name == "Text"
+  doAssert detect("Gemfile.lock", "").name == "Text"
 echo "All syntax checks passed"
