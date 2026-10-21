@@ -185,8 +185,13 @@ proc `icon=`*(window: Window, icon: Image) =
 proc `visible=`*(window: Window, visible: bool) =
   autoreleasepool:
     if visible:
-      window.inner.makeKeyAndOrderFront(0.ID)
-      NSApp.activateIgnoringOtherApps(true)
+      # darger: DARGER_BACKGROUND set (a scripted run, a screenshot) shows the window
+      # without taking the keyboard focus, so typing elsewhere is not swallowed.
+      if existsEnv("DARGER_BACKGROUND"):
+        window.inner.orderFront(0.ID)
+      else:
+        window.inner.makeKeyAndOrderFront(0.ID)
+        NSApp.activateIgnoringOtherApps(true)
     else:
       window.inner.orderOut(0.ID)
 
@@ -342,7 +347,7 @@ proc applicationDidFinishLaunching(
   notification: NSNotification
 ): ID {.cdecl.} =
   NSApp.setPresentationOptions(NSApplicationPresentationDefault)
-  NSApp.activateIgnoringOtherApps(true)
+  if not existsEnv("DARGER_BACKGROUND"): NSApp.activateIgnoringOtherApps(true)
 
 # darger: files opened from Finder, Spotlight or `open -a` come as an Apple event.
 var openedFiles*: seq[string]

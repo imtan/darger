@@ -59,6 +59,18 @@ C-x C-s                  保存
 C-x C-w                  別名で保存
 C-x C-c                  終了
 
+[ファイルツリー (treemacs)]
+C-x t t / M-0            ツリー開閉 / ツリーへ（ツリー内ではファイルへ戻る）
+Enter / f                別ウィンドウで開く / ディレクトリ開閉
+Tab / Space / n / p      開閉 / 開閉 / 次の行 / 前の行
+^ / u                    親の行へ（ルートでは親を新しいルートにする）
+C-c C-r / g / H          選択ディレクトリをルートに / 再読み込み / 隠し項目
+q / ?                    ファイルへ戻る / 操作説明
+M-x treemacs-root-up     ルートを親ディレクトリに変更
+                         幅35、追従あり。treemacs-width / treemacs-follow-mode で設定
+                         treemacs-collapse-dirs: 3、treemacs-show-hidden: nil
+                         treemacs-stay-on-open: nil、treemacs-is-never-other-window: t
+
 [ファイラ (Dired)]
 C-x d / M-x dired        ディレクトリ一覧（C-x d Enter で今のディレクトリ）
 n / p / C-n / C-p        次 / 前の項目（上下矢印も可）

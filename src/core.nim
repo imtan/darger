@@ -240,6 +240,7 @@ type
 var
   modes*: Table[string, Mode]
   prompts*: Table[string, Prompt]
+  paneSkip*: seq[proc(p: Pane): bool] # panes avoided when another destination exists
   tickHooks*: seq[proc(): bool]      # run every loop; true asks for a redraw
   messageHooks*: seq[proc(): string] # the first non-empty one replaces the echo line
   exitHooks*: seq[proc()]            # at exit, after the window closes
@@ -468,10 +469,20 @@ proc resizePane*(below: bool, delta: int) =
     return
   layoutPanes()
 
+proc nextOtherPane(): Pane =
+  let first = layout.next(pane, 1)
+  result = first
+  for i in 1..<layout.leaves.len:
+    let candidate = layout.next(pane, i)
+    var skip = false
+    for hook in paneSkip:
+      if hook(candidate): skip = true
+    if not skip: return candidate
+
 proc otherPaneFor*(): Pane =
   ## C-x 4: the next pane, made by splitting when there is only one.
   if layout.leaves.len == 1: splitPane(false)
-  layout.next(pane, 1)
+  nextOtherPane()
 
 proc gutterFor*(buf: Buffer): int =
   ## The line-number gutter's width for buf, 0 when an extension hides it.
@@ -1461,7 +1472,7 @@ for (name, dx, dy) in [("windmove-left", -1, 0), ("windmove-right", 1, 0), ("win
     nilValue())
 interp.defPrimitive("other-window", proc(args: seq[Value]): Value =
   args.arity(0, 0)
-  selectPane(layout.next(pane, 1))
+  selectPane(nextOtherPane())
   nilValue())
 interp.defPrimitive("save-buffer", proc(args: seq[Value]): Value =
   args.arity(0, 0)

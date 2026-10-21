@@ -312,6 +312,7 @@ fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK
 | Find / save / save as / exit | C-x C-f / C-x C-s / C-x C-w / C-x C-c |
 | Split window below / right | C-x 2 / C-x 3 |
 | Other window / delete window / delete other windows | C-x o / C-x 0 / C-x 1 |
+| Toggle file tree / select tree or return to file | C-x t t / M-0 |
 | Enlarge window / wider / narrower / balance | C-x ^ / C-x } / C-x { / C-x + |
 | Buffer / file in the other window | C-x 4 b / C-x 4 f |
 | Window in a direction (windmove) | C-c left / right / up / down |
@@ -533,6 +534,28 @@ options; `M-x tramp-cleanup` closes control masters used by this session.
 Directory listings require common BSD/GNU `ls -lA` output; filenames containing
 newlines and symlink directory completion are not supported. Remote search and
 remote LSP are planned for a later slice.
+
+## File tree (treemacs)
+
+`C-x t t` (`treemacs`) toggles a left file tree, keeping the file window selected.
+`M-0` (`treemacs-select-window`) selects the tree; `M-0` or `q` in the tree returns
+to the file window. The root is the current file's project root (nearest `.git`),
+or its directory, or the working directory. SSH paths are not supported.
+
+In the tree, `n` / `p` move, Enter / `f` open a file in another window or toggle a
+directory, and Tab / Space toggle a directory. `^` / `u` move to the parent row;
+at the root they move the root up (`treemacs-root-up`). `C-c C-r` makes the selected
+directory the root. `g` refreshes, `H` toggles hidden entries, and `?` shows help.
+Directories come first, with case-insensitive sorting. Single-directory chains
+are displayed as `a/b/c`; actions on that row target the last directory.
+
+Settings in `~/.darger.el`: `treemacs-width` defaults to 35 cells,
+`treemacs-follow-mode` to `t` (reveal the current file), `treemacs-collapse-dirs`
+to 3 (maximum directory names per compressed row; 0 disables compression),
+`treemacs-show-hidden` and `treemacs-stay-on-open` to `nil`.
+Set the latter to `t` to keep the tree selected after opening a file.
+`treemacs-is-never-other-window` defaults to `t`: `other-window` and other-window
+file/buffer commands skip the tree when another destination exists.
 
 ## Filer (Dired)
 
