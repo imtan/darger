@@ -53,6 +53,8 @@ C-s / C-r (migemo: ローマ字で日本語も一致)                前方 / �
 
 [ファイル]
 C-x C-f                  ファイルを開く（無ければ新規）
+                         /ssh:user@host:/path または /ssh:host:~/file で SSH 編集
+M-x tramp-cleanup        SSH 制御接続を閉じる（追加設定: tramp-ssh-options）
 C-x C-s                  保存
 C-x C-w                  別名で保存
 C-x C-c                  終了

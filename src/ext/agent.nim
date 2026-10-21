@@ -1,3 +1,4 @@
+import ../remote
 ## Agents: a one-shot edit reviewed hunk by hunk (C-c a, review.nim), and a multi-turn
 ## chat per project root with a live transcript (C-c c, chat.nim).
 import std/[os, osproc, tempfiles, strutils, unicode, times, tables, sequtils]
@@ -102,7 +103,7 @@ proc showExplain(text: string) =
     other.top = 0
     other.cursor = (0, 0)
 
-proc currentRoot*(): string = rootFromDir(if b.path.len > 0: parentDir(b.path) else: getCurrentDir())
+proc currentRoot*(): string = rootFromDir(if b.path.len > 0: (if isRemote(b.path): remoteParent(b.path) else: parentDir(b.path)) else: getCurrentDir())
 
 proc git*(root, args: string): tuple[output: string, ok: bool] =
   let (output, code) = execCmdEx("git -C " & quoteShell(root) & " " & args, options = {poUsePath})
@@ -110,7 +111,7 @@ proc git*(root, args: string): tuple[output: string, ok: bool] =
 
 proc fileRev*(root, path: string): string =
   ## The file's last-change commit (short), "" outside git or for an uncommitted file.
-  if root.len == 0 or not (dirExists(root / ".git") or fileExists(root / ".git")): return ""
+  if isRemote(root) or root.len == 0 or not (dirExists(root / ".git") or fileExists(root / ".git")): return ""
   let (output, ok) = git(root, "log -1 --format=%h -- " & quoteShell(path))
   if ok: output else: ""
 
@@ -1181,8 +1182,8 @@ interp.defPrimitive("vc-review", proc(args: seq[Value]): Value =
   if b.path.len == 0:
     echoLine = "Buffer has no file"
     return nilValue()
-  let root = rootFromDir(parentDir(b.path))
-  if not (dirExists(root / ".git") or fileExists(root / ".git")):
+  let root = rootFromDir((if isRemote(b.path): remoteParent(b.path) else: parentDir(b.path)))
+  if isRemote(root) or not (dirExists(root / ".git") or fileExists(root / ".git")):
     echoLine = "Not in a git repository: " & shortPath(b.path)
     return nilValue()
   let rel = relativePath(b.path, root).replace('\\', '/')

@@ -1,7 +1,7 @@
 ## Open buffers: creation order for C-x left/right, MRU order for C-x b, and
 ## Emacs-style unique display names.
 import std/[os, strutils, math, sequtils]
-import buffer, syntax
+import buffer, syntax, remote
 
 type
   Slot* = object
@@ -126,6 +126,10 @@ proc byName*(reg: Registry, name: string): Buffer =
     if label == name: return reg.slots[i].buf
 
 proc byPath*(reg: Registry, path: string): Buffer =
+  if isRemote(path):
+    for s in reg.slots:
+      if s.buf.path == path: return s.buf
+    return nil
   let want = normalizedPath(absolutePath(path))
   for s in reg.slots:
     if s.buf.path.len > 0 and cmpPaths(normalizedPath(s.buf.path), want) == 0: return s.buf

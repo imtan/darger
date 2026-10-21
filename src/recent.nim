@@ -1,6 +1,6 @@
 ## Recently visited files, most recent first, kept in ~/.darger-recent.
 import std/[os, strutils, unicode]
-import fileio
+import fileio, remote
 
 const maxRecent* = 30
 
@@ -25,7 +25,7 @@ proc saveRecent(files: seq[string], path = recentPath()) =
 
 proc recordRecent*(file: string, path = recentPath()) =
   if file.len == 0 or '\n' in file or '\r' in file: return
-  let file = normalizedPath(file)
+  let file = if isRemote(file): file else: normalizedPath(file)
   var files = @[file]
   for f in loadRecent(path):
     if files.len < maxRecent and cmpPaths(f, file) != 0: files.add f

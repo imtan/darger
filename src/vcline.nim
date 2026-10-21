@@ -1,3 +1,4 @@
+import remote
 ## Cached branch lookup, independent of the editor UI.
 import std/[os, strutils, tables, times]
 import chat
@@ -22,6 +23,7 @@ proc headPath(root: string): string =
   dir / "HEAD"
 
 proc branchFor*(cache: var BranchCache, path: string, now: float): string =
+  if isRemote(path): return ""
   ## Cache root discovery too, including files outside repositories.
   if path.len == 0: return ""
   let dir = parentDir(path)

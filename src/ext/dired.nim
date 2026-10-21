@@ -1,3 +1,4 @@
+import ../remote
 ## Dired: a directory listing view that opens, creates, renames and trashes entries
 ## (filer.nim does the file work).
 import std/[os, strutils, unicode, tables]
@@ -14,7 +15,7 @@ var
   diredSource*, pendingTrash*: string
 
 proc beginDired*(path: string, selected = "") =
-  let dir = normalizedPath(absolutePath(expandTilde(path)))
+  let dir = if isRemote(path): path else: normalizedPath(absolutePath(expandTilde(path)))
   let entries = readDirectory(dir)  # leave the current listing intact on any error
   var lines = @[dir.replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t")]
   for entry in entries: lines.add formatRow(entry)
@@ -48,7 +49,7 @@ proc diredName*(): string =
   if index in 0..diredEntries.high: diredEntries[index].name else: ""
 
 proc diredPrompt*() =
-  beginMini("dired-path", "Dired: ", (if b.path.len > 0: parentDir(b.path) else: getCurrentDir()) & DirSep)
+  beginMini("dired-path", "Dired: ", (if isRemote(b.path): remoteParent(b.path) elif b.path.len > 0: parentDir(b.path) & DirSep else: getCurrentDir() & DirSep))
 
 proc dispatchDired*(c: string) =
   if c in ["q", "C-g", "escape"]:
@@ -69,16 +70,20 @@ proc dispatchDired*(c: string) =
   let full = overlayKey(c)
   if full.len == 0: return
   let name = diredName()
-  let path = diredBuf.path / name
+  let path = if isRemote(diredBuf.path): remoteJoin(diredBuf.path, name) else: diredBuf.path / name
+  if isRemote(diredBuf.path) and full in ["+", "R", "D"]:
+    echoLine = "Remote Dired supports browsing only"
+    return
   let command = keymap.getOrDefault(full).symName
   if full in ["enter", "C-m", "C-j", "f"] and name.len > 0:
-    let info = getFileInfo(path)  # vanished entries must not open an empty new file
-    if info.kind == pcDir: beginDired(path)
+    let info = pathStatus(path)
+    if not info.exists: raise newException(IOError, "File no longer exists: " & path)
+    if info.isDir: beginDired(path)
     else:
       visit(path)
       finishDired()
   elif full == "^":
-    let parent = parentDir(diredBuf.path)
+    let parent = if isRemote(diredBuf.path): remoteParent(diredBuf.path) else: parentDir(diredBuf.path)
     if parent.len > 0 and parent != diredBuf.path:
       beginDired(parent, extractFilename(diredBuf.path))
   elif full == "g": beginDired(diredBuf.path, name)
@@ -115,7 +120,7 @@ defineMode(Mode(name: "dired", modeName: "Dired", buffer: proc(): Buffer = dired
   onKey: dispatchDired, onClose: finishDired))
 
 definePrompt(Prompt(kind: "dired-path", text: true, paths: true, candidates: noRows,
-  rawEnter: proc(): bool = dirExists(expandTilde(mini.text)),
+  rawEnter: proc(): bool = pathStatus(expandTilde(mini.text)).isDir,
   onAccept: proc(value: string): bool =
     if value.len == 0: return false
     beginDired(value)

@@ -1,6 +1,10 @@
 ## Minibuffer completion: orderless-style matching and file-name candidates.
 import std/[os, strutils, unicode, algorithm]
 
+import remote
+
+var remoteList*: proc(dir: string): seq[string]
+
 proc lower(s: string): string = unicode.toLower(s)
 
 type Expander* = proc(term: string): seq[string]
@@ -53,8 +57,13 @@ proc listDir*(dir: string, hidden = false): seq[string] =
   ## Entry names of dir sorted case-insensitively, directories with a trailing "/";
   ## dot-files only when hidden. An unreadable dir has none.
   try:
-    for kind, path in walkDir(dir, relative = true):
-      if path.startsWith(".") and not hidden: continue
-      result.add(if kind in {pcDir, pcLinkToDir}: path & "/" else: path)
+    if isRemote(dir):
+      if remoteList != nil:
+        for name in remoteList(dir):
+          if hidden or not name.startsWith("."): result.add name
+    else:
+      for kind, path in walkDir(dir, relative = true):
+        if path.startsWith(".") and not hidden: continue
+        result.add(if kind in {pcDir, pcLinkToDir}: path & "/" else: path)
   except OSError: return @[]
   result.sort(proc(a, b: string): int = cmp(lower(a), lower(b)))

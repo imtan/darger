@@ -1,3 +1,4 @@
+import remote
 ## Projects for the C-x p commands: the files of a project root (git's list when it is
 ## a repository, else a walk that skips hidden and build directories) and the roots
 ## visited before, kept in ~/.darger-projects.
@@ -12,6 +13,7 @@ const
 proc projectsPath(): string = getHomeDir() / ".darger-projects"
 
 proc projectFiles*(root: string): seq[string] =
+  if isRemote(root): return @[]
   ## Relative paths under root, sorted: `git ls-files -co --exclude-standard` in a
   ## repository (tracked and untracked, ignores applied), else every regular file
   ## outside hidden and build directories.

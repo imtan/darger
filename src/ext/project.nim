@@ -1,3 +1,4 @@
+import ../remote
 ## Projects, as Emacs' project.el under C-x p: f finds a file in the project (the
 ## nearest .git above the current file, else its directory), p switches to a project
 ## visited before and finds a file there, b lists the project's buffers.
@@ -11,7 +12,7 @@ var
   bufferRows: seq[string]
 
 proc currentRoot(): string =
-  let dir = if core.b.path.len > 0: parentDir(core.b.path) else: getCurrentDir()
+  let dir = if core.b.path.len > 0: (if isRemote(core.b.path): remoteParent(core.b.path) else: parentDir(core.b.path)) else: getCurrentDir()
   rootFromDir(dir)
 
 proc findFileIn(root: string) =
@@ -72,8 +73,8 @@ interp.defPrimitive("project-buffers", proc(args: seq[Value]): Value =
 visitHooks.add proc() =
   # Visiting a file in a repository makes it a known project for C-x p p.
   if core.b.path.len > 0:
-    let root = rootFromDir(parentDir(core.b.path))
-    if dirExists(root / ".git") or fileExists(root / ".git"): recordProject(root)
+    let root = rootFromDir((if isRemote(core.b.path): remoteParent(core.b.path) else: parentDir(core.b.path)))
+    if not isRemote(root) and (dirExists(root / ".git") or fileExists(root / ".git")): recordProject(root)
 
 interp.defPrimitive("project-dired", proc(args: seq[Value]): Value =
   ## The project's root in dired (projectile's D).

@@ -3,6 +3,7 @@
 ## first (as Emacs' file-supersession check does), so an agent's or another
 ## editor's write is never lost silently.
 import std/[os, times, tables, strutils]
+import ../remote
 import ../[core, buffer, buffers, lisp]
 
 type Stamp = tuple[time: Time, size: int64]
@@ -17,11 +18,11 @@ proc stampOf(path: string): Stamp =
   except CatchableError: (Time(), -1'i64)
 
 proc record(buf: Buffer) =
-  if buf.path.len > 0 and fileExists(buf.path): stamps[buf] = stampOf(buf.path)
+  if not isRemote(buf.path) and buf.path.len > 0 and fileExists(buf.path): stamps[buf] = stampOf(buf.path)
 
 proc changedOnDisk*(buf: Buffer): bool =
   ## The file differs from what the buffer last read or wrote (a deleted file does not count).
-  buf in stamps and fileExists(buf.path) and stampOf(buf.path) != stamps[buf]
+  not isRemote(buf.path) and buf in stamps and fileExists(buf.path) and stampOf(buf.path) != stamps[buf]
 
 proc revertBuffer*(buf: Buffer) =
   buf.revert()

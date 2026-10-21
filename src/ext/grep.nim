@@ -1,3 +1,4 @@
+import ../remote
 ## consult-ripgrep: search a directory's files for a query with ripgrep (grep without
 ## it) and pick among the matches with a preview, as consult-ripgrep does.
 import std/[os, strutils, tables]
@@ -8,12 +9,15 @@ var grepDir: string  # the directory the query prompt searches
 
 proc grepRoot(): string =
   ## The project (nearest .git above the file), else the file's directory, else the cwd.
-  let dir = if core.b.path.len > 0: parentDir(core.b.path) else: getCurrentDir()
+  let dir = if core.b.path.len > 0: (if isRemote(core.b.path): remoteParent(core.b.path) else: parentDir(core.b.path)) else: getCurrentDir()
   rootFromDir(dir)
 
 proc consultRipgrep*(dir = "") =
   ## Asks for the query, then lists `file:line: text` matches to narrow and jump to.
   grepDir = if dir.len > 0: expandTilde(dir) else: grepRoot()
+  if isRemote(grepDir):
+    echoLine = "Remote search is not supported yet"
+    return
   if not dirExists(grepDir):
     echoLine = "No such directory: " & grepDir
     return

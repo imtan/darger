@@ -1,5 +1,5 @@
 import std/[unicode, strutils, os]
-import fileio
+import fileio, remote
 export fileio
 
 type
@@ -42,9 +42,12 @@ proc newBuffer*(s = ""): Buffer =
   result = Buffer(goal: -1, saved: s)
   result.setText(s)
 
-proc loadBuffer*(path: string): Buffer =
-  if dirExists(path): raise newException(IOError, "Is a directory: " & path)
-  var raw = if fileExists(path): readFile(path) else: ""
+var
+  remoteLoad*: proc(path: string): Buffer
+  remoteSave*: proc(buf: Buffer, path: string): bool
+
+proc bufferFromBytes*(data, path: string): Buffer =
+  var raw = data
   if validateUtf8(raw) != -1:
     raise newException(ValueError, "File is not valid UTF-8")
   let bom = raw.startsWith("\xEF\xBB\xBF")
@@ -52,14 +55,27 @@ proc loadBuffer*(path: string): Buffer =
   result = newBuffer(raw.replace("\r\n", "\n"))
   result.bom = bom
   result.crlf = "\r\n" in raw
-  result.path = absolutePath(path)
+  result.path = path
+
+proc loadBuffer*(path: string): Buffer =
+  if isRemote(path):
+    if remoteLoad == nil: raise newException(IOError, "Remote files unavailable")
+    return remoteLoad(path)
+  if dirExists(path): raise newException(IOError, "Is a directory: " & path)
+  bufferFromBytes((if fileExists(path): readFile(path) else: ""), absolutePath(path))
+
+proc fileBytes*(b: Buffer): string =
+  (if b.bom: "\xEF\xBB\xBF" else: "") &
+    (if b.crlf: b.text.replace("\n", "\r\n") else: b.text)
 
 proc save*(b: Buffer, path = "") =
-  let target = if path.len > 0: absolutePath(path) else: b.path
+  let target = if path.len > 0: (if isRemote(path): path else: absolutePath(path)) else: b.path
   if target.len == 0: raise newException(ValueError, "No file name")
   let s = b.text
-  atomicWrite(target, (if b.bom: "\xEF\xBB\xBF" else: "") &
-    (if b.crlf: s.replace("\n", "\r\n") else: s))
+  if isRemote(target):
+    if remoteSave == nil: raise newException(IOError, "Remote files unavailable")
+    if not remoteSave(b, target): raise newException(IOError, "Remote save failed")
+  else: atomicWrite(target, b.fileBytes)
   b.path = target
   b.saved = s
   b.modified = false

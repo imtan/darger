@@ -514,6 +514,26 @@ leaves (the other window, or the previous buffer), and `?` lists the keys.
 Git operations run synchronously on saved files; save edits before staging.
 The status refreshes after operations and keeps the cursor row where possible.
 
+## Remote files over ssh (TRAMP)
+
+Use C-x C-f with `/ssh:HOST:/absolute/path` or `/ssh:user@host:~/file`.
+C-x C-s and C-x C-w save remotely, preserving UTF-8 BOM and CRLF; saves use
+an adjacent temporary file and rename, preserving existing file permissions.
+Directories open in Dired; completion caches remote names for three seconds.
+The mode line shows `ssh:HOST`, and recent files include remote paths.
+Remote Dired supports browsing, opening, parent navigation and refresh; its
+mkdir, rename and trash operations are unavailable. Auto-revert, local Git
+lookup, project enumeration and local language servers skip remote buffers.
+
+SSH runs synchronously in batch mode: configure keys/ssh-agent and host keys
+before opening files. Connections use ControlMaster with a 120-second lifetime
+and an 8-second connection timeout. Errors appear in the echo area; failed saves
+leave edits marked modified. `(setq tramp-ssh-options "-p 2222")` adds SSH
+options; `M-x tramp-cleanup` closes control masters used by this session.
+Directory listings require common BSD/GNU `ls -lA` output; filenames containing
+newlines and symlink directory completion are not supported. Remote search and
+remote LSP are planned for a later slice.
+
 ## Filer (Dired)
 
 C-x d prompts for a directory, starting in the current file's directory (or the
@@ -877,8 +897,8 @@ connects instead of spawning) in `~/.darger.el`:
 - M-g f (`consult-flymake`) lists them as `line:col  E|W|I|H  message` at the bottom of
   the window, sorted by line; moving the selection previews the spot, Enter stays
   there, C-g returns.
-- M-x `lsp-restart` restarts the current buffer's server; M-x `lsp-log` echoes the path
-  of its log, `darger-lsp-<language>-<pid>.log` in the temp directory (the server's
+- M-x `lsp-restart` restarts the current buffer's server; M-x `lsp-log` opens the log, point at
+  its end: `darger-lsp-<language>-<pid>.log` in the temp directory (the server's
   stderr and messages, restarted past 4 MB and removed on exit).
 - Completion (company-style): a popup under the cursor lists the server's candidates,
   each with a kind letter (f function, v variable, m method, c class/struct, k keyword,

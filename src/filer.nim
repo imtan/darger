@@ -1,16 +1,24 @@
 import std/[os, strutils, times, algorithm, unicode]
 
+import remote
+
 type Entry* = object
   name*: string
   kind*: PathComponent
   size*: BiggestInt
   modified*: Time
+  remoteTime*: string
 
 const nameCol* = 26  ## where formatRow puts the name
 
 proc isDir*(entry: Entry): bool = entry.kind in {pcDir, pcLinkToDir}
 
+var remoteDirectory*: proc(path: string): seq[Entry]
+
 proc readDirectory*(path: string): seq[Entry] =
+  if isRemote(path):
+    if remoteDirectory == nil: raise newException(IOError, "Remote listing unavailable")
+    return remoteDirectory(path)
   for kind, name in walkDir(path, relative = true, checkDir = true):
     var entry = Entry(name: name, kind: kind)
     try:
@@ -40,7 +48,7 @@ proc formatRow*(entry: Entry): string =
   let tag = if entry.kind in {pcLinkToFile, pcLinkToDir}: 'l'
             elif entry.isDir: 'd' else: '-'
   $tag & " " & align(if entry.isDir: "" else: humanSize(entry.size), 6) & " " &
-    (if entry.modified == Time(): ' '.repeat(16) else: entry.modified.local.format("yyyy-MM-dd HH:mm")) &
+    (if entry.remoteTime.len > 0: alignLeft(entry.remoteTime, 16) elif entry.modified == Time(): ' '.repeat(16) else: entry.modified.local.format("yyyy-MM-dd HH:mm")) &
     " " &
     entry.name.replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t") &
     (if entry.isDir: "/" else: "")

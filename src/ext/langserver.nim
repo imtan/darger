@@ -37,6 +37,7 @@ var
 
 proc clientFor*(name: string): Client =
   ## The language's client, started the first time a buffer of it is shown; nil = none.
+  if isRemote(b.path): return nil
   if name in clients: return clients[name]
   let command = serverFor(name)
   if command.len == 0:
@@ -44,7 +45,6 @@ proc clientFor*(name: string): Client =
     let why = missingServer(name)
     if why.len > 0: echoLine = "No language server for " & name & " (" & why & ")"
     return nil
-  if isRemote(b.path): return nil
   result = newClient(command, if b.path.len > 0: rootOf(b.path) else: getCurrentDir(), name)
   clients[name] = result
   if result.state == lsStarting: result.initialize()

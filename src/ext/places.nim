@@ -1,3 +1,4 @@
+import ../remote
 ## Grep mode: a grep-mode-like list that is an ordinary buffer, so it stays in its
 ## window while C-x o, splits and buffer switching work as usual. In a grep buffer
 ## n / p move between the `path:line: note` lines while the other window follows to
@@ -90,8 +91,8 @@ proc placesDir*(buf: Buffer): string =
   if buf.lines.len > 0 and cookieDirectory($buf.lines[0]).len > 0: return expandTilde(cookieDirectory($buf.lines[0]))
   var candidates: seq[string]
   if buf.path.len > 0 and not buf.path.startsWith("*"):
-    candidates.add parentDir(buf.path)
-    candidates.add rootFromDir(parentDir(buf.path))
+    candidates.add (if isRemote(buf.path): remoteParent(buf.path) else: parentDir(buf.path))
+    candidates.add rootFromDir((if isRemote(buf.path): remoteParent(buf.path) else: parentDir(buf.path)))
   candidates.add getCurrentDir()
   candidates.add rootFromDir(getCurrentDir())
   result = candidates[0]

@@ -1,3 +1,4 @@
+import remote
 ## Language Server Protocol client: transport, framing, lifecycle, diagnostics and
 ## request results. No UI: darger.nim polls it from its main loop, so nothing here may
 ## block for long.
@@ -83,6 +84,7 @@ proc pathOf*(uri: string): string =
     result = result.replace('/', '\\')
 
 proc rootOf*(path: string): string =
+  if isRemote(path): return path
   ## The nearest ancestor holding .git, else the file's directory.
   result = parentDir(absolutePath(path))
   var dir = result

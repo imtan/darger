@@ -5,7 +5,7 @@ import windy, vmath
 when defined(macosx): import macwin
 import core, buffer, buffers, render, skk, update
 import execpath
-import ext/[org, web, rss, dired, help, dash, blist, agent, selfupdate, langserver, revert, shader, term, claude, grep, eagle, project, migemo, pasteimage, orgimage, understand, places, locate, writing, magit, vcline, olivetti, alpha]
+import ext/[org, web, rss, dired, help, dash, blist, agent, selfupdate, langserver, revert, shader, term, claude, grep, eagle, project, migemo, pasteimage, orgimage, understand, places, locate, writing, magit, vcline, olivetti, alpha, tramp]
 
 when defined(macosx):
   # AppKit reports a borderless window as always zoomed and zoom() leaves it alone, so
@@ -225,15 +225,16 @@ if args.len >= 1:
   var firstPath: string
   for path in args:
     try:
-      if not dirExists(path):
+      if not pathStatus(path).isDir:
         visit(path)
         opened.add b
       if firstPath.len == 0: firstPath = path
     except CatchableError as e: echoLine = e.msg
   for i in countdown(opened.high, 1): reg.touch opened[i]
   if opened.len > 0: switchTo(opened[0])
-  if firstPath.len > 0 and dirExists(firstPath):
-    try: visit(firstPath)  # a directory opens in dired
+  if firstPath.len > 0:
+    try:
+      if pathStatus(firstPath).isDir: visit(firstPath)  # a directory opens in dired
     except CatchableError as e: echoLine = e.msg
 when defined(macosx):
   # From the Finder, Spotlight or the Dock the PATH is the bare system one: take the

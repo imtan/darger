@@ -1,3 +1,4 @@
+import ../remote
 ## Claude Code in a terminal, with the user's Emacs bindings: C-c C c starts it in a
 ## side window for the project (or focuses it), C-c C t hides / shows that window,
 ## C-c C n starts a new session, C-c C r sends the region, C-c C f asks about the file.
@@ -8,7 +9,7 @@ when not defined(windows):
 
   proc claudeRoot(): string =
     ## The project: the nearest directory with .git above the file, else its directory.
-    let dir = if core.b.path.len > 0: parentDir(core.b.path) else: getCurrentDir()
+    let dir = if core.b.path.len > 0: (if isRemote(core.b.path): remoteParent(core.b.path) else: parentDir(core.b.path)) else: getCurrentDir()
     rootFromDir(dir)
 
   proc claudeName(root: string): string = "*claude-code: " & extractFilename(root) & "*"

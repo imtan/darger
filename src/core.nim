@@ -4,7 +4,16 @@ import std/[os, osproc, tempfiles, strutils, times, unicode, tables, sets, math,
 import windy, vmath
 when defined(macosx): import macwin
 import buffer, buffers, render, skk, lisp, recent, syntax, complete, lsp, panes, hydra
-export panes
+import remote
+export panes, buffer.remoteLoad, buffer.remoteSave, complete.remoteList
+
+var remoteExists*: proc(path: string): tuple[exists, isDir: bool]
+
+proc pathStatus*(path: string): tuple[exists, isDir: bool] =
+  if isRemote(path):
+    if remoteExists == nil: raise newException(IOError, "Remote files unavailable")
+    return remoteExists(path)
+  (fileExists(path) or dirExists(path), dirExists(path))
 
 const
   bufferCommands* = ["forward", "backward", "next-line", "previous-line", "bol", "eol",
@@ -380,7 +389,7 @@ proc switchTo*(buf: Buffer) =
 
 proc visit*(path: string) =
   ## Like Emacs, visiting a file that is already open switches to it with its edits.
-  if dirExists(path):
+  if pathStatus(path).isDir:
     if dirVisitor == nil: raise newException(IOError, "Is a directory: " & path)
     dirVisitor(path)
     return
@@ -390,7 +399,7 @@ proc visit*(path: string) =
     buf = loadBuffer(path)
     reg.add buf
   switchTo(buf)
-  if fileExists(b.path): recordRecent(b.path)  # a new file is recorded on its first save
+  if isRemote(b.path) or fileExists(b.path): recordRecent(b.path)  # a new file is recorded on its first save
   if fresh:
     for hook in visitHooks: hook()
 
@@ -864,7 +873,7 @@ proc saveBuffer*() =
     wrote()
 
 proc findPrompt*() =
-  beginMini("find", "Find file: ", (if b.path.len > 0: parentDir(b.path) else: getCurrentDir()) & DirSep)
+  beginMini("find", "Find file: ", (if isRemote(b.path): remoteParent(b.path) elif b.path.len > 0: parentDir(b.path) & DirSep else: getCurrentDir() & DirSep))
 
 
 proc switchPrompt*() =
@@ -1520,7 +1529,7 @@ proc acceptReference*(value: string): bool =
   if candIndex >= 0:
     pushXref(refOrigin, lineOrigin, lineTop, lineLeft)
     dropPreviews(b)
-    if fileExists(b.path): recordRecent(b.path)
+    if isRemote(b.path) or fileExists(b.path): recordRecent(b.path)
   true
 proc yesNo*(value: string, yes: proc()): bool =
   if value.toLowerAscii == "y": yes()
@@ -1553,7 +1562,7 @@ definePrompt(Prompt(kind: "write", text: true, paths: true, descend: true, candi
   onAccept: proc(value: string): bool =
     if value.len == 0: return false
     discard otherVisitor(value)
-    if fileExists(value) and absolutePath(value) != b.path:
+    if pathStatus(value).exists and (if isRemote(value): value else: absolutePath(value)) != b.path:
       pendingPath = value
       beginMini("overwrite", "File exists; overwrite? (y or n) ")
       return true

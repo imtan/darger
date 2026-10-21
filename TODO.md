@@ -20,6 +20,8 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
 
 ## Open
 
+- TRAMP second slice: remote rgrep / consult-ripgrep through ssh, and remote LSP.
+
 Review first (2026-10-16, the user: "レビューに関する機能を優先的に充実させたい"). The
 review overlay (hunks of a proposed text over the buffer; y/k/u/n/p/a/q) is the
 human gate for agent edits, so it grows before the other items:
@@ -53,6 +55,8 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
     personal Emacs tools; port only on request.
 
 ## Log
+
+- 2026-10-21: Added TRAMP-style SSH file loading/saving, completion, Dired browsing, mode-line host hint and control-master cleanup; pure and mocked transport tests.
 
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 

@@ -1,3 +1,4 @@
+import remote
 import std/[os, strutils, sysrand, json, unicode]
 
 type Turn* = object
@@ -30,6 +31,7 @@ proc branchFromHead*(head: string): string =
   else: ""
 
 proc branchOf*(root: string): string =
+  if isRemote(root): return ""
   ## The branch checked out at root ("" outside git), without running git.
   var gitDir = root / ".git"
   try:
@@ -43,6 +45,7 @@ proc branchOf*(root: string): string =
   except CatchableError: ""
 
 proc rootFromDir*(path: string): string =
+  if isRemote(path): return path
   result = normalizedPath(absolutePath(path))
   var dir = result
   while dir.len > 0:
