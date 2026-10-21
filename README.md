@@ -179,8 +179,8 @@ count and the understanding debt. The layout follows the window's size. C-n / C-
 arrows or k / j-less moves select an entry (the selected line is highlighted),
 Enter runs or opens it, a label or menu key does so at once (a file that no longer
 exists is reported and the dashboard stays), q, C-g or Escape close it to
-`*scratch*`, C-x C-f / C-x b / C-x d go to those prompts, F1 switches to the manual
-and C-x C-c quits. `M-x dashboard` opens it and a key bound to `dashboard` also closes
+`*scratch*`, and any other bound key (C-c u, C-c p, C-x g, M-x, ...) closes the
+dashboard and runs as usual. `M-x dashboard` opens it and a key bound to `dashboard` also closes
 it; none is bound by default. The list lives in `~/.darger-recent` (one absolute
 UTF-8 path per line, newest first, at most 30, written atomically): every existing
 file visited from the command line, C-x C-f or `find-file`, and every file saved, is
@@ -822,7 +822,8 @@ While a prompt is open, `(insert "text")` types into the minibuffer (a one-key
 prompt takes the first character) and `(exit-minibuffer)` accepts it as Enter does,
 so an init file or an agent can drive prompts. `(type-string "n")` types as the
 keyboard would, through the rune filters, so the keys of read-only buffers
-(places, understanding, magit) and terminals can be driven too.
+(places, understanding, magit) and terminals can be driven too, and
+`(press-key "C-c u")` presses a chord through the same dispatch as the keyboard.
 
 ## Projects
 

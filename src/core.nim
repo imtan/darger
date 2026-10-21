@@ -1463,6 +1463,12 @@ for name in ["kill-emacs", "save-buffers-kill-terminal"]:
     args.arity(0, 0)
     quitEditor()
     nilValue())
+interp.defPrimitive("press-key", proc(args: seq[Value]): Value =
+  ## (press-key "C-c u"): the chord as if pressed, prefix by prefix, through the same
+  ## dispatch as the keyboard (overlays, hydras and prefixes included).
+  args.arity(1, 1)
+  for token in strutils.splitWhitespace(args[0].asString): dispatch(token)
+  nilValue())
 interp.defPrimitive("type-string", proc(args: seq[Value]): Value =
   ## Types the string as if at the keyboard: every rune passes the rune filters (a
   ## terminal, a read-only list's keys) before being inserted, so scripts and agents

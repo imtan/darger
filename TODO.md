@@ -57,6 +57,7 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 (the loop appends `- YYYY-MM-DD <commit> <what>` here)
 
 - 2026-10-21 syntax: HTML/XML/Vue/Svelte, CSS/SCSS/Sass/Less, SQL, Haml/Slim, Dockerfile, Makefile, INI/env, Procfile and GraphQL; Rails file mappings and regression tests (tsyntax)
+- 2026-10-21 dashboard: any other bound key closes it and runs (user: "ダッシュボードでいろいろ undefined になる"); press-key primitive
 - 2026-10-21 frame-alpha (user: "設定でエディタを半透明にできる?"): NSWindow alphaValue through the patched windy backend, applied per tick when the setting changes (macOS)
 - 2026-10-21 projectile hydra on C-c p (user request): f p b s r v d l q over the project, grep, magit, dired and agent-locate commands; project-dired
 - 2026-10-20 defhydra (user: "Hydra みたいな機能欲しい"): heads with :exit, a hint box above the mode line while active, hydra-enter; the zoom hydra uses it; type-string dispatches pending chords (src/hydra.nim tested)

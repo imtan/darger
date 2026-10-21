@@ -7,7 +7,7 @@ import std/[os, strutils, unicode, tables, times]
 import ../[core, buffer, lisp, recent, syntax, ledger]
 
 const
-  dashMessage* = "Dashboard  Enter:open  j:journal  t:capture  a:agenda  s:shell  u:understanding  q:scratch  F1:manual"
+  dashMessage* = "Dashboard  Enter:open  menu keys j t a u f p g s m  files 1-9 0  q:scratch  other keys run as usual"
   dashLabels* = "1234567890"
   # The menu: key, caption, the binding shown at the right, the command (a key chord
   # when it starts with "key:").
@@ -192,10 +192,11 @@ proc dispatchDash*(c: string) =
       if full == key:
         runAction(i)
         return
-    if full == "f1" or name == "help":
+    if full == "f1" or name == "help" or full in keymap or full in builtinChords or full in ["M-x", "M-:"]:
+      # Any other command key leaves the dashboard and runs as usual, like a start screen should.
       finishDash()
       dispatch(full)
-    else: echoLine = full & " is undefined"
+    else: echoLine = full & " is undefined (q closes the dashboard)"
 
 interp.defPrimitive("dashboard", proc(args: seq[Value]): Value =
   args.arity(0, 0)
