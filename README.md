@@ -594,6 +594,15 @@ C-c C n (`claude-code-new`) kills the session and starts a fresh one; C-c C r
 do not submit) and presses Enter; C-c C f (`claude-code-send-file`) sends
 `このファイルを見てください: <path relative to the project>` and Enter.
 
+## Window transparency
+
+`(setq frame-alpha 0.85)` makes the whole window that opaque, text included, like
+Emacs' `alpha` frame parameter (1 is opaque, the lowest accepted value 0.1); it
+takes effect at once, also when changed in `~/.darger.el` while darger runs.
+macOS only so far (the window's alpha value); on Linux and Windows the setting is
+read and ignored. For a see-through background with crisp text, the background
+shader's dim below is the other way.
+
 ## Background shader
 
 A GLSL fragment shader can run under the text, as the NeoEmacs frame shader did:

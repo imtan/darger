@@ -252,6 +252,7 @@ M-:                      Lisp 式を評価
 
 設定ファイル: ~/.darger.el
   (global-set-key "C-c f" 'forward-word)
+  (setq frame-alpha 0.85)  ウィンドウ全体を半透明に (macOS。1 で不透明)
   (setq agent-command "...")
   (load-theme "catppuccin")    ; 既定は modus-vivendi
   (set-font "/path/mono.ttf")  ; 主フォント。DARGER_FONT と既定より優先、読めなければ現状維持

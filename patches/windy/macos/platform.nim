@@ -166,6 +166,19 @@ proc `title=`*(window: Window, title: string) =
     window.state.title = title
     window.inner.setTitle(@title)
 
+objc:
+  proc setAlphaValue*(self: NSWindow, x: float64)
+  proc alphaValue*(self: NSWindow): float64
+
+proc `alpha=`*(window: Window, alpha: float) =
+  ## darger: the whole window's opacity (NSWindow alphaValue), like Emacs' alpha frame parameter.
+  autoreleasepool:
+    window.inner.setAlphaValue(clamp(alpha, 0.1, 1.0))
+
+proc alpha*(window: Window): float =
+  autoreleasepool:
+    result = window.inner.alphaValue()
+
 proc `icon=`*(window: Window, icon: Image) =
   window.state.icon = icon
 

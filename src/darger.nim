@@ -5,7 +5,7 @@ import windy, vmath
 when defined(macosx): import macwin
 import core, buffer, buffers, render, skk, update
 import execpath
-import ext/[org, web, rss, dired, help, dash, blist, agent, selfupdate, langserver, revert, shader, term, claude, grep, eagle, project, migemo, pasteimage, orgimage, understand, places, locate, writing, magit, vcline, olivetti]
+import ext/[org, web, rss, dired, help, dash, blist, agent, selfupdate, langserver, revert, shader, term, claude, grep, eagle, project, migemo, pasteimage, orgimage, understand, places, locate, writing, magit, vcline, olivetti, alpha]
 
 when defined(macosx):
   # AppKit reports a borderless window as always zoomed and zoom() leaves it alone, so
