@@ -28,6 +28,8 @@ doAssert rs.mapIt(it.name) == @[dir, "a/b/c", "Zoo", "alpha", "Beta"]
 doAssert rs[1].path == dir / "a" / "b" / "c"
 doAssert rs[1].render == "  ▸ a/b/c/"
 doAssert rs[3].render == "    alpha"
+doAssert rs[3].render("X") == "    X alpha"
+doAssert rs[1].render("D") == "  ▸ D a/b/c/"
 doAssert not tree.root.children[1].expanded
 doAssert tree.rows(true).mapIt(it.name) == @[dir, ".hidden", "a/b/c", "Zoo", ".dot", "alpha", "Beta"]
 tree.toggle(rs[1].path)

@@ -309,6 +309,11 @@ proc resize*(r: Renderer, window: Window, b: Buffer) =
 proc titleHit*(r: Renderer, window: Window, pos: IVec2): TitleHit =
   titleHit(r.bar, window.size.x.int, pos.x.int, pos.y.int)
 
+proc hasGlyph*(r: Renderer, rune: Rune): bool =
+  ## Whether any of the current fonts can draw rune (an extension deciding on icons).
+  for font in r.fonts:
+    if font.typeface.hasGlyph(rune): return true
+
 proc glyph(r: Renderer, rune: Rune, x, y: int, tint: Color, bold = false) =
   ## One rune with its top left at window pixel x, y.
   if rune in [Rune(9), Rune(32)]: return

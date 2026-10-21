@@ -1,6 +1,6 @@
 ## A project tree in an ordinary read-only buffer and a left side pane.
 import std/[os, strutils, unicode, tables]
-import ../[core, buffer, buffers, panes, lisp, syntax, chat, remote, filetree]
+import ../[core, buffer, buffers, panes, lisp, syntax, chat, remote, filetree, icons, render]
 
 var
   tree: Tree
@@ -8,6 +8,12 @@ var
   trows: seq[Row]
   filePane: Pane
   lastPath: string
+  ticons: bool  # the rows carry Nerd Font icons
+
+proc useIcons(): bool =
+  ## treemacs-icons is on and the fonts have the folder glyph (a Nerd Font).
+  let v = interp.env.values.getOrDefault("treemacs-icons")
+  v != nil and v.kind != vNil and renderer != nil and renderer.hasGlyph(Rune(0xE5FF))
 
 proc enabled(name: string): bool =
   let v = interp.env.values.getOrDefault(name)
@@ -36,8 +42,9 @@ proc rebuild(keep = "") =
   trows = tree.rows(enabled("treemacs-show-hidden"))
   var lines: seq[string]
   var line = tbuf.cursor.line
+  ticons = useIcons()
   for i, row in trows:
-    lines.add row.render
+    lines.add row.render(if ticons: iconFor(row.name, row.isDir, row.expanded).glyph else: "")
     if row.path == keep: line = i
   tbuf.splice(0, tbuf.text.runeLen, lines.join("\n"))
   tbuf.modified = false
@@ -185,6 +192,9 @@ faceProviders.add proc(buf: Buffer): seq[seq[Face]] =
     var faces = newSeq[Face](line.len)
     let face = if i == 0: fFnname elif i < trows.len and trows[i].isDir: fKeyword else: fPlain
     for f in faces.mitems: f = face
+    if ticons and i > 0 and i < trows.len:
+      let col = trows[i].depth * 2 + 2  # the icon's cell, after the indentation and marker
+      if col < faces.len: faces[col] = iconFor(trows[i].name, trows[i].isDir, trows[i].expanded).face
     result.add faces
 bandProviders.add proc(buf: Buffer): seq[int8] =
   if tbuf != nil and buf == tbuf:
@@ -242,6 +252,7 @@ defaults.add """
 (setq treemacs-collapse-dirs 3)
 (setq treemacs-show-hidden nil)
 (setq treemacs-stay-on-open nil)
+(setq treemacs-icons t)
 (setq treemacs-is-never-other-window t)
 (global-set-key "C-x t t" 'treemacs)
 (global-set-key "M-0" 'treemacs-select-window)

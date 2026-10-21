@@ -517,6 +517,12 @@ Tab / Space でディレクトリを開閉します。`^` / `u` は親の行へ�
 `treemacs-is-never-other-window` は既定 `t` で、別の移動先がある場合は `other-window` と
 別ウィンドウでファイル・バッファを開くコマンドがツリーを飛ばします。
 
+エディタのフォントが Nerd Font（`~/Library/Fonts` にあれば Iosevka Nerd Font Mono を
+自動で使います）なら、各行にファイル種別のアイコンが付きます。フォルダは開閉状態で、
+Nim / Ruby / ERB / JavaScript / TypeScript / JSON / YAML / Markdown / Org / HTML / CSS /
+シェル / SQL / Docker / 画像 / アーカイブなどを種類ごとの色で表示します。
+`(setq treemacs-icons nil)` で消せます。グリフのないフォントでは ▸ / ▾ だけの表示に戻ります。
+
 ## ファイラ (Dired)
 
 C-x d はディレクトリを尋ねます。開始位置は現在のファイルのディレクトリ (scratch なら

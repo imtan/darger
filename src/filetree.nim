@@ -94,9 +94,10 @@ proc rows*(tree: Tree, showHidden = false): seq[Row] =
   add(tree.root, 0)
   output
 
-proc render*(row: Row): string =
+proc render*(row: Row, icon = ""): string =
+  ## Indentation, ▸ / ▾ before a directory, the optional icon, the name, / after a directory.
   repeat(' ', row.depth * 2) & (if row.isDir: (if row.expanded: "▾ " else: "▸ ") else: "  ") &
-    row.name & (if row.isDir: "/" else: "")
+    (if icon.len > 0: icon & " " else: "") & row.name & (if row.isDir: "/" else: "")
 
 proc reveal*(tree: Tree, filePath: string, showHidden = false): int =
   let target = normalizedPath(absolutePath(filePath))

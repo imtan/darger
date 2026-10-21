@@ -70,6 +70,7 @@ M-x treemacs-root-up     ルートを親ディレクトリに変更
                          幅35、追従あり。treemacs-width / treemacs-follow-mode で設定
                          treemacs-collapse-dirs: 3、treemacs-show-hidden: nil
                          treemacs-stay-on-open: nil、treemacs-is-never-other-window: t
+                         treemacs-icons: t（Nerd Font のファイル種別アイコン）
 
 [ファイラ (Dired)]
 C-x d / M-x dired        ディレクトリ一覧（C-x d Enter で今のディレクトリ）

@@ -56,6 +56,7 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 ## Log
 
+- 2026-10-21 treemacs icons: Nerd Font file-type icons coloured by type (src/icons.nim, ticons tests), treemacs-icons setting, render.hasGlyph for the font check
 - 2026-10-21 treemacs file tree: left pane, lazy sorted directory chains, follow/reveal, hidden entries, root navigation and other-window skipping; tfiletree tests. DARGER_BACKGROUND=1 shows the window without taking keyboard focus (scripted runs, screenshots)
 
 - 2026-10-21: Added TRAMP-style SSH file loading/saving, completion, Dired browsing, mode-line host hint and control-master cleanup; pure and mocked transport tests.

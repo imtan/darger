@@ -557,6 +557,12 @@ Set the latter to `t` to keep the tree selected after opening a file.
 `treemacs-is-never-other-window` defaults to `t`: `other-window` and other-window
 file/buffer commands skip the tree when another destination exists.
 
+With a Nerd Font as the editor font (Iosevka Nerd Font Mono is picked up from
+`~/Library/Fonts` when installed) every row carries a file-type icon: folders by
+state, Nim, Ruby, ERB, JavaScript, TypeScript, JSON, YAML, Markdown, Org, HTML, CSS,
+shell, SQL, Docker, images, archives and more, coloured by type. `(setq treemacs-icons
+nil)` turns them off; a font without the glyphs falls back to the plain ▸ / ▾ markers.
+
 ## Filer (Dired)
 
 C-x d prompts for a directory, starting in the current file's directory (or the
