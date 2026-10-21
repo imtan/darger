@@ -812,3 +812,7 @@ proc referenceRows*(locs: seq[Location], linesOf: proc(path: string): seq[seq[Ru
       result[0].add Location(path: f, line: l.line, col: runeCol(text, l.col))
       result[1].add name & ":" & $(l.line + 1) & ": " &
         strip($text[0 ..< min(text.len, 200)], trailing = false)
+
+proc flushLog*(c: Client) =
+  ## The log file's buffered lines written out, for a reader opening it.
+  if c != nil and c.log != nil: c.log.flushFile()

@@ -1,3 +1,4 @@
+import ../remote
 ## Language servers (lsp.nim speaks the protocol): diagnostics under the text and in the
 ## echo line, completion and hover popups, definitions, references and formatting.
 import std/[os, strutils, unicode, times, tables, sets, json, math]
@@ -43,6 +44,7 @@ proc clientFor*(name: string): Client =
     let why = missingServer(name)
     if why.len > 0: echoLine = "No language server for " & name & " (" & why & ")"
     return nil
+  if isRemote(b.path): return nil
   result = newClient(command, if b.path.len > 0: rootOf(b.path) else: getCurrentDir(), name)
   clients[name] = result
   if result.state == lsStarting: result.initialize()
@@ -62,7 +64,7 @@ proc lspSync*(force = false) =
   ## Opens b in its language's server once that is ready, and sends its edits 150 ms
   ## after the last one (at once when force).
   if b notin reg: return
-  let name = if b.path.len > 0 and hasServer(lang.name): lang.name else: ""
+  let name = if not isRemote(b.path) and b.path.len > 0 and hasServer(lang.name): lang.name else: ""
   if reg.slot(b).docUri.len > 0 and (reg.slot(b).docLang != name or reg.slot(b).docPath != b.path):
     closeDoc(b)  # renamed by C-x C-w, or its language changed
   if name.len == 0: return
@@ -495,9 +497,23 @@ interp.defPrimitive("lsp-restart", proc(args: seq[Value]): Value =
   nilValue())
 
 interp.defPrimitive("lsp-log", proc(args: seq[Value]): Value =
+  ## M-x lsp-log: opens the current language's server log (stderr and messages),
+  ## point at the end; auto-revert keeps it following while the server runs.
   args.arity(0, 0)
   let c = clients.getOrDefault(lang.name)
-  echoLine = if c != nil: c.logPath else: "No language server for " & lang.name
+  if c == nil:
+    echoLine = "No language server for " & lang.name
+    return nilValue()
+  c.flushLog()
+  if not fileExists(c.logPath):
+    echoLine = "No log yet at " & c.logPath
+    return nilValue()
+  let path = c.logPath
+  try:
+    visit(path)
+    b.cursor = (b.lines.high, 0)
+    echoLine = path
+  except CatchableError as e: echoLine = e.msg
   nilValue())
 
 proc diagRowsNow*(): seq[string] =
