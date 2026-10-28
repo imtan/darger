@@ -18,7 +18,8 @@ block romaji:
       ("xtsu", "っ"), ("z/", "・"), ("z.", "…"), ("zh", "←"), ("z[", "『"), ("shi", "し"),
       ("chi", "ち"), ("tsu", "つ"), ("dhi", "でぃ"), ("thu", "てゅ"), ("fu", "ふ"),
       ("ja", "じゃ"), ("jyo", "じょ"), ("n'a", "んあ"), ("xya", "ゃ"), ("xwa", "ゎ"),
-      ("kitte", "きって"), ("-~!?:[]", "ー〜！？：「」"), ("wo", "を"), ("va", "ゔぁ")]:
+      ("kitte", "きって"), ("-~!?:[]", "ー〜！？：「」"), ("wo", "を"), ("va", "ゔぁ"),
+      ("ka.", "か。"), ("a,i", "あ、い"), ("Kanji.", "かんじ。")]:
     let s = engine()
     doAssert s.typeText(roman) == kana and s.pending == "", roman
   let s = engine()
@@ -31,7 +32,7 @@ block romaji:
   let close = s.feed(Rune(')'.ord), "）".runeAt(0))
   doAssert close.text == "" and close.move == 1
   doAssert s.press(')').text == "）"
-  for c in ".,1 ":
+  for c in "1 ":  # digits and space stay ASCII; "." and "," are 。、 (block kutouten)
     let r = s.press(c)
     doAssert not r.consumed and r.text == "", $c
   doAssert not s.feed(skSpace).consumed and not s.feed(skEnter).consumed
@@ -307,5 +308,24 @@ block realDictionary:
       (getMonoTime() - started).inMilliseconds, " ms"
     doAssert s.dictionary.len > 100_000 and candidateText(s.lookup("かんじ")[0]) == "漢字"
     doAssert candidateText(s.lookup("おく", "r")[0]) == "送"  # the real entry carries an annotation
+
+block kutouten:  # skk-kutouten-type: 。、 by default, ．， for en, mixed, or ASCII as before
+  var s = engine()
+  doAssert s.typeText("n.") == "ん。" and s.typeText(",") == "、"
+  s.setKutouten("en")
+  doAssert s.typeText(".,") == "．，"
+  s.setKutouten("jp-en")
+  doAssert s.typeText(".,") == "。，"
+  s.setKutouten("en-jp")
+  doAssert s.typeText(".,") == "．、"
+  s.setKutouten("ascii")
+  let r = s.press('.')
+  doAssert not r.consumed and r.text == ""
+  s.setKutouten("nonsense")
+  doAssert s.typeText(".") == "。"
+  discard s.typeText("q")  # katakana takes the same marks
+  doAssert s.typeText("ka.") == "カ。"
+  discard s.typeText("L")  # full-width ASCII keeps its own ．，
+  doAssert s.typeText(".,") == "．，"
 
 echo "All SKK checks passed"

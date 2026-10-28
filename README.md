@@ -1153,8 +1153,10 @@ one undo step).
 
 - Direct input follows the DDSKK romaji rules: `nn`/`n'` → ん, a doubled consonant →
   っ, `x` + vowel / `xtu` / `xya` / `xwa` for small kana, `-` ー, `~` 〜, `! ? : [ ]`
-  full-width, `z/ z. z, z- zh zj zk zl z[ z]` → `・ … ‥ 〜 ← ↓ ↑ → 『 』`. `.`, `,`,
-  digits and space stay ASCII. `(` inserts （） with the cursor inside; `)` steps
+  full-width, `z/ z. z, z- zh zj zk zl z[ z]` → `・ … ‥ 〜 ← ↓ ↑ → 『 』`. `.` and `,`
+  give `。` and `、` as DDSKK's `skk-kutouten-type` `"jp"` (the default); `"en"` gives
+  `．，`, `"jp-en"` `。，`, `"en-jp"` `．、`, `"ascii"` leaves them as typed. Digits and
+  space stay ASCII. `(` inserts （） with the cursor inside; `)` steps
   over a following ）. `q` toggles katakana, `l` switches to latin, `L` to full-width
   ASCII (`[全英]`: `Abc 1` → `Ａｂｃ　１`), C-j returns to hiragana from either.
 - ▽: an uppercase letter or `;` starts a reading; a second uppercase letter (or `;`)

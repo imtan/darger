@@ -83,6 +83,7 @@ const
 (global-set-key "C-x b" 'switch-to-buffer)
 (global-set-key "C-x k" 'kill-buffer)
 (setq skk-egg-like-newline t)
+(setq skk-kutouten-type "jp")
 (global-set-key "C-x 2" 'split-window-below)
 (global-set-key "C-x 3" 'split-window-right)
 (global-set-key "C-x 0" 'delete-window)
@@ -1004,6 +1005,9 @@ proc skkOn*(): bool =
   # ponytail: one SKK state serves the buffer and the text minibuffers; y/n and goto prompts bypass it.
   if "skk-egg-like-newline" in interp.env.values:
     inputMethod.eggLikeNewline = interp.env.values["skk-egg-like-newline"].kind != vNil
+  if "skk-kutouten-type" in interp.env.values:
+    let v = interp.env.values["skk-kutouten-type"]  # "jp" or 'jp, as in DDSKK
+    inputMethod.setKutouten(if v.kind in [vString, vSymbol]: v.str else: "jp")
   inputMethod.enabled and (mode == "" or isTextPrompt(mode)) and
     window.imeCompositionString.len == 0
 

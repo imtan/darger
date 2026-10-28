@@ -36,6 +36,8 @@ type
     dictionary*, user*: Dictionary
     userPath*: string  ## user dictionary rewritten on every kakutei when set
     eggLikeNewline*: bool = true  ## Enter in ▽ / ▼ only commits; false (DDSKK's default) also inserts the newline
+    period*: string = "。"  ## what "." and "," insert in kana modes (skk-kutouten-type)
+    comma*: string = "、"
     saved: tuple[reading, okuri, okuriPrefix: string, okuriActive, abbrev: bool]  ## the ▽ a registration came from
 
 const
@@ -458,6 +460,9 @@ proc direct(s: Skk, c: char, next: Rune, res: var SkkResult) =
     s.stage = Reading
     s.abbrev = true
   of 'L': s.mode = Zenkaku  # full-width ASCII until C-j
+  of '.', ',':  # 。、 as DDSKK's kutouten, unless set to stay ASCII
+    let mark = if c == '.': s.period else: s.comma
+    if mark == $c: res.consumed = false else: res.text.add mark
   of 'A'..'K', 'M'..'Z':
     s.stage = Reading
     s.typeKana(c.toLowerAscii, res)
@@ -576,6 +581,16 @@ proc toZenkaku*(r: Rune): Rune =
   if r.int == 32: Rune(0x3000)
   elif r.int in 0x21..0x7E: Rune(r.int + 0xFEE0)
   else: r
+
+proc setKutouten*(s: Skk, kind: string) =
+  ## DDSKK's skk-kutouten-type: jp 。、 (the default), en ．，, jp-en 。，, en-jp ．、;
+  ## "ascii" leaves "." and "," as typed.
+  case kind
+  of "en": (s.period, s.comma) = ("．", "，")
+  of "jp-en": (s.period, s.comma) = ("。", "，")
+  of "en-jp": (s.period, s.comma) = ("．", "、")
+  of "ascii": (s.period, s.comma) = (".", ",")
+  else: (s.period, s.comma) = ("。", "、")
 
 proc feed*(s: Skk, r: Rune, next = Rune(0)): SkkResult =
   ## A printable key; `next` is the character after the cursor (for ")").

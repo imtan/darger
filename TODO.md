@@ -56,6 +56,7 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 ## Log
 
+- 2026-10-28 SKK kutouten: "." and "," insert 。、 in kana modes; skk-kutouten-type jp / en / jp-en / en-jp / ascii (setKutouten, tskk kutouten block)
 - 2026-10-28 org-journal over SSH: org-journal-dir accepts /ssh:HOST:path (the day's file is read, created after mkdir -p and saved over ssh); core makeDirectory / remoteMakeDir hook
 - 2026-10-21 treemacs icons: Nerd Font file-type icons coloured by type (src/icons.nim, ticons tests), treemacs-icons setting, render.hasGlyph for the font check
 - 2026-10-21 treemacs file tree: left pane, lazy sorted directory chains, follow/reveal, hidden entries, root navigation and other-window skipping; tfiletree tests. DARGER_BACKGROUND=1 shows the window without taking keyboard focus (scripted runs, screenshots)

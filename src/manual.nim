@@ -135,6 +135,7 @@ C-x C-j / C-\            SKK の入れ / 切り
                          /: abbrev (英字の読み。/dog SPC → 犬 など)
                          q:カナ切替 l:英数 L:全角英数 C-j:かなに戻る 他のコマンドは確定してから実行
                          (setq skk-egg-like-newline nil) で Enter が確定 + 改行
+                         . , は 。、 (skk-kutouten-type: "jp" / "en" / "jp-en" / "en-jp" / "ascii")
 
 [エージェント]
 C-c G t t / t j / t e    日英自動翻訳 / 日本語へ / 英語へ (選択範囲、なければ全体)
