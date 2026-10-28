@@ -1,7 +1,7 @@
 ## Org mode and org-roam: structure editing on Org buffers and a directory of notes
 ## linked by id. Built on orgmode.nim (parsing) and roam.nim (the notes).
 import std/[os, strutils, unicode, times, tables, browsers, sequtils]
-import ../[core, buffer, buffers, lisp, lsp, orgmode, roam, syntax]
+import ../[core, buffer, buffers, lisp, lsp, orgmode, roam, syntax, remote]
 when defined(macosx): import ../macwin
 
 var
@@ -165,22 +165,36 @@ proc journalNewEntry*() =
   ## C-c j, like org-journal-new-entry: today's file under org-journal-dir (created
   ## with org-journal-file-header and the date headline), then a time headline at
   ## the end with the cursor after it. Before org-extend-today-until o'clock the
-  ## entry still belongs to yesterday's file.
+  ## entry still belongs to yesterday's file. A /ssh:HOST:path directory works too:
+  ## the day's file is read, created (mkdir -p first) and saved over SSH.
   let ja = japaneseLocale()
   let t = now()
   let day = t - hours(parseInt(setting("org-extend-today-until")))
   let dir = expandTilde(setting("org-journal-dir"))
-  let path = dir / strftime(setting("org-journal-file-format"), day, ja)
+  let remote = isRemote(dir)
+  let name = strftime(setting("org-journal-file-format"), day, ja)
+  let path = if remote: remoteJoin(dir, name) else: dir / name
   let dateLine = setting("org-journal-date-prefix") & strftime(setting("org-journal-date-format"), day, ja)
-  if not fileExists(path):
-    createDir(dir)
+  var firstText = ""  # a new file's contents; a local file gets it on disk before the visit
+  if not pathStatus(path).exists:
     # The day's template (org-journal-daily-template-file) goes under the date headline,
     # as the user's Emacs hook inserts it on the first entry; an ID makes the day a roam node.
     let templatePath = expandTilde(setting("org-journal-daily-template-file"))
-    let dayTemplate = if templatePath.len > 0 and fileExists(templatePath): readFile(templatePath) else: ""
+    let dayTemplate =
+      if templatePath.len == 0: ""
+      elif isRemote(templatePath): remoteLoad(templatePath).text
+      elif fileExists(templatePath): readFile(templatePath)
+      else: ""
     let id = if interp.env.values["org-journal-add-id"].kind != vNil: newId() else: ""
-    writeFile(path, newJournalText(strftime(setting("org-journal-file-header"), day, ja), dateLine, dayTemplate, id))
+    firstText = newJournalText(strftime(setting("org-journal-file-header"), day, ja), dateLine, dayTemplate, id)
+    ensureDirectory(dir)
+    if not remote: writeFile(path, firstText)
   visit(path)
+  if remote and firstText.len > 0 and b.text.len == 0:
+    # The remote file is new: its first text is saved now, as the local one was written.
+    b.snapshot()
+    b.splice(0, 0, firstText)
+    b.save()
   var text = b.text
   var hasDate = false
   for l in b.lines:

@@ -942,7 +942,9 @@ C-c j (`org-journal-new-entry`) は org-journal のように日報を付けま�
 `org-journal-date-format`、既定 `* ` と `%A, %d %B %Y`) を付けて作り、末尾に時刻見出し
 (`org-journal-time-prefix` + `org-journal-time-format`、既定 `** ` と `%R `) を足して、
 カーソルをその後ろに置きます。`org-extend-today-until` 時 (既定 `"0"`) より前は前日の
-ファイルに書きます。新しいファイルには `org-journal-daily-template-file` (既定なし) の内容が
+ファイルに書きます。`org-journal-dir` は `/ssh:HOST:~/Dropbox/Org` のような TRAMP 形式の
+リモートディレクトリでもよく、その日のファイルは C-x C-f と同じく SSH 越しに読み、作り
+(ディレクトリは `mkdir -p`)、保存します。新しいファイルには `org-journal-daily-template-file` (既定なし) の内容が
 日付見出しの下に入り、最初のエントリの前にその日の節が揃います。`org-journal-add-id` が `t`
 (既定 `nil`) なら先頭に ID プロパティドロワーが付き、その日が org-roam のノードになります。
 `org-journal-condition-prompt` が `t` (既定 `nil`) なら、新しいエントリの後に `体調 [1-5]` を

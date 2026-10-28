@@ -8,12 +8,20 @@ import remote
 export panes, buffer.remoteLoad, buffer.remoteSave, complete.remoteList
 
 var remoteExists*: proc(path: string): tuple[exists, isDir: bool]
+var remoteMakeDir*: proc(path: string)  # mkdir -p over the transport
 
 proc pathStatus*(path: string): tuple[exists, isDir: bool] =
   if isRemote(path):
     if remoteExists == nil: raise newException(IOError, "Remote files unavailable")
     return remoteExists(path)
   (fileExists(path) or dirExists(path), dirExists(path))
+
+proc ensureDirectory*(path: string) =
+  ## createDir for a local path, mkdir -p over ssh for /ssh:HOST:path.
+  if isRemote(path):
+    if remoteMakeDir == nil: raise newException(IOError, "Remote files unavailable")
+    remoteMakeDir(path)
+  else: createDir(path)
 
 const
   bufferCommands* = ["forward", "backward", "next-line", "previous-line", "bol", "eol",

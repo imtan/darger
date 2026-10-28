@@ -46,6 +46,7 @@ proc writeCommand*(path: string): string =
     "{ trap 'rm -f \"$t\"' 0; if [ -e \"$p\" ]; then cp -p \"$p\" \"$t\" || exit; fi; " &
     "cat > \"$t\" && mv -f \"$t\" \"$p\"; }"
 proc listCommand*(path: string): string = "LC_ALL=C ls -lA " & shellPath(path)
+proc mkdirCommand*(path: string): string = "mkdir -p " & shellPath(path)
 proc statCommand*(path: string): string =
   let p = shellPath(path)
   "[ -d " & p & " ] && echo dir || ([ -e " & p & " ] && echo file || echo none)"

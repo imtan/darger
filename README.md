@@ -1035,7 +1035,9 @@ C-c j (`org-journal-new-entry`) keeps a journal like org-journal: today's file i
 `%A, %d %B %Y`), then a time headline (`org-journal-time-prefix` +
 `org-journal-time-format`, defaults `** ` and `%R `) is added at the end with the
 cursor after it. Before `org-extend-today-until` o'clock (default `"0"`) the entry
-still belongs to yesterday. A new file gets the contents of
+still belongs to yesterday. `org-journal-dir` may be a remote directory in the
+TRAMP form, `/ssh:HOST:~/Dropbox/Org`: the day's file is then read, created (the
+directory with `mkdir -p`) and saved over SSH, as with C-x C-f. A new file gets the contents of
 `org-journal-daily-template-file` (default none) under the date headline, so the
 day's sections are there before the first entry, and an ID property drawer at the
 top when `org-journal-add-id` is `t` (default `nil`), making the day an org-roam

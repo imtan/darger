@@ -53,6 +53,11 @@ remoteLoad = proc(path: string): Buffer =
   if status.isDir: raise newException(IOError, "Is a directory: " & path)
   bufferFromBytes((if status.exists: runSsh(r.host, catCommand(r.path)) else: ""), path)
 
+remoteMakeDir = proc(path: string) =
+  let r = parseRemote(path).get
+  discard runSsh(r.host, mkdirCommand(r.path))
+  listings.clear()
+
 remoteSave = proc(buf: Buffer, path: string): bool =
   let r = parseRemote(path).get
   discard runSsh(r.host, writeCommand(r.path), buf.fileBytes)

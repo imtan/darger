@@ -17,6 +17,7 @@ doAssert sshArgs("u@h", command) == @["ssh", "-o", "BatchMode=yes", "-o", "Contr
 doAssert catCommand("~/a b") == "cat \"$HOME\"/" & quoteShell("a b")
 doAssert quoteShell("/a b") in writeCommand("/a b")
 doAssert quoteShell("/a b") in statCommand("/a b")
+doAssert mkdirCommand("~/a b") == "mkdir -p \"$HOME\"/" & quoteShell("a b")
 doAssert listCommand("/a b") == "LC_ALL=C ls -lA " & quoteShell("/a b")
 let entries = parseLsLines("""total 16
 -rw-r--r-- 1 user group 123 Oct 21 12:34 file with spaces.txt
