@@ -319,7 +319,7 @@ CJK と対応する絵文字範囲は 2 セルを占めます。結合文字、�
 | Org: 昇格 / 降格 / サブツリーを上 / 下へ | M-Left / M-Right / M-Up / M-Down |
 | Org: 見出し一覧 / リンクを開く / タイムスタンプ | C-c C-j / C-c C-o / C-c . |
 | Org: 見出しを折りたたむ / ファイル全体 | TAB / Shift-TAB |
-| Org: 日報エントリ / capture | C-c j / C-c t |
+| Org: 日報エントリ / クイック追記 / capture | C-c j / C-c q / C-c t |
 | Org: Eagle から画像 (キーワード / フォルダ) | C-M-e / C-c e |
 | Org: クリップボードの画像を貼り付け | C-M-y |
 | org-roam: 検索 / リンク挿入 / バックリンク / 今日 | C-c n f / C-c n i / C-c n l / C-c n d |
@@ -951,7 +951,15 @@ C-c j (`org-journal-new-entry`) は org-journal のように日報を付けま�
 1 キーで聞きます。数字ならその数の `★` を時刻の後ろに置いてカーソルをその後ろに、他のキーなら
 スキップします (Emacs のフックと同じ)。書式は strftime の `%Y %y %m %d %e %H %M %S %R %A %a %B %b %j %%` を
 受け付け、日本語ロケール (`LANG=ja_JP.UTF-8`) では Emacs と同じく `%A` が `火曜日`、`%B` が
-`10月` になります。C-c t (`org-capture`) は `Capture: ` と尋ね、入力を `org-capture-template`
+`10月` になります。C-c q (`org-journal-quick-add`) は今のバッファのまま同じ日のファイルに 1 行
+足します。`Journal: ` と尋ね、Enter で `org-journal-time-prefix` + 時刻 (`org-journal-time-format`
+の末尾の改行を除いたもの) + 入力、たとえば `*** =14:30= 手書きの方が残る` を足します (空なら何もせず、
+C-g で取消)。ファイルがなければ C-c j と同じように作りますが、`体調` は聞きません。足す場所は
+ファイルの末尾で、`org-journal-quick-add-headline` (既定 `""`) を指定するとその見出しの節の末尾
+(節の末尾の空行の前。見出しがなければ末尾に足す) になります。`"** 今日の出来事"` にすると yuruorg の
+日報クイック追記と同じ結果になります。そのファイルを開いているバッファがあればそれを編集して
+(undo できます) 保存し、なければファイルに直接 (SSH 越しでも) 書きます。`(org-journal-quick-add "text")`
+は尋ねずに足し、複数行の入力は 2 行目以降をエントリの本文にします。C-c t (`org-capture`) は `Capture: ` と尋ね、入力を `org-capture-template`
 (既定 `* TODO %?\n`。`%?` が入力、`%t` / `%u` が今日のアクティブ / 非アクティブな
 タイムスタンプ、`%T` / `%U` は時刻付き) に通して、`org-capture-file` 内の
 `org-capture-headline` のサブツリー末尾 (既定は `""` でファイル末尾、`~/org/inbox.org`) に

@@ -239,6 +239,47 @@ block:
   let withId = newJournalText("#+title: T\n", "* Day", "", "ABC-123")
   doAssert withId == ":PROPERTIES:\n:ID:       ABC-123\n:END:\n#+title: T\n* Day\n"
 
+# journal quick add: yuruorg's appendQuickEntry cases, plus darger's settings
+block:
+  let h = "** 今日の出来事"
+  let e = quickEntry("*** =09:07=", "コーヒー休憩")
+  doAssert e == "*** =09:07= コーヒー休憩"
+  doAssert quickEntry("*** =09:07=", "  一行目\n二行目\r\n三行目\n ") == "*** =09:07= 一行目\n二行目\n三行目"
+  doAssert quickEntry("*** =09:07=", "\n") == "*** =09:07="
+  doAssert quickEntry("*** =09:07=", "　全角空白　") == "*** =09:07= 全角空白"
+  # an existing section keeps one trailing newline
+  doAssert appendQuickEntry("** 今日の出来事\n", h, e) == "** 今日の出来事\n*** =09:07= コーヒー休憩\n"
+  # a missing headline is added after a blank line
+  doAssert appendQuickEntry("* Journal\nBody\n", h, quickEntry("*** =09:07=", "仕事開始")) ==
+    "* Journal\nBody\n\n** 今日の出来事\n*** =09:07= 仕事開始\n"
+  doAssert appendQuickEntry("* Journal\nBody\n\n\n", h, "*** x") == "* Journal\nBody\n\n** 今日の出来事\n*** x\n"
+  # before the next section, above the section's trailing blank lines
+  doAssert appendQuickEntry("* Journal\n** 今日の出来事\n- old\n\n** 振り返り\nmemo\n", h, "*** =09:07= new") ==
+    "* Journal\n** 今日の出来事\n- old\n*** =09:07= new\n\n** 振り返り\nmemo\n"
+  # continuation lines become the entry's body; no final newline stays none
+  doAssert appendQuickEntry("** 今日の出来事", h, quickEntry("*** =09:07=", "一行目\n二行目\n三行目")) ==
+    "** 今日の出来事\n*** =09:07= 一行目\n二行目\n三行目"
+  # after an earlier entry and its body
+  doAssert appendQuickEntry("** 今日の出来事\n*** =08:30= 朝の記録\n本文\n", h, "*** =09:07= new") ==
+    "** 今日の出来事\n*** =08:30= 朝の記録\n本文\n*** =09:07= new\n"
+  # an empty file gets a minimal section
+  doAssert appendQuickEntry("", h, "*** =09:07= hello") == "** 今日の出来事\n*** =09:07= hello\n"
+  # CRLF input comes back with "\n"
+  doAssert appendQuickEntry("* Day\r\n** 今日の出来事\r\n- old\r\n", h, "*** x") == "* Day\n** 今日の出来事\n- old\n*** x\n"
+  # a deeper child stays in the section; a top-level headline also ends it
+  doAssert appendQuickEntry("** 今日の出来事\n**** child\ntext\n* Next day\n", h, "*** x") ==
+    "** 今日の出来事\n**** child\ntext\n*** x\n* Next day\n"
+  # a headline with trailing spaces still matches
+  doAssert appendQuickEntry("** 今日の出来事  \nold\n", h, "*** x") == "** 今日の出来事  \nold\n*** x\n"
+  # "" (the default): the end of the file, as C-c j
+  let day = "* 火曜日, 13 10月 2026\n** 今日の一枚\n\n** 今日の出来事\n"
+  doAssert appendQuickEntry(day, "", "*** =09:07= x") == day & "*** =09:07= x\n"
+  doAssert appendQuickEntry("* Day", "", "** 09:07 x") == "* Day\n** 09:07 x"
+  doAssert appendQuickEntry("", "", "** 09:07 x") == "** 09:07 x\n"
+  # the date headline, added when the day's file lacks it
+  doAssert withDateLine("#+title: t\n", "* Day") == "#+title: t\n* Day\n"
+  doAssert withDateLine("* Day\n** x\n", "* Day") == "* Day\n** x\n"
+
 doAssert conditionMark(3) == " ★★★ " and conditionMark(5).count("★") == 5 and conditionMark(0) == "" and conditionMark(6) == ""
 
 # capture: under a headline's subtree, at the end, or under a headline created at the end

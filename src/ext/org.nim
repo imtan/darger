@@ -161,46 +161,55 @@ proc recordCondition*(n: int) =
   b.cursor = b.point(at + conditionMark(n).runeLen)
   b.last = "edit"
 
+type JournalDay = object
+  t, day: DateTime    # now, and the day it belongs to (org-extend-today-until)
+  ja, remote: bool
+  dir, path, dateLine: string
+
+proc journalDay(): JournalDay =
+  ## Today's journal file under org-journal-dir. Before org-extend-today-until o'clock
+  ## the entry still belongs to yesterday's file; a /ssh:HOST:path directory works too.
+  result.ja = japaneseLocale()
+  result.t = now()
+  result.day = result.t - hours(parseInt(setting("org-extend-today-until")))
+  result.dir = expandTilde(setting("org-journal-dir"))
+  result.remote = isRemote(result.dir)
+  let name = strftime(setting("org-journal-file-format"), result.day, result.ja)
+  result.path = if result.remote: remoteJoin(result.dir, name) else: result.dir / name
+  result.dateLine = setting("org-journal-date-prefix") & strftime(setting("org-journal-date-format"), result.day, result.ja)
+
+proc journalFirstText(j: JournalDay): string =
+  ## A new day's file: org-journal-file-header, the date headline, then the day's template
+  ## (org-journal-daily-template-file) under it, as the user's Emacs hook inserts it on the
+  ## first entry; an ID makes the day a roam node.
+  let templatePath = expandTilde(setting("org-journal-daily-template-file"))
+  let dayTemplate =
+    if templatePath.len == 0: ""
+    elif isRemote(templatePath): remoteLoad(templatePath).text
+    elif fileExists(templatePath): readFile(templatePath)
+    else: ""
+  let id = if interp.env.values["org-journal-add-id"].kind != vNil: newId() else: ""
+  newJournalText(strftime(setting("org-journal-file-header"), j.day, j.ja), j.dateLine, dayTemplate, id)
+
 proc journalNewEntry*() =
   ## C-c j, like org-journal-new-entry: today's file under org-journal-dir (created
   ## with org-journal-file-header and the date headline), then a time headline at
-  ## the end with the cursor after it. Before org-extend-today-until o'clock the
-  ## entry still belongs to yesterday's file. A /ssh:HOST:path directory works too:
-  ## the day's file is read, created (mkdir -p first) and saved over SSH.
-  let ja = japaneseLocale()
-  let t = now()
-  let day = t - hours(parseInt(setting("org-extend-today-until")))
-  let dir = expandTilde(setting("org-journal-dir"))
-  let remote = isRemote(dir)
-  let name = strftime(setting("org-journal-file-format"), day, ja)
-  let path = if remote: remoteJoin(dir, name) else: dir / name
-  let dateLine = setting("org-journal-date-prefix") & strftime(setting("org-journal-date-format"), day, ja)
+  ## the end with the cursor after it. A remote day's file is read, created (mkdir -p
+  ## first) and saved over SSH.
+  let j = journalDay()
   var firstText = ""  # a new file's contents; a local file gets it on disk before the visit
-  if not pathStatus(path).exists:
-    # The day's template (org-journal-daily-template-file) goes under the date headline,
-    # as the user's Emacs hook inserts it on the first entry; an ID makes the day a roam node.
-    let templatePath = expandTilde(setting("org-journal-daily-template-file"))
-    let dayTemplate =
-      if templatePath.len == 0: ""
-      elif isRemote(templatePath): remoteLoad(templatePath).text
-      elif fileExists(templatePath): readFile(templatePath)
-      else: ""
-    let id = if interp.env.values["org-journal-add-id"].kind != vNil: newId() else: ""
-    firstText = newJournalText(strftime(setting("org-journal-file-header"), day, ja), dateLine, dayTemplate, id)
-    ensureDirectory(dir)
-    if not remote: writeFile(path, firstText)
-  visit(path)
-  if remote and firstText.len > 0 and b.text.len == 0:
+  if not pathStatus(j.path).exists:
+    firstText = journalFirstText(j)
+    ensureDirectory(j.dir)
+    if not j.remote: writeFile(j.path, firstText)
+  visit(j.path)
+  if j.remote and firstText.len > 0 and b.text.len == 0:
     # The remote file is new: its first text is saved now, as the local one was written.
     b.snapshot()
     b.splice(0, 0, firstText)
     b.save()
-  var text = b.text
-  var hasDate = false
-  for l in b.lines:
-    if $l == dateLine: hasDate = true
-  if not hasDate: text = appendedText(text, dateLine & "\n")
-  text = appendedText(text, setting("org-journal-time-prefix") & strftime(setting("org-journal-time-format"), t, ja))
+  var text = withDateLine(b.text, j.dateLine)
+  text = appendedText(text, setting("org-journal-time-prefix") & strftime(setting("org-journal-time-format"), j.t, j.ja))
   b.snapshot()
   b.splice(0, b.text.runeLen, text)
   b.cursor = b.point(b.text.runeLen)
@@ -209,6 +218,52 @@ proc journalNewEntry*() =
     # The user's Emacs hook asks for the day's condition right after the entry.
     conditionLine = headlineAbove(b.lines, b.cursor.line)
     if conditionLine >= 0: beginMini("journal-condition", "体調 [1-5] (他のキーでスキップ): ")
+
+proc replaceKeeping(buf: Buffer, text: string) =
+  ## buf's text becomes text by splicing only the part that differs, so its cursor and
+  ## mark stay on the text they were on.
+  let old = buf.text.toRunes
+  let fresh = text.toRunes
+  var a = 0
+  while a < old.len and a < fresh.len and old[a] == fresh[a]: inc a
+  var z = 0
+  while z < old.len - a and z < fresh.len - a and old[^(z+1)] == fresh[^(z+1)]: inc z
+  let at = buf.offset(buf.cursor)
+  buf.splice(a, old.len - z, $fresh[a ..< fresh.len - z])
+  buf.cursor = buf.point(if at <= a: at elif at >= old.len - z: at + fresh.len - old.len
+                         else: fresh.len - z)
+
+proc journalQuickAdd*(entry: string): bool =
+  ## org-journal-quick-add: one line for today's journal without leaving the buffer, as
+  ## yuruorg's 日報クイック追記. The day and file are C-c j's; the entry is the time
+  ## headline and the text, under org-journal-quick-add-headline (the end when "").
+  ## An open buffer of the file is edited (one undo step) and saved; else the file is.
+  if unicode.strip(entry).len == 0: return true
+  let j = journalDay()
+  let stamp = setting("org-journal-time-prefix") &
+    strutils.strip(strftime(setting("org-journal-time-format"), j.t, j.ja), leading = false)
+  var buf = reg.byPath(j.path)
+  let open = buf != nil
+  var base = ""
+  if open: base = buf.text
+  elif pathStatus(j.path).exists:
+    buf = loadBuffer(j.path)
+    base = buf.text
+  else:
+    ensureDirectory(j.dir)
+    buf = newBuffer()
+    buf.path = if j.remote: j.path else: absolutePath(j.path)
+    base = journalFirstText(j)
+  let text = appendQuickEntry(withDateLine(base, j.dateLine),
+    setting("org-journal-quick-add-headline"), quickEntry(stamp, entry))
+  if open:
+    buf.snapshot()
+    replaceKeeping(buf, text)
+    buf.last = "edit"
+  else: buf.splice(0, buf.text.runeLen, text)
+  buf.save()
+  echoLine = "Journal: added to " & shortPath(j.path)
+  true
 
 
 proc captureText*(value: string): bool =
@@ -404,6 +459,12 @@ interp.defPrimitive("org-agenda", proc(args: seq[Value]): Value =
 interp.defPrimitive("org-journal-new-entry", proc(args: seq[Value]): Value =
   args.arity(0, 0)
   journalNewEntry()
+  nilValue())
+interp.defPrimitive("org-journal-quick-add", proc(args: seq[Value]): Value =
+  ## (org-journal-quick-add) asks for the line; (org-journal-quick-add "text") adds it.
+  args.arity(0, 1)
+  if args.len == 1: discard journalQuickAdd(args[0].asString)
+  else: beginMini("journal-quick-add", "Journal: ")
   nilValue())
 interp.defPrimitive("org-capture", proc(args: seq[Value]): Value =
   args.arity(0, 0)
@@ -618,6 +679,7 @@ definePrompt(Prompt(kind: "backlinks", text: true, consult: true, candidates: re
 definePrompt(Prompt(kind: "roam-find", text: true, candidates: roamRowsNow, onAccept: acceptRoam))
 definePrompt(Prompt(kind: "roam-insert", text: true, candidates: roamRowsNow, onAccept: acceptRoam))
 definePrompt(Prompt(kind: "capture", text: true, onAccept: captureText))
+definePrompt(Prompt(kind: "journal-quick-add", text: true, onAccept: journalQuickAdd))
 definePrompt(Prompt(kind: "agenda", text: true, consult: true, candidates: refRowsNow, onAccept: acceptReference))
 definePrompt(Prompt(kind: "org-todo", onAccept: proc(value: string): bool =
   if value.len > 0: pickTodo(value[0])
@@ -654,12 +716,14 @@ defaults.add """
 (setq org-journal-daily-template-file "")
 (setq org-journal-add-id nil)
 (setq org-journal-condition-prompt nil)
+(setq org-journal-quick-add-headline "")
 (setq org-capture-file "~/org/inbox.org")
 (setq org-capture-headline "")
 (setq org-capture-template "* TODO %?\n")
 (setq org-agenda-files nil)
 (setq org-todo-keywords nil)
 (global-set-key "C-c j" 'org-journal-new-entry)
+(global-set-key "C-c q" 'org-journal-quick-add)
 (global-set-key "C-c t" 'org-capture)
 (global-set-key "C-c C-t" 'org-todo)
 (global-set-key "C-c C-c" 'org-toggle-checkbox)

@@ -427,6 +427,51 @@ proc conditionMark*(n: int): string =
   ## The 体調 stars the user's journal hook puts after the time: " ★★★ " for 3, "" outside 1..5.
   if n in 1..5: " " & "★".repeat(n) & " " else: ""
 
+proc withDateLine*(text, dateLine: string): string =
+  ## text with the day's date headline added at the end when no line is it yet.
+  for l in text.split('\n'):
+    if l == dateLine: return text
+  appendedText(text, dateLine & "\n")
+
+proc quickEntry*(stamp, text: string): string =
+  ## A quick-add entry: the time stamp and the text's first line as the headline, the
+  ## other lines as its body (text trimmed first), as yuruorg's 日報クイック追記.
+  let parts = unicode.strip(text).replace("\r\n", "\n").replace('\r', '\n').split('\n')
+  result = if parts[0].len == 0: stamp else: stamp & " " & parts[0]
+  for l in parts[1..^1]: result.add "\n" & l
+
+proc appendQuickEntry*(text, headline, entry: string): string =
+  ## entry (one or more lines) added to a journal as yuruorg's appendQuickEntry does: at
+  ## the end of the section of the line `headline` (before the next headline of its level
+  ## or higher, and before the section's trailing blank lines), the headline added after a
+  ## blank line at the end when missing; at the very end of the file when headline is "".
+  ## Line ends come back as "\n"; a final newline stays as it was (an empty text gets one).
+  let normalized = text.replace("\r\n", "\n").replace('\r', '\n')
+  let newline = normalized.len == 0 or normalized.endsWith('\n')
+  var lines = normalized.split('\n')
+  if newline: lines.setLen(lines.len - 1)
+  let entryLines = entry.split('\n')
+  var head = -1
+  if headline.len > 0:
+    for n, l in lines:
+      if strutils.strip(l, leading = false) == headline:
+        head = n
+        break
+  if headline.len == 0: lines.add entryLines
+  elif head < 0:
+    while lines.len > 0 and strutils.strip(lines[^1]).len == 0: lines.setLen(lines.len - 1)
+    if lines.len > 0: lines.add ""
+    lines.add headline
+    lines.add entryLines
+  else:
+    var level = stars(headline.toRunes)
+    if level == 0: level = int.high  # a plain line: its section runs to the next headline
+    var z = head + 1
+    while z < lines.len and not (stars(lines[z].toRunes) in 1..level): inc z
+    while z > head + 1 and strutils.strip(lines[z - 1]).len == 0: dec z
+    lines = lines[0 ..< z] & entryLines & lines[z .. ^1]
+  lines.join("\n") & (if newline: "\n" else: "")
+
 # ---- Agenda: dated and TODO items across the agenda files, for today
 
 type

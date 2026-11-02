@@ -333,7 +333,7 @@ fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK
 | Org: promote / demote / move subtree up / down | M-Left / M-Right / M-Up / M-Down |
 | Org: headline list / open link / timestamp | C-c C-j / C-c C-o / C-c . |
 | Org: fold the headline / the whole file | TAB / Shift-TAB |
-| Org: journal entry / capture | C-c j / C-c t |
+| Org: journal entry / quick add / capture | C-c j / C-c q / C-c t |
 | Org: image from Eagle by keyword / by folder | C-M-e / C-c e |
 | Org: paste the clipboard image | C-M-y |
 | org-roam: find / insert link / backlinks / today | C-c n f / C-c n i / C-c n l / C-c n d |
@@ -1046,7 +1046,18 @@ node. With `org-journal-condition-prompt` `t` (default `nil`) a new entry asks
 cursor after them, any other key skips, as the user's Emacs hook does. The formats
 take strftime's `%Y %y %m %d %e %H %M %S %R
 %A %a %B %b %j %%`; under a Japanese locale (`LANG=ja_JP.UTF-8`) `%A` and `%B` give
-`火曜日` and `10月`, as Emacs does. C-c t (`org-capture`) prompts `Capture: ` and
+`火曜日` and `10月`, as Emacs does. C-c q (`org-journal-quick-add`) adds one
+line to the same day's file without leaving the current buffer: it prompts
+`Journal: ` and Enter adds `org-journal-time-prefix` + the time (the
+`org-journal-time-format` without its trailing newline) + the text, e.g.
+`*** =14:30= 手書きの方が残る` (empty input adds nothing, C-g cancels). The file is
+created as C-c j creates it, but no `体調` is asked. The line goes at the end of the
+file, or with `org-journal-quick-add-headline` (default `""`) at the end of that
+headline's section (above its trailing blank lines; the headline is added at the
+end when missing): `"** 今日の出来事"` reproduces yuruorg's 日報クイック追記. A buffer
+visiting the file is edited (undoable) and saved, otherwise the file is written
+directly (or over SSH); `(org-journal-quick-add "text")` adds without asking, and
+a multi-line text puts the lines after the first under the entry. C-c t (`org-capture`) prompts `Capture: ` and
 files the text, through `org-capture-template` (default `* TODO %?\n`; `%?` is the
 text, `%t` / `%u` today's active / inactive timestamp, `%T` / `%U` with the time),
 at the end of the subtree of `org-capture-headline` in `org-capture-file`

@@ -56,6 +56,7 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 ## Log
 
+- 2026-10-31 org-journal quick add: C-c q (org-journal-quick-add) prompts Journal: and adds a time-stamped line to today's journal without leaving the buffer (open buffer edited + saved, else the file, local or /ssh:); org-journal-quick-add-headline puts it at the end of that section ("** 今日の出来事" = yuruorg); journalDay / journalFirstText shared with C-c j; withDateLine / quickEntry / appendQuickEntry with torg tests. C-c J was not used: a prefix key's Shift+letter reaches the keymap lowercased (chord), so it would run C-c j
 - 2026-10-28 SKK kutouten: "." and "," insert 。、 in kana modes; skk-kutouten-type jp / en / jp-en / en-jp / ascii (setKutouten, tskk kutouten block)
 - 2026-10-28 org-journal over SSH: org-journal-dir accepts /ssh:HOST:path (the day's file is read, created after mkdir -p and saved over ssh); core makeDirectory / remoteMakeDir hook
 - 2026-10-21 treemacs icons: Nerd Font file-type icons coloured by type (src/icons.nim, ticons tests), treemacs-icons setting, render.hasGlyph for the font check
