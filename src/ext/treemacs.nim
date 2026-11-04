@@ -1,6 +1,7 @@
 ## A project tree in an ordinary read-only buffer and a left side pane.
 import std/[os, strutils, unicode, tables]
-import ../[core, buffer, buffers, panes, lisp, syntax, chat, remote, filetree, icons, render]
+import ../[core, buffer, buffers, panes, lisp, syntax, chat, remote, filetree, icons, render, fontcatalog]
+import fonts
 
 var
   tree: Tree
@@ -12,8 +13,10 @@ var
 
 proc useIcons(): bool =
   ## treemacs-icons is on and the fonts have the folder glyph (a Nerd Font).
+  ensureFallbackFonts()
   let v = interp.env.values.getOrDefault("treemacs-icons")
-  v != nil and v.kind != vNil and renderer != nil and renderer.hasGlyph(Rune(0xE5FF))
+  result = v != nil and v.kind != vNil and renderer != nil and renderer.hasGlyph(Rune(0xE5FF))
+  if v != nil and v.kind != vNil and not result: iconFontHint()
 
 proc enabled(name: string): bool =
   let v = interp.env.values.getOrDefault(name)
@@ -257,3 +260,6 @@ defaults.add """
 (global-set-key "C-x t t" 'treemacs)
 (global-set-key "M-0" 'treemacs-select-window)
 """
+
+fontInstalledHooks.add proc(font: CatalogFont) =
+  if tbuf != nil: rebuild()

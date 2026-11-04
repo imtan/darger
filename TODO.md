@@ -20,6 +20,8 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
 
 ## Open
 
+- Font catalog: add more pinned entries; Iosevka Nerd Font (92 MB tar.xz) is left out of this slice. Arbitrary-URL installs stay out.
+
 - TRAMP second slice: remote rgrep / consult-ripgrep through ssh, and remote LSP.
 
 Review first (2026-10-16, the user: "レビューに関する機能を優先的に充実させたい"). The
@@ -55,6 +57,8 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
     personal Emacs tools; port only on request.
 
 ## Log
+
+- 2026-11-03 safe font installer (user: 「足りないフォントを自動でダウンロードする機能とか作れない?」): M-x font-install, pinned RinMincho / Nerd Fonts Symbols ZIPs, pure Nim SHA-256, exact zippy member extraction and staged replacement with rollback; deferred consent, immediate novel font reload and tree icon fallback. The zip is read by zippy, already there through pixie, so no tar or unzip and no new nimble dependency. render.nim: addFallbackFont, and loadFont takes symbols-only fonts. Offline tests (tfontinstall); real downloads, wrong hashes and the 404 checked by hand on macOS only.
 
 - 2026-11-04 dashboard: J = Journal quick add (C-c q) in the menu next to j; q stays "close". Startup skips the dashboard when the init file left any overlay or prompt showing (was: only the dashboard itself)
 - 2026-10-31 org-journal quick add: C-c q (org-journal-quick-add) prompts Journal: and adds a time-stamped line to today's journal without leaving the buffer (open buffer edited + saved, else the file, local or /ssh:); org-journal-quick-add-headline puts it at the end of that section ("** 今日の出来事" = yuruorg); journalDay / journalFirstText shared with C-c j; withDateLine / quickEntry / appendQuickEntry with torg tests. C-c J was not used: a prefix key's Shift+letter reaches the keymap lowercased (chord), so it would run C-c j

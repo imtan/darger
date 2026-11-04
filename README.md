@@ -87,6 +87,7 @@ nim r tests/tchanges.nim  # files changed under a project between two snapshots
 nim r tests/texecpath.nim # the login shell's PATH merged for GUI launches
 nim r tests/tplaces.nim   # grep-mode style places lists
 nim r tests/tledger.nim   # understanding ledger entries and the glossary
+nim r tests/tfontinstall.nim # offline font catalog, SHA-256, verified ZIP installation
 nim r tests/tmonkey.nim   # fuzz: random input into Buffer, SKK, Lisp, HTML, the terminal, panes
 tests/editormonkey/run.sh 1 16 300   # whole editor: random command sequences per seed (opens windows)
 ```
@@ -1008,6 +1009,18 @@ Set `olivetti-body-width` (default 100 cells) to choose the body width; wider
 panes add a left margin, with line numbers beside the text, while narrower panes
 keep their usual layout. Set `(setq olivetti-languages '("Org" "Markdown"))`
 to enable it automatically when visiting those languages (default nil).
+
+### Installing fonts
+
+`M-x font-install` offers RinMincho and Nerd Fonts Symbols with installed/missing status.
+Downloads use pinned HTTPS URLs and SHA-256 checks for both the ZIP and each selected
+font/license file. Files go to `font-install-dir` (default `~/.darger-fonts/`); set it to
+`~/Library/Fonts` on macOS to share them with other apps. Fonts are not vendored.
+`font-auto-install` defaults to `'ask`: a missing catalog novel font prompts once per
+session; `t` downloads automatically and `nil` disables the prompt. Installed fonts take
+effect without restarting; C-g cancels a running download. Any failure installs nothing and
+says why in the echo line. Tree icons use `nerd-symbols` as a fallback; missing icons
+show a one-time installation hint. Only catalog entries are accepted, not arbitrary URLs.
 
 Images from Eagle (eagle.cool), as the user's Emacs does: C-M-e
 (`org-insert-eagle-image`) asks for a keyword (empty for the newest items) and lists

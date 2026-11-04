@@ -9,6 +9,7 @@ type
     gpu: Boxy
     fonts: seq[Font]
     boldFont: Font
+    installed: seq[string]  # addFallbackFont's paths: last in the chain, whatever the fallbacks
     fallbacks: string  # set-fallback-fonts / DARGER_FALLBACK_FONTS entries; "" uses the defaults
     chosen: Table[int, int]
     glyphs: HashSet[string]
@@ -103,7 +104,7 @@ proc iosevka(dir: string): seq[string] =
   for weight in ["ExtraLight", "Light", "Regular"]:
     result.add dir / ("IosevkaNerdFontMono-" & weight & ".ttf")
 
-proc loadFont(path: string): Font =
+proc loadFont*(path: string, symbols = false): Font =
   ## Raises IOError or PixieError, with the reason, for a font the editor cannot use.
   # readTypeface rejects .ttc; readTypefaces parses ttcf directory offsets.
   if path.toLowerAscii.endsWith(".ttc"):
@@ -113,13 +114,14 @@ proc loadFont(path: string): Font =
   else: result = readFont(path)
   # Pixie only reads Windows (platform 3) cmap subtables; Apple's Menlo.ttc
   # has none, so it loads with an empty glyph map. Treat that as a failure.
-  if not result.typeface.hasGlyph(Rune('e')):
+  # A symbols-only font has no Latin to tell by, and only comes from the font catalog.
+  if not symbols and not result.typeface.hasGlyph(Rune('e')):
     raise newException(IOError, "No glyph for 'e' (unsupported cmap)")
   result.paint = color(1, 1, 1, 1)
 
-proc tryLoadFont(path: string): Font =
+proc tryLoadFont(path: string, symbols = false): Font =
   ## nil, with a note on stderr, when the font cannot be used.
-  try: result = loadFont(path)
+  try: result = loadFont(path, symbols)
   except CatchableError as e:
     result = nil
     stderr.writeLine("Skipping font " & path & ": " & e.msg)
@@ -231,12 +233,26 @@ proc swapFonts(r: Renderer, fonts: seq[Font]) =
   r.glyphs.clear()
   r.scale = 0  # the next resize sizes the new fonts and measures the cell again
 
+proc withInstalled(r: Renderer, fonts: seq[Font]): seq[Font] =
+  result = fonts
+  for path in r.installed:
+    let font = tryLoadFont(path, symbols = true)
+    if font != nil: result.add font
+
+proc addFallbackFont*(r: Renderer, path: string) =
+  ## Adds an installed font last, restarting glyph caches only after loading succeeds.
+  if path in r.installed: return
+  let fonts = r.fonts & @[loadFont(path, symbols = true)]
+  r.installed.add path
+  r.swapFonts(fonts)
+
 proc setFont*(r: Renderer, path: string) =
   ## Makes path the primary font, keeping the fallbacks; raises with the reason
   ## (and leaves the fonts alone) when it cannot be used.
   var fonts = @[loadFont(path)]
   var loaded = toHashSet([extractFilename(path)])
   loadFallbacks(fonts, r.fallbacks, loaded)
+  fonts = r.withInstalled(fonts)
   r.boldFont = loadBoldFont(path)
   r.swapFonts(fonts)
 
@@ -248,6 +264,7 @@ proc setFallbackFonts*(r: Renderer, fallbacks: string) =
     let path = entry.strip
     if path.len > 0: fonts.add loadFont(path)
   if fonts.len == 1: raise newException(ValueError, "Expected font paths separated by ';'")
+  fonts = r.withInstalled(fonts)
   r.fallbacks = fallbacks
   r.swapFonts(fonts)
 

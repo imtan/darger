@@ -81,6 +81,7 @@ nim r tests/tchanges.nim  # 2 時点のスナップショット間で変わっ�
 nim r tests/texecpath.nim # GUI 起動向けにログインシェルの PATH を取り込む
 nim r tests/tplaces.nim   # grep-mode 風の places 一覧
 nim r tests/tledger.nim   # 理解台帳のエントリと用語集
+nim r tests/tfontinstall.nim # カタログ、SHA-256、ZIP 検証・配置 (オフライン)
 nim r tests/tmonkey.nim   # ファズ: Buffer、SKK、Lisp、HTML、端末、ペインにランダム入力
 tests/editormonkey/run.sh 1 16 300   # エディタ全体: seed ごとにランダムなコマンド列 (ウィンドウが開く)
 ```
@@ -918,6 +919,17 @@ M-x olivetti-mode で、バッファごとに本文を中央へ寄せる表示�
 `olivetti-body-width` (既定 100 セル) より広いペインでは左余白を加え、行番号は本文のすぐ左に
 表示します。狭いペインでは余白を加えません。`(setq olivetti-languages '("Org" "Markdown"))`
 を設定すると、その言語のファイルを開いたときに自動で有効になります (既定 nil)。
+
+### フォントのインストール
+
+`M-x font-install` で RinMincho / Nerd Fonts Symbols を選べます。候補には取得済みかを表示します。
+固定の HTTPS URL から取得し、ZIP と各フォント・ライセンスの SHA-256 を検証してから配置します。
+保存先は `font-install-dir` (既定 `~/.darger-fonts/`)。macOS で他のアプリと共有する場合は
+`~/Library/Fonts` に設定できます。フォント自体は同梱しません。
+`font-auto-install` は既定 `'ask` で、カタログにある小説用フォントが見つからないとき、
+セッション中に一度だけ取得を確認します。`t` は自動取得、`nil` は確認しません。
+取得後は再起動せず反映します。取得中は C-g で中止できます。失敗すると何も配置せず、理由をエコー行に出します。ツリーのアイコンには `nerd-symbols` を補助フォントとして使い、
+不足時は取得コマンドを一度だけ案内します。任意 URL の指定には対応しません。
 
 Eagle (eagle.cool) からの画像も Emacs と同じ手順で入れられます。C-M-e (`org-insert-eagle-image`) は
 キーワード (空なら新しい順) を尋ね、Eagle のローカル API から該当する画像を `name.ext  [タグ]` で

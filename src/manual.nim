@@ -191,6 +191,9 @@ M-x agent-chat-new       現在のルートの会話を空にして新規セッ�
 
 [Org / org-roam]  （.org ファイルで。ノートは org-roam-directory、既定 ~/org-roam）
 M-x olivetti-mode        本文を中央へ寄せる表示を切替 (olivetti-body-width 既定 100、olivetti-languages で自動有効化)
+M-x font-install         カタログからフォントを取得 (RinMincho / Nerd Fonts Symbols)。HTTPS、ZIP と各ファイルの SHA-256 を検証。C-g で中止
+  font-install-dir       既定 "~/.darger-fonts/"。他のアプリと共有するなら macOS では "~/Library/Fonts" も指定可
+  font-auto-install      既定 'ask。小説用フォントの不足を一度確認。t で自動取得、nil で確認しない。取得後は再起動不要
 C-c C-t                  見出しの TODO を巡回 (org-todo-keywords。選択キーがあれば 1 キー選択)
 C-c C-c                  チェックボックス [ ] / [X] を切り替え
 M-Enter                  同じ階層の見出し・項目を下に追加
