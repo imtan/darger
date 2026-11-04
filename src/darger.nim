@@ -248,7 +248,7 @@ window.onResize = draw
 removeStaleExe()
 # The dashboard over an empty *scratch*; not when the init file already showed something else.
 if not openSystemFiles(launchFiles) and args.len == 0 and startScreen != nil and core.b == startBuffer and
-    mode != "dash": startScreen()  # unless the init file opened it already
+    mode.len == 0: startScreen()  # unless the init file left the dashboard, an overlay or a prompt showing
 var lastDraw = 0.0
 var wheel = 0.0  # fractional wheel lines carried between frames
 while running and not window.closed:

@@ -171,8 +171,9 @@ types special characters on many keys there, so on macOS the command key is Meta
 Without a file, the editor opens `*scratch*` with a dashboard shown over it, in
 the spirit of nvim's start screens: the DARGER logo (drawn as filled cells with a
 shadow, so it looks the same in every font) with a line under it, a centred menu of
-one-key commands with their real bindings at the right (`j` journal entry, `t`
-capture a task, `a` agenda, `u` understanding, `f` find file, `p` projects, `g`
+one-key commands with their real bindings at the right (`j` journal entry, `J`
+journal quick add (`q` closes the dashboard, so the quick line takes the capital),
+`t` capture a task, `a` agenda, `u` understanding, `f` find file, `p` projects, `g`
 agent chat, `s` shell, `m` manual), up to 10 recent files labelled 1-9 and 0 (HOME
 shown as `~`, long paths cut from the left), and a footer with the date, the file
 count and the understanding debt. The layout follows the window's size. C-n / C-p,
