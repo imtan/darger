@@ -23,6 +23,7 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
 - Font catalog: add more pinned entries; Iosevka Nerd Font (92 MB tar.xz) is left out of this slice. Arbitrary-URL installs stay out.
 
 - TRAMP second slice: remote rgrep / consult-ripgrep through ssh, and remote LSP.
+- Novel mode next slices: folds, inline pictures, review bands and paren highlights in vertical panes; soft wrap in the horizontal layout; ruby and tate-chu-yoko (2026 as one upright group); a per-buffer `novel-vertical` and a toggle command; a column length cap (chars per column); drawn drag selection with the mouse.
 
 Review first (2026-10-16, the user: "レビューに関する機能を優先的に充実させたい"). The
 review overlay (hunks of a proposed text over the buffer; y/k/u/n/p/a/q) is the
@@ -60,6 +61,7 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 - 2026-11-03 safe font installer (user: 「足りないフォントを自動でダウンロードする機能とか作れない?」): M-x font-install, pinned RinMincho / Nerd Fonts Symbols ZIPs, pure Nim SHA-256, exact zippy member extraction and staged replacement with rollback; deferred consent, immediate novel font reload and tree icon fallback. The zip is read by zippy, already there through pixie, so no tar or unzip and no new nimble dependency. render.nim: addFallbackFont, and loadFont takes symbols-only fonts. Offline tests (tfontinstall); real downloads, wrong hashes and the 404 checked by hand on macOS only.
 
+- 2026-11-02 novel mode (user: "dargerに小説モードを作成して，このフォント(https://rinmincho.pages.dev/)を標準にしたいかも。可能なら縦書きにして"): M-x novel-mode, per buffer; novel-font / novel-bold-font found in the font directories, normal fonts and an echo-line reason when missing; vertical layout with kinsoku (legal() plus small kana, ー etc.), columns scrolled by a (line, column) anchor kept in the pane's top / left; vertical glyphs from the font's GSUB vert read by our own parser, with a rotated / shifted fallback for fonts without it; arrows, C-v / M-v, C-l, wheel and clicks in columns via keyFilters / mouseFilters; region, isearch, SKK and IME position; horizontal layout with the novel font in cells, centred. No core.nim change: render.nim got paneHooks and glyphHook (tnovel)
 - 2026-11-04 dashboard: J = Journal quick add (C-c q) in the menu next to j; q stays "close". Startup skips the dashboard when the init file left any overlay or prompt showing (was: only the dashboard itself)
 - 2026-10-31 org-journal quick add: C-c q (org-journal-quick-add) prompts Journal: and adds a time-stamped line to today's journal without leaving the buffer (open buffer edited + saved, else the file, local or /ssh:); org-journal-quick-add-headline puts it at the end of that section ("** 今日の出来事" = yuruorg); journalDay / journalFirstText shared with C-c j; withDateLine / quickEntry / appendQuickEntry with torg tests. C-c J was not used: a prefix key's Shift+letter reaches the keymap lowercased (chord), so it would run C-c j
 - 2026-10-28 SKK kutouten: "." and "," insert 。、 in kana modes; skk-kutouten-type jp / en / jp-en / en-jp / ascii (setKutouten, tskk kutouten block)

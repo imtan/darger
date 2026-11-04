@@ -7,7 +7,7 @@ proc opening(r: Rune): bool = r in "「『（【".toRunes
 proc cjk(r: Rune): bool =
   runeWidth(r) == 2 and (int(r) < 0x1F000 or int(r) >= 0x20000)
 
-proc legal(rs: seq[Rune], at: int): bool =
+proc legal*(rs: seq[Rune], at: int): bool =
   at == rs.len or (not opening(rs[at - 1]) and not closing(rs[at]) and
     runeWidth(rs[at]) != 0)
 

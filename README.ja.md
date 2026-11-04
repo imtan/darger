@@ -82,6 +82,7 @@ nim r tests/texecpath.nim # GUI 起動向けにログインシェルの PATH を
 nim r tests/tplaces.nim   # grep-mode 風の places 一覧
 nim r tests/tledger.nim   # 理解台帳のエントリと用語集
 nim r tests/tfontinstall.nim # カタログ、SHA-256、ZIP 検証・配置 (オフライン)
+nim r tests/tnovel.nim    # 縦書きの列、禁則、スクロール、フォントの vert 表
 nim r tests/tmonkey.nim   # ファズ: Buffer、SKK、Lisp、HTML、端末、ペインにランダム入力
 tests/editormonkey/run.sh 1 16 300   # エディタ全体: seed ごとにランダムなコマンド列 (ウィンドウが開く)
 ```
@@ -930,6 +931,26 @@ M-x olivetti-mode で、バッファごとに本文を中央へ寄せる表示�
 セッション中に一度だけ取得を確認します。`t` は自動取得、`nil` は確認しません。
 取得後は再起動せず反映します。取得中は C-g で中止できます。失敗すると何も配置せず、理由をエコー行に出します。ツリーのアイコンには `nerd-symbols` を補助フォントとして使い、
 不足時は取得コマンドを一度だけ案内します。任意 URL の指定には対応しません。
+
+M-x novel-mode で、バッファごとに小説モードを切り替えます。本文を倫明朝 (RinMincho、
+<https://rinmincho.pages.dev/>、SIL OFL 1.1。同梱はしません。`M-x font-install RET rinmincho` で取得できます) で、
+既定では縦書きで表示します。行は上から下へ流れ、禁則処理をして次の列へ折り返し、列は右から左へ
+進みます。他のバッファのフォントは変わりません。倫明朝にない文字は通常のフォントで表示し、倫明朝が
+なければ通常のフォントで動いて、理由をエコー行に出します。
+
+- 縦書きペインのキー: Down / Up で次 / 前の文字、Left / Right で次 / 前の列、C-v / M-v で列単位の
+  ページ送り、C-l でカーソルの列を中央、右端、左端の順に。C-n / C-p は論理行のままです。ホイールは
+  列単位で動き、クリックするとその文字にポイントが移ります。行番号は出ません。
+- 縦書き用の字形はフォント自身の OpenType `vert` 置換から取ります (`vert` がなければ `vrt2`)。
+  どちらもないフォントでは、括弧・ダッシュ・リーダーを 90° 回転し、、。，．と小書きかなを右上へ
+  寄せます。
+- 半角の英数字は 1 マスに 1 文字ずつ、正立させて列の中央に置きます。
+- 設定: `novel-font`、`novel-bold-font` (フォント置き場から探すファイル名、またはパス)、
+  `novel-vertical` (既定 t。nil で横書き、`novel-body-width` セル幅で中央寄せ、既定 80)、
+  `novel-column-spacing` (既定 1.7 文字分)、`novel-font-scale` (既定 1.25、縦書きのみ)、
+  `novel-languages`、`novel-file-suffixes` (自動で有効にする条件、既定 nil)。
+- 縦書きペインでまだ扱わないもの: 折りたたみ (隠れた行も表示)、インライン画像、レビューの帯、
+  対応括弧の強調。横書きの折り返しもまだありません。
 
 Eagle (eagle.cool) からの画像も Emacs と同じ手順で入れられます。C-M-e (`org-insert-eagle-image`) は
 キーワード (空なら新しい順) を尋ね、Eagle のローカル API から該当する画像を `name.ext  [タグ]` で

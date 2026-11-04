@@ -88,6 +88,7 @@ nim r tests/texecpath.nim # the login shell's PATH merged for GUI launches
 nim r tests/tplaces.nim   # grep-mode style places lists
 nim r tests/tledger.nim   # understanding ledger entries and the glossary
 nim r tests/tfontinstall.nim # offline font catalog, SHA-256, verified ZIP installation
+nim r tests/tnovel.nim    # vertical columns, kinsoku, scrolling and the font's vert table
 nim r tests/tmonkey.nim   # fuzz: random input into Buffer, SKK, Lisp, HTML, the terminal, panes
 tests/editormonkey/run.sh 1 16 300   # whole editor: random command sequences per seed (opens windows)
 ```
@@ -1021,6 +1022,29 @@ session; `t` downloads automatically and `nil` disables the prompt. Installed fo
 effect without restarting; C-g cancels a running download. Any failure installs nothing and
 says why in the echo line. Tree icons use `nerd-symbols` as a fallback; missing icons
 show a one-time installation hint. Only catalog entries are accepted, not arbitrary URLs.
+
+M-x novel-mode toggles a per-buffer novel mode: the text is drawn in 倫明朝 (RinMincho,
+<https://rinmincho.pages.dev/>, SIL OFL 1.1; not bundled; use `M-x font-install RET rinmincho`)
+and, by default, in Japanese vertical writing: each line flows top to bottom, wraps into
+further columns with kinsoku, and columns go right to left. Other buffers keep their font;
+characters RinMincho lacks come from the usual fonts, and without RinMincho the mode works
+with those fonts and the echo line says why.
+
+- Keys in a vertical pane: Down / Up move to the next / previous character, Left / Right to
+  the next / previous column, C-v / M-v page by columns, C-l puts the cursor's column in the
+  middle, rightmost, then leftmost. C-n / C-p stay logical lines. The wheel scrolls columns
+  and a click puts point on the character under it. Line numbers are hidden.
+- Vertical forms come from the font's own OpenType `vert` substitutions (`vrt2` in a font
+  without `vert`). A font with neither gets brackets, dashes and ellipses rotated 90°, and
+  、。，． and small kana moved to the upper right.
+- Half-width letters and digits stand upright, one to a cell, centred across the column.
+- Settings: `novel-font` and `novel-bold-font` (a file name looked for in the font directories,
+  or a path), `novel-vertical` (default t; nil is horizontal, centred in `novel-body-width`
+  cells, default 80), `novel-column-spacing` (default 1.7 ems), `novel-font-scale` (default
+  1.25, vertical only), `novel-languages` and `novel-file-suffixes` (automatic activation,
+  default nil).
+- Not drawn in vertical panes yet: folds (hidden lines show), inline pictures, review bands and
+  paren highlights. The horizontal layout does not soft-wrap yet.
 
 Images from Eagle (eagle.cool), as the user's Emacs does: C-M-e
 (`org-insert-eagle-image`) asks for a keyword (empty for the newest items) and lists

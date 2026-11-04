@@ -6,14 +6,14 @@ when not defined(windows) and not defined(macosx): import std/osproc
 
 type
   Renderer* = ref object
-    gpu: Boxy
-    fonts: seq[Font]
-    boldFont: Font
+    gpu*: Boxy
+    fonts*: seq[Font]
+    boldFont*: Font
     installed: seq[string]  # addFallbackFont's paths: last in the chain, whatever the fallbacks
     fallbacks: string  # set-fallback-fonts / DARGER_FALLBACK_FONTS entries; "" uses the defaults
     chosen: Table[int, int]
-    glyphs: HashSet[string]
-    scale: float32
+    glyphs*: HashSet[string]
+    scale*: float32
     zoom*: float32
     lastTitle: string
     pad, areaW: int
@@ -25,6 +25,7 @@ type
     backgroundDim*: float32  # the theme background's opacity laid over it, 0 .. 1
     pictureOnly*: bool    # show the background alone: no text, mode lines or echo line
     candTop: int  # first candidate row shown in the popup
+    glyphHook*: proc(rune: Rune, x, y: int, tint: Color, bold: bool): bool  # the pane being drawn's own font; false = the usual ones
   Anchor* = enum atTop, atBottom
   CursorBox* = object   ## a completion or hover box hanging from a buffer position
     lines*, tags*, details*: seq[string]  # tags / details: one per line, or none
@@ -110,6 +111,7 @@ proc loadFont*(path: string, symbols = false): Font =
   if path.toLowerAscii.endsWith(".ttc"):
     let faces = readTypefaces(path)
     if faces.len == 0: raise newException(IOError, "Empty font collection")
+    faces[0].filePath = path  # readTypefaces leaves it empty
     result = newFont(faces[0])
   else: result = readFont(path)
   # Pixie only reads Windows (platform 3) cmap subtables; Apple's Menlo.ttc
@@ -334,6 +336,7 @@ proc hasGlyph*(r: Renderer, rune: Rune): bool =
 proc glyph(r: Renderer, rune: Rune, x, y: int, tint: Color, bold = false) =
   ## One rune with its top left at window pixel x, y.
   if rune in [Rune(9), Rune(32)]: return
+  if r.glyphHook != nil and r.glyphHook(rune, x, y, tint, bold): return
   let code = int(rune)
   # ponytail: no shaping; ZWJ, flag and keycap sequences render as their parts.
   if code in 0x200B..0x200D or code in 0xFE00..0xFE0F or code in 0xE0100..0xE01EF: return
@@ -375,14 +378,14 @@ proc glyph(r: Renderer, rune: Rune, x, y: int, tint: Color, bold = false) =
     r.glyphs.incl key
   r.gpu.drawImage(key, vec2(x.float32, y.float32), tint)
 
-proc cellX(r: Renderer, cell: int): int = r.pad + (r.px + cell) * r.cellW
-proc rowY(r: Renderer, row: int): int = r.padTop + (r.py + row) * r.cellH
+proc cellX*(r: Renderer, cell: int): int = r.pad + (r.px + cell) * r.cellW
+proc rowY*(r: Renderer, row: int): int = r.padTop + (r.py + row) * r.cellH
 
 proc fill(r: Renderer, cell, row, count: int, c: Color) =
   r.gpu.drawRect(rect(r.cellX(cell).float32, r.rowY(row).float32,
     (count * r.cellW).float32, r.cellH.float32), c)
 
-proc band(r: Renderer, row: int, c: Color) =
+proc band*(r: Renderer, row: int, c: Color) =
   ## A full-width row of the pane; the rightmost pane's reaches the text area's edge.
   let w = if r.px + r.pw >= r.frameCols: r.pad + r.areaW - r.cellX(0) else: r.pw * r.cellW
   r.gpu.drawRect(rect(r.cellX(0).float32, r.rowY(row).float32, w.float32, r.cellH.float32), c)
@@ -402,12 +405,12 @@ proc imeRuneCol(composition: seq[Rune], index: int): int =
     units += count
     inc result
 
-proc displayLine(line, composition: seq[Rune], cursor: int): seq[Rune] =
+proc displayLine*(line, composition: seq[Rune], cursor: int): seq[Rune] =
   if cursor >= 0 and composition.len > 0:
     line[0..<cursor] & composition & line[cursor..<line.len]
   else: line
 
-proc faceColor(f: Face, tint: Color): Color =
+proc faceColor*(f: Face, tint: Color): Color =
   case f
   of fPlain: tint
   of fComment: theme.comment
@@ -471,7 +474,7 @@ proc drawLine(r: Renderer, line: seq[Rune], row, scroll: int, cursor = -1,
       cell += width
     if pass == 0 and caret >= 0: r.fill(x0+span.cell-scroll, row, span.width, theme.cursor)
 
-proc status(r: Renderer, window: Window, text: string, row: int, cursor = -1,
+proc status*(r: Renderer, window: Window, text: string, row: int, cursor = -1,
             composition: seq[Rune] = @[], imeCursor = 0, x0 = 0, width = -1, tint = theme.fg) =
   let visible = if width < 0: r.pw else: width
   var scroll = 0
@@ -558,7 +561,7 @@ proc boxRows*(r: Renderer, n, maxRows, row: int): int =
   ## The rows cursorBox shows of n lines hanging from text row `row`, for scrolling it.
   r.boxPlace(n, maxRows, row)[1]
 
-proc cursorBox(r: Renderer, lines: seq[string], selected: int, cell, row: int, maxRows = 8,
+proc cursorBox*(r: Renderer, lines: seq[string], selected: int, cell, row: int, maxRows = 8,
                top = 0, tags: seq[string] = @[], details: seq[string] = @[]) =
   ## Lines in a frame just below text row `row` (above it when fewer than 3 rows remain
   ## below), text from `cell`, at most 60 cells wide: a tag column in theme.label, then
@@ -690,6 +693,8 @@ type
     matchStart*, matchLen*: int
 
 var
+  paneHooks*: seq[proc(r: Renderer, window: Window, p: var PaneView, composition: seq[Rune],
+                       imeCursor: int, textCursor: bool): bool]  # true: the hook drew the whole pane
   pictureSources: Table[string, Image]       # the pictures as added, for cropping
   pictureCrops: Table[string, seq[string]]   # picture key -> its cropped copies' keys
 
@@ -783,6 +788,9 @@ proc drawPane(r: Renderer, window: Window, p: var PaneView, composition: seq[Run
               imeCursor: int, textCursor: bool) =
   ## textCursor: the cursor is in the text (no prompt open), so the active pane draws it.
   r.setPane(p.x, p.y, p.w, p.h)
+  r.glyphHook = nil
+  for hook in paneHooks:
+    if hook(r, window, p, composition, imeCursor, textCursor): return
   let b = p.b
   let showCursor = p.active and textCursor
   # The gutter: right-aligned numbers, at least 3 digits wide so it rarely shifts, and
@@ -862,6 +870,7 @@ proc drawPane(r: Renderer, window: Window, p: var PaneView, composition: seq[Run
         if pic.line == line and row < r.rows:
           r.drawPicture(pic, r.cellX(gutter), r.rowY(row), (r.rows - row) * r.cellH)
       row += below(line)
+  r.glyphHook = nil
   if p.box.lines.len > 0 and p.box.line >= top and rowOf(p.box.line) < r.rows:
     r.cursorBox(p.box.lines, p.box.selected, gutter + p.box.cell - left, rowOf(p.box.line),
       p.box.maxRows, p.box.top, p.box.tags, p.box.details)

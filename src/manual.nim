@@ -194,6 +194,16 @@ M-x olivetti-mode        本文を中央へ寄せる表示を切替 (olivetti-bo
 M-x font-install         カタログからフォントを取得 (RinMincho / Nerd Fonts Symbols)。HTTPS、ZIP と各ファイルの SHA-256 を検証。C-g で中止
   font-install-dir       既定 "~/.darger-fonts/"。他のアプリと共有するなら macOS では "~/Library/Fonts" も指定可
   font-auto-install      既定 'ask。小説用フォントの不足を一度確認。t で自動取得、nil で確認しない。取得後は再起動不要
+M-x novel-mode           小説モードを切替: 倫明朝 (https://rinmincho.pages.dev/) で縦書き。バッファごと、行番号なし
+                         down / up 次 / 前の文字  left / right 次 / 前の列  C-v / M-v 列単位で 1 画面  C-l 列を中央 → 右端 → 左端
+                         C-n / C-p は論理行のまま。ホイールは列単位、クリックはその文字へ
+  novel-font             既定 "RinMincho-Regular.ttf" (フォント置き場から探す。パスも可)。読めなければ通常のフォント
+  novel-bold-font        既定 "RinMincho-Bold.ttf"
+  novel-vertical         既定 t。nil で横書き (novel-body-width 既定 80 セルで中央寄せ)
+  novel-column-spacing   列の間隔、文字の何倍か。既定 1.7
+  novel-font-scale       縦書きの文字の大きさ。既定 1.25
+  novel-languages        自動で有効にする言語。既定 nil。例 '("Org")
+  novel-file-suffixes    自動で有効にするファイル名の末尾。既定 nil。例 '(".novel" ".txt")
 C-c C-t                  見出しの TODO を巡回 (org-todo-keywords。選択キーがあれば 1 キー選択)
 C-c C-c                  チェックボックス [ ] / [X] を切り替え
 M-Enter                  同じ階層の見出し・項目を下に追加
