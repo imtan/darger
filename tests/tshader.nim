@@ -13,6 +13,10 @@ let compiled = fragmentSource(full)
 doAssert compiled.count("#version") == 1 and compiled.startsWith(glslVersion)  # ours replaces theirs
 doAssert "void main() { c = vec4(0.0); }" in compiled and footer notin compiled
 doAssert compiled.splitLines.len == full.splitLines.len + headerLines()  # line count kept for the log
+for own in ["void main(", "void\tmain\n (", "voidvoid  main()"]:  # whitespace forms of `void main (`
+  doAssert footer notin fragmentSource(own), own
+for toyOnly in ["voidmain(", "void main", "void main x(", "int main("]:
+  doAssert fragmentSource(toyOnly).endsWith(footer), toyOnly
 
 let log = "ERROR: 0:" & $(headerLines() + 3) & ": 'foo' : undeclared identifier\nWARNING: 0:" & $(headerLines() + 1) & ": unused\n"
 doAssert userLog(log) == "ERROR: line 3: 'foo' : undeclared identifier\nWARNING: line 1: unused"

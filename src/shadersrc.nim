@@ -1,6 +1,6 @@
 ## Background shader sources: a Shadertoy-style `mainImage` file, or a whole fragment
 ## shader, becomes the GLSL darger compiles; GL's error log gets the file's line numbers.
-import std/[strutils, re]
+import std/strutils
 
 const
   glslVersion* = "#version 410 core"
@@ -16,6 +16,19 @@ proc headerLines*(): int =
   for c in header:
     if c == '\n': inc result
 
+proc definesMain(s: string): bool =
+  ## Whether `s` has `void`, whitespace, `main`, optional whitespace and `(`.
+  var i = s.find("void")
+  while i >= 0:
+    var j = i + "void".len
+    let afterVoid = j
+    while j < s.len and s[j] in Whitespace: inc j
+    if j > afterVoid and s.continuesWith("main", j):
+      j += "main".len
+      while j < s.len and s[j] in Whitespace: inc j
+      if j < s.len and s[j] == '(': return true
+    i = s.find("void", i + 1)
+
 proc fragmentSource*(user: string): string =
   ## The user's text under the header; a `#version` of its own is dropped, and a file
   ## without `void main` gets the Shadertoy entry point appended.
@@ -24,7 +37,7 @@ proc fragmentSource*(user: string): string =
     if line.strip.startsWith("#version"): body.add ""  # keep the line count
     else: body.add line
   result = header & body.join("\n")
-  if not user.contains(re"void\s+main\s*\("): result.add footer
+  if not definesMain(user): result.add footer
 
 proc userLog*(log: string): string =
   ## GL's `ERROR: 0:12: ...` refers to the combined source; shift to the user's file.
