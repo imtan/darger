@@ -72,6 +72,7 @@ const
 (global-set-key "C-w" 'kill-region)
 (global-set-key "M-w" 'copy-region)
 (global-set-key "C-y" 'yank)
+(global-set-key "C-c C-y" 'clipboard-yank)
 (global-set-key "M-y" 'yank-pop)
 (global-set-key "C-x h" 'whole)
 (global-set-key "C-/" 'undo)
@@ -833,14 +834,30 @@ proc search*(next = false, direction = 0) =
   b.searchStep(isearch, query, next, direction, alternatives)
   syncSearch()
 
+var lastClipboard = ""  # the clipboard text the editor last set or took; other text is newer
+
+proc takeClipboard*(): bool =
+  ## Clipboard text copied elsewhere since the editor last set or took it goes onto the
+  ## kill ring, so C-y pastes it as Emacs does and M-y still reaches the earlier kills.
+  let clip = getClipboardString()
+  if not newerClipboard(clip, lastClipboard, b.kills): return false
+  b.kills.insert(clip.replace("\r\n", "\n"), 0)
+  b.yankIndex = 0
+  if b.kills.len > 60: b.kills.setLen(60)
+  lastClipboard = clip
+  true
+
 proc runCommand*(name: string): Value =
   if name notin bufferCommands: raise newException(LispError, "Unknown buffer command: " & name)
   moveDirection = case name
     of "next-line", "forward", "forward-word": 1
     of "previous-line", "backward", "backward-word": -1
     else: 0
+  if name == "yank": discard takeClipboard()
   echoLine = b.command(name, if name == "yank" and b.kills.len == 0: getClipboardString() else: "")
-  if b.last in ["kill", "copy"] and b.kills.len > 0: setClipboardString(b.kills[0])
+  if b.last in ["kill", "copy"] and b.kills.len > 0:
+    setClipboardString(b.kills[0])
+    lastClipboard = b.kills[0]
   nilValue()
 
 proc registerCommand*(name: string) =
@@ -949,6 +966,7 @@ proc editMini*(c: string): bool =
     echoLine = "No match"  # TAB completes here; it never inserts a tab
     return true
   if cmd == "yank":
+    discard takeClipboard()
     let s = if b.kills.len > 0: b.kills[0] else: getClipboardString()
     mini.insert(s.replace("\r", "").replace("\n", " "))
   else:
@@ -958,6 +976,7 @@ proc editMini*(c: string): bool =
       b.yankIndex = 0
       if b.kills.len > 60: b.kills.setLen(60)
       setClipboardString(b.kills[0])
+      lastClipboard = b.kills[0]
   if mode == "search": search() else: refreshCandidates()
   true
 
@@ -1159,7 +1178,22 @@ proc copyText*(s: string) =
   b.yankIndex = 0
   if b.kills.len > 60: b.kills.setLen(60)
   setClipboardString(s)
+  lastClipboard = s
   echoLine = "Copied " & s
+
+interp.defPrimitive("clipboard-yank", proc(args: seq[Value]): Value =
+  ## C-c C-y: the clipboard's text, whatever the kill ring holds; it joins the ring.
+  args.arity(0, 0)
+  let clip = getClipboardString()
+  if clip.len == 0:
+    echoLine = "Clipboard is empty"
+    return nilValue()
+  if b.kills.len == 0 or clip != b.kills[0]:
+    b.kills.insert(clip.replace("\r\n", "\n"), 0)
+    if b.kills.len > 60: b.kills.setLen(60)
+  b.yankIndex = 0
+  lastClipboard = clip
+  runCommand("yank"))
 
 
 

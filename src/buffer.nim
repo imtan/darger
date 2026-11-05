@@ -288,6 +288,11 @@ proc searchBackspace*(b: Buffer, search: var ISearch) =
   if search.history.len > 0: search.state = search.history.pop()
   b.cursor = search.state.cursor
 
+proc newerClipboard*(clip, seen: string, kills: seq[string]): bool =
+  ## Whether clipboard text should be yanked before the kill ring: it is not what the
+  ## editor last put there or took from there, nor the most recent kill.
+  clip.len > 0 and clip != seen and (kills.len == 0 or clip != kills[0])
+
 proc command*(b: Buffer, cmd: string, clipboard = ""): string =
   let n = b.offset(b.cursor)
   let total = b.text.runeLen

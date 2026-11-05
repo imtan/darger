@@ -363,7 +363,10 @@ C-a/C-e/C-f/C-b, C-k, C-y, Enter and C-g; the Find/Write/Agent/buffer/line promp
 and incremental search also take C-\ or C-x C-j (any key bound to `skk-mode`) to toggle
 SKK. Answer confirmation prompts with `y` or `n`, then Enter. Backspace and Delete
 remove an active region without killing it. Killing/copying updates the clipboard;
-C-y uses the clipboard when the 60-entry kill ring is empty. Undo keeps 200
+C-y pastes the clipboard when it holds text copied elsewhere since the editor last set
+or took it (as Emacs does: the text joins the 60-entry kill ring, so M-y still reaches the
+earlier kills), else the kill ring; C-c C-y (`clipboard-yank`) always pastes the
+clipboard. Undo keeps 200
 snapshots and groups runs of non-whitespace self-inserts. Snapshot undo and
 flattened edits favor small files.
 

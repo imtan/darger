@@ -260,3 +260,11 @@ block revert:  # the file changed on disk: revert follows it, undo brings the ol
   b.revert()
   doAssert b.text == "changed again\n" and not b.modified
   removeFile(path)
+
+block clipboardPriority:  # C-y takes clipboard text copied elsewhere since the editor last saw it
+  doAssert newerClipboard("theirs", "", @[])
+  doAssert newerClipboard("theirs", "ours", @["ours"])
+  doAssert not newerClipboard("ours", "ours", @["ours"])        # the editor's own kill
+  doAssert not newerClipboard("older", "older", @["ours"])      # seen before the last kill
+  doAssert not newerClipboard("ours", "something", @["ours"])   # already the newest kill
+  doAssert not newerClipboard("", "ours", @["ours"])            # nothing to paste
