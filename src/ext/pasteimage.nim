@@ -10,21 +10,26 @@ interp.defPrimitive("org-insert-clipboard-image", proc(args: seq[Value]): Value 
   if core.b.path.len == 0:
     echoLine = "Save the buffer first: the image goes to img/ next to its file"
     return nilValue()
-  let image = getClipboardImage()
-  if image == nil or image.width == 0:
-    echoLine = "No image in the clipboard"
+  when not declared(getClipboardImage):
+    # windy has no image clipboard on X11.
+    echoLine = "Clipboard images are not supported on this platform"
     return nilValue()
-  let name = clipboardImageName(now())
-  let path = parentDir(core.b.path) / name
-  try:
-    createDir(parentDir(path))
-    image.writeFile(path)
-  except CatchableError as e:
-    echoLine = "Could not save the image: " & e.msg
-    return nilValue()
-  core.b.insert("[[file:" & name & "]]")
-  echoLine = "Saved " & name & " (" & $image.width & "x" & $image.height & ")"
-  nilValue())
+  else:
+    let image = getClipboardImage()
+    if image == nil or image.width == 0:
+      echoLine = "No image in the clipboard"
+      return nilValue()
+    let name = clipboardImageName(now())
+    let path = parentDir(core.b.path) / name
+    try:
+      createDir(parentDir(path))
+      image.writeFile(path)
+    except CatchableError as e:
+      echoLine = "Could not save the image: " & e.msg
+      return nilValue()
+    core.b.insert("[[file:" & name & "]]")
+    echoLine = "Saved " & name & " (" & $image.width & "x" & $image.height & ")"
+    nilValue())
 
 defaults.add """
 (global-set-key "C-M-y" 'org-insert-clipboard-image)

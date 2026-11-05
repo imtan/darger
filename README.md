@@ -1001,6 +1001,8 @@ zooms.
 C-M-y (`org-insert-clipboard-image`) saves the clipboard's image as
 `img/YYYY-mm-dd-HH-MM-SS.png` next to the file (the buffer must have one) and inserts
 `[[file:img/…]]`, like the usual Emacs paste-image commands, with no pngpaste needed.
+This works on macOS and Windows; on Linux the command reports that clipboard images are
+not supported, because windy's X11 backend has no image clipboard.
 
 Image links show inline, as org-display-inline-images: a line with `[[file:…png]]`
 (also jpg, gif, webp, bmp; `~` and paths relative to the file work; WebP through macOS' sips) gets the picture

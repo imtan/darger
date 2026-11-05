@@ -912,7 +912,8 @@ Graphviz 不要)。今のノートは赤、ホバーで題名・タグ・リン�
 
 C-M-y (`org-insert-clipboard-image`) はクリップボードの画像をファイルの隣の
 `img/YYYY-mm-dd-HH-MM-SS.png` に保存して (バッファにファイルが必要) `[[file:img/…]]` を挿入します。
-Emacs のコマンドと同じで、pngpaste は要りません。
+Emacs のコマンドと同じで、pngpaste は要りません。使えるのは macOS と Windows です。Linux では
+windy の X11 バックエンドに画像クリップボードがないため、非対応というメッセージを出します。
 
 画像リンクは org-display-inline-images のようにインライン表示されます。`[[file:…png]]` (jpg、gif、
 webp、bmp も。`~` やファイルからの相対パス可。WebP は macOS の sips 経由) のある行の下に、本文幅と `org-image-max-rows` 行
