@@ -8,6 +8,7 @@ type
     todo*: string   # "" or the keyword
     title*: string  # after the keyword, before the tags
     tags*: string   # ":a:b:" or ""
+    priority*: char # A/B/C, or NUL when no cookie
 
 var
   todoKeywords* = @["TODO", "DONE"]  ## the sequence C-c C-t cycles, active then done words
@@ -55,6 +56,10 @@ proc headline*(line: seq[Rune]): Headline =
       result.todo = k
       rest = strutils.strip(rest[k.len..^1])
       break
+  if rest.len >= 4 and rest[0..1] == "[#" and rest[2] in {'A'..'C'} and
+      rest[3] == ']' and (rest.len == 4 or rest[4] == ' '):
+    result.priority = rest[2]
+    rest = strutils.strip(rest[4..^1])
   let sp = rest.rfind(' ')
   let last = if sp >= 0: rest[sp+1..^1] else: rest
   if last.len >= 3 and last[0] == ':' and last[^1] == ':':
@@ -87,6 +92,32 @@ proc withTodo*(line: seq[Rune], next: string): seq[Rune] =
   var tail = if h.todo.len > 0: s[i + h.todo.len .. ^1] else: s[i .. ^1]
   if h.todo.len > 0 and tail.len > 0 and tail[0] == ' ': tail = tail[1..^1]
   (s[0..<i] & (if next.len > 0: next & (if tail.len > 0: " " else: "") else: "") & tail).toRunes
+
+proc withPriority*(line: seq[Rune], priority: char): seq[Rune] =
+  let h = headline(line)
+  if h.level == 0: return line
+  if priority notin {'A'..'C', '\0'}: raise newException(ValueError, "Priority must be A, B or C")
+  var i = h.level + 1
+  while i < line.len and line[i] == Rune(' '): inc i
+  if h.todo.len > 0:
+    i += h.todo.len
+    while i < line.len and line[i] == Rune(' '): inc i
+  var z = i
+  if h.priority != '\0':
+    z += 4
+    if z < line.len and line[z] == Rune(' '): inc z
+  var prefix = $line[0..<i]
+  if priority != '\0' and prefix.len > 0 and prefix[^1] != ' ': prefix.add ' '
+  (prefix & (if priority == '\0': "" else: "[#" & priority & "]" &
+    (if z < line.len: " " else: "")) & $line[z..^1]).toRunes
+
+proc cyclePriority*(line: seq[Rune], up: bool, repeated = false): seq[Rune] =
+  let p = headline(line).priority
+  # Org starts an absent cookie at the default B; cycling beyond either end removes it.
+  let next = if p == '\0': (if repeated: (if up: 'C' else: 'A') else: 'B')
+    elif up: (if p == 'A': '\0' else: pred(p))
+    else: (if p == 'C': '\0' else: succ(p))
+  withPriority(line, next)
 
 proc cycleTodo*(line: seq[Rune]): seq[Rune] =
   ## none -> the first keyword -> ... -> the last -> none, as C-c C-t cycles.
@@ -482,6 +513,9 @@ type
     kind*: AgendaKind
     days*: int        ## the date relative to today (negative = past); 0 for plain TODOs
     text*: string     ## the headline without stars
+    todo*, tags*: string
+    priority*: char
+    scheduledToday*: bool
 
 proc parseDate*(s: string, at: int): tuple[ok: bool, date: DateTime] =
   ## The yyyy-mm-dd starting at s[at] (the day name, time and repeater after it are ignored).
@@ -536,6 +570,15 @@ proc agendaItems*(path: string, lines: seq[seq[Rune]], today: DateTime,
         result.add AgendaItem(path: path, line: n, kind: akTimestamp, days: 0, text: text)
     if not dated and h.todo.len > 0 and not isDone(h.todo):
       result.add AgendaItem(path: path, line: n, kind: akTodo, text: text)
+
+  for item in result.mitems:
+    let h = headline(lines[item.line])
+    item.todo = h.todo
+    item.tags = h.tags
+    item.priority = h.priority
+    if item.line + 1 < lines.len:
+      for d in planning($lines[item.line+1], "SCHEDULED"):
+        if daysBetween(day, d) == 0: item.scheduledToday = true
 
 proc agendaLabel*(it: AgendaItem): string =
   ## The agenda's prefix, as Emacs words it: Scheduled: / Sched. 3x: / Deadline: / In 3 d.: / 3 d. ago:
@@ -646,3 +689,31 @@ proc ensureRefileParent*(lines: seq[seq[Rune]], path: string): tuple[lines: seq[
       for t in refileTargets(result.lines, int.high):
         if t.path == prefix: found = t.line
     result.line = found
+
+# ---- Super-agenda: the first matching group claims an item, keeping agenda order.
+type
+  AgendaGroup* = object
+    name*, todo*, tag*: string
+    priority*: char
+    scheduledToday*: bool
+  AgendaSection* = object
+    name*: string
+    items*: seq[AgendaItem]
+
+proc groupAgenda*(items: seq[AgendaItem], groups: seq[AgendaGroup]): seq[AgendaSection] =
+  var sections: seq[AgendaSection]
+  for g in groups: sections.add AgendaSection(name: g.name)
+  sections.add AgendaSection(name: "その他")
+  for item in items:
+    var at = groups.len
+    for i, g in groups:
+      let priority = if item.priority == '\0': 'B' else: item.priority
+      if (g.priority != '\0' and priority == g.priority) or
+          (g.todo.len > 0 and item.todo == g.todo) or
+          (g.tag.len > 0 and (":" & g.tag & ":") in item.tags) or
+          (g.scheduledToday and item.scheduledToday):
+        at = i
+        break
+    sections[at].items.add item
+  for section in sections:
+    if section.items.len > 0: result.add section

@@ -381,6 +381,62 @@ interp.defPrimitive("org-todo", proc(args: seq[Value]): Value =
       for (word, k) in todoKeys: label.add "[" & k & "] " & word & "  "
       beginMini("org-todo", label & "[SPC] none: ")
   nilValue())
+var prioritySource: Buffer
+var priorityLine, priorityVersion: int
+
+proc pickPriority(key: char): bool =
+  if key notin {'a'..'c', 'A'..'C', ' '}: return false
+  if prioritySource notin reg or prioritySource.version != priorityVersion:
+    echoLine = "Headline changed; run org-priority again"
+    return true
+  prioritySource.snapshot()
+  let at = prioritySource.offset((priorityLine, 0))
+  prioritySource.splice(at, at + prioritySource.lines[priorityLine].len,
+    $withPriority(prioritySource.lines[priorityLine], if key == ' ': '\0' else: key.toUpperAscii))
+  prioritySource.cursor.col = min(prioritySource.cursor.col, prioritySource.lines[prioritySource.cursor.line].len)
+  prioritySource.last = "edit"
+  true
+
+definePrompt(Prompt(kind: "org-priority", onAccept: proc(value: string): bool =
+  value.len == 1 and pickPriority(value[0])))
+runeFilters.add proc(r: Rune): bool =
+  if mode != "org-priority": return false
+  if r.int < 128 and pickPriority(char(r.int)):
+    mode = ""
+    prompt = ""
+  true
+
+interp.defPrimitive("org-priority", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  if orgBuffer():
+    let n = orgHeadline()
+    if n >= 0:
+      prioritySource = b
+      priorityLine = n
+      priorityVersion = b.version
+      beginMini("org-priority", "Priority: [a] A  [b] B  [c] C  [SPC] none: ")
+  nilValue())
+for (name, up) in [("org-priority-up", true), ("org-priority-down", false)]:
+  closureScope:
+    let increase = up
+    let command = name
+    interp.defPrimitive(name, proc(args: seq[Value]): Value =
+      args.arity(0, 0)
+      if orgBuffer():
+        let n = orgHeadline()
+        if n >= 0:
+          let next = cyclePriority(b.lines[n], increase, b.last == command)
+          setLine(n, $next)
+          b.last = command
+      nilValue())
+keyFilters.add proc(c: string): bool =
+  # chord() omits Shift on arrows; route it through the added keymap entries in Org only.
+  if mode.len > 0 or prefix.len > 0 or lang.name != "Org" or c notin ["up", "down"] or not shift(): return false
+  let key = "S-" & c
+  if key notin keymap: return false
+  discard interp.call(keymap[key], @[])
+  true
+
 interp.defPrimitive("org-toggle-checkbox", proc(args: seq[Value]): Value =
   args.arity(0, 0)
   if orgBuffer():
@@ -562,9 +618,30 @@ interp.defPrimitive("org-refile", proc(args: seq[Value]): Value =
   beginMini("org-refile", "Refile to (file/headline): ")
   nilValue())
 
+proc agendaGroups(): seq[AgendaGroup] =
+  for spec in interp.env.values["org-super-agenda-groups"].asList:
+    var group: AgendaGroup
+    let xs = spec.asList
+    var i = 0
+    while i + 1 < xs.len:
+      let key = xs[i].str
+      let value = xs[i+1]
+      case key
+      of ":name": group.name = value.asString
+      of ":todo": group.todo = value.asString
+      of ":tag": group.tag = value.asString
+      of ":priority":
+        let p = value.asString
+        if p.len == 1 and p[0] in {'A'..'C'}: group.priority = p[0]
+      of ":scheduled": group.scheduledToday = value.kind == vSymbol and value.str == "today"
+      else: discard
+      i += 2
+    if group.name.len > 0: result.add group
+
 proc orgAgenda*() =
   ## M-x org-agenda: today's scheduled, deadline and dated items and the undated TODOs
   ## of org-agenda-files, as a list; Enter goes to the headline, C-g comes back.
+  syncTodoKeywords()
   var items: seq[AgendaItem]
   for path in agendaFiles():
     let open = reg.byPath(path)
@@ -576,9 +653,10 @@ proc orgAgenda*() =
     return
   targets = @[]
   refRows = @[]
-  for it in items:
-    targets.add Location(path: it.path, line: it.line)
-    refRows.add agendaRow(it)
+  for section in groupAgenda(items, agendaGroups()):
+    for it in section.items:
+      targets.add Location(path: it.path, line: it.line)
+      refRows.add section.name & " | " & agendaRow(it)
   beginMini("agenda", "Agenda: ")
 
 interp.defPrimitive("org-agenda", proc(args: seq[Value]): Value =
@@ -852,6 +930,19 @@ defaults.add """
 (setq org-refile-targets '((nil :maxlevel . 3) (org-agenda-files :maxlevel . 3)))
 (global-set-key "C-c C-w" 'org-refile)
 (setq org-agenda-files nil)
+(setq org-super-agenda-groups
+  '((:name "🔥 最重要" :priority "A")
+    (:name "⏭️ 次にやる" :todo "NEXT")
+    (:name "📅 今日やる" :scheduled today)
+    (:name "🎮 ゲーム制作" :tag "game")
+    (:name "✍️ 執筆・思考" :tag "write")
+    (:name "🧠 研究・学習" :tag "study")
+    (:name "🩺 体調・生活" :tag "health")
+    (:name "🧹 雑務" :tag "life")
+    (:name "⏳ 待ち" :todo "WAITING")
+    (:name "📥 未整理（Inbox）" :todo "TODO")))
+(global-set-key "S-up" 'org-priority-up)
+(global-set-key "S-down" 'org-priority-down)
 (setq org-todo-keywords nil)
 (global-set-key "C-c j" 'org-journal-new-entry)
 (global-set-key "C-c q" 'org-journal-quick-add)

@@ -303,3 +303,10 @@ block rails:
   doAssert detect(".rspec", "").name == "Text"
   doAssert detect("Gemfile.lock", "").name == "Text"
 echo "All syntax checks passed"
+
+block orgPriorities:
+  let text = toLines("* TODO [#A] High\n** [#B] Middle\n* [#C] Low\n#+begin_src org\n* [#A] Literal\n#+end_src")
+  let faces = detect("priority.org", "").highlight(text)
+  doAssert faces[0][7] == fAnsi1 and faces[0][10] == fAnsi1
+  doAssert faces[1][3] == fAnsi3 and faces[2][2] == fAnsi4
+  doAssert faces[4][2] == fString

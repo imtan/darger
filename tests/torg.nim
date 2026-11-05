@@ -358,3 +358,36 @@ block refile:
   try: discard ensureRefileParent(lines("* A\n* A\n"), "A/B")
   except ValueError: ambiguous = true
   doAssert ambiguous
+
+block priorities:
+  let h = headline(rs"** TODO [#A] 日本語 :work:")
+  doAssert h.priority == 'A' and h.title == "日本語" and h.tags == ":work:"
+  doAssert headline(rs"* [#B] Bare").priority == 'B'
+  doAssert headline(rs"* TODO [#D] Literal").priority == '\0'
+  doAssert $withPriority(rs"** TODO タスク :tag:", 'C') == "** TODO [#C] タスク :tag:"
+  doAssert $withPriority(rs"* TODO [#A] Task", '\0') == "* TODO Task"
+  doAssert $withPriority(rs"* TODO", 'B') == "* TODO [#B]"
+  doAssert $cyclePriority(rs"* Task", true) == "* [#B] Task"
+  doAssert $cyclePriority(rs"* [#B] Task", true) == "* [#A] Task"
+  doAssert $cyclePriority(rs"* [#A] Task", true) == "* Task"
+  doAssert $cyclePriority(rs"* [#C] Task", false) == "* Task"
+  doAssert $cyclePriority(rs"* Task", true, true) == "* [#C] Task"
+  doAssert $cyclePriority(rs"* Task", false, true) == "* [#A] Task"
+  doAssert $withTodo(rs"* TODO [#A] Task", "DONE") == "* DONE [#A] Task"
+  doAssert refileTargets(lines("* TODO [#A] Parent\n** Child"))[1].path == "Parent/Child"
+
+block superAgenda:
+  setTodoKeywords(@["TODO", "NEXT", "WAITING", "|", "DONE"])
+  let items = agendaItems("tasks.org", lines("* NEXT [#A] First :game:\n* NEXT Second\n* TODO Today\nSCHEDULED: <2026-10-07 Wed>\n* TODO Game :game:\n* TODO Not a game :games:\n* Plain <2026-10-07 Wed>"), day)
+  let groups = @[
+    AgendaGroup(name: "A", priority: 'A'), AgendaGroup(name: "Next", todo: "NEXT"),
+    AgendaGroup(name: "Today", scheduledToday: true), AgendaGroup(name: "Game", tag: "game"),
+    AgendaGroup(name: "Inbox", todo: "TODO")]
+  let sections = groupAgenda(items, groups)
+  doAssert sections.mapIt(it.name) == @["A", "Next", "Today", "Game", "Inbox", "その他"]
+  doAssert sections.allIt(it.items.len == 1)
+  doAssert sections[0].items[0].line == 0 and sections[4].items[0].line == 5
+  doAssert groupAgenda(items, @[])[0].items == items
+  doAssert groupAgenda(@[], groups).len == 0
+  doAssert groupAgenda(items, @[AgendaGroup(name: "Default", priority: 'B')])[0].items.len == 5
+  setTodoKeywords(@["TODO", "DONE"])

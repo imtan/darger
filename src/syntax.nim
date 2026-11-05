@@ -1,5 +1,6 @@
 ## Table-driven syntax highlighting: one pass over the buffer, one Face per rune.
 import std/[unicode, sets, strutils, os]
+import orgmode
 
 type
   Face* = enum
@@ -649,6 +650,18 @@ proc orgLines(lines: seq[seq[Rune]], faces: var seq[seq[Face]]) =
       while z < line.len and isWord(line[z]): inc z
       for (word, face) in orgTodoFaces:
         if $line[a..<z] == word: faces[n].paint(a, z, face)
+      let h = headline(line)
+      if h.priority != '\0':
+        var start = a
+        while start < line.len and line[start] == Rune(' '): inc start
+        if h.todo.len > 0:
+          start += h.todo.len
+          while start < line.len and line[start] == Rune(' '): inc start
+        let face = case h.priority
+          of 'A': fAnsi1
+          of 'B': fAnsi3
+          else: fAnsi4
+        faces[n].paint(start, start + 4, face)
       continue
     var i = 0
     var failed: seq[(Rune, int)]
