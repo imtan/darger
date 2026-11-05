@@ -127,6 +127,7 @@ proc read(r: var Reader): Value =
     case token
     of "nil": result = nilValue()
     of "t": result = boolean(true)
+    of ".": result = symbol(token)  # retain dotted configuration pairs; parseFloat(".") accepts zero
     else:
       try: result = num(parseFloat(token))
       except ValueError: result = symbol(token)

@@ -411,3 +411,51 @@ block modern:
   doAssert modernDecorations(lines("#+begin_srcfoo\n- [ ] literal\n#+end_srcfoo"))[1].len == 0
   doAssert modernDecorations(lines("- [q] not a box"))[0].len == 1
   setTodoKeywords(@["TODO", "DONE"])
+
+block planningDates:
+  let today = dateTime(2026, mNov, 5, 23, 30)
+  doAssert readOrgDate("", today).format("yyyy-MM-dd HH:mm") == "2026-11-05 00:00"
+  doAssert readOrgDate("+3", today).format("yyyy-MM-dd") == "2026-11-08"
+  doAssert readOrgDate("fri", today).format("yyyy-MM-dd") == "2026-11-06"
+  doAssert readOrgDate("thu", today).format("yyyy-MM-dd") == "2026-11-05"
+  doAssert readOrgDate("2026-11-10", today).format("ddd") == "Tue"
+  doAssert readOrgDate("+3", dateTime(2026, mDec, 30)).format("yyyy-MM-dd") == "2027-01-02"
+  for bad in ["2026-02-29", "2026-04-31", "2026-13-01", "2026-00-00", "tomorrow", "+abc"]:
+    var rejected = false
+    try: discard readOrgDate(bad, today)
+    except ValueError: rejected = true
+    doAssert rejected, bad
+  let src = lines("* TODO Task\n:PROPERTIES:\n:ID: abc\n:END:\nBody\n* Next\n")
+  let scheduled = withPlanning(src, 0, "SCHEDULED", readOrgDate("2026-11-10", today))
+  doAssert orgText(scheduled).startsWith("* TODO Task\nSCHEDULED: <2026-11-10 Tue>\n:PROPERTIES:")
+  let both = withPlanning(scheduled, 0, "DEADLINE", readOrgDate("+3", today))
+  doAssert $both[1] == "SCHEDULED: <2026-11-10 Tue> DEADLINE: <2026-11-08 Sun>"
+  let updated = withPlanning(both, 0, "SCHEDULED", today)
+  doAssert $updated[1] == "SCHEDULED: <2026-11-05 Thu> DEADLINE: <2026-11-08 Sun>"
+  doAssert updated.len == both.len and updated[2..^1] == src[1..^1]
+  doAssert $withPlanning(lines("* DONE Task\nCLOSED: [2026-11-04 Wed]"), 0, "DEADLINE", today)[1] ==
+    "CLOSED: [2026-11-04 Wed] DEADLINE: <2026-11-05 Thu>"
+
+block archival:
+  let time = dateTime(2026, mNov, 5, 10, 20)
+  let src = lines("* Parent\n** DONE [#A] 日本語 :tag:\nSCHEDULED: <2026-11-05 Thu>\n:PROPERTIES:\n:ID: keep\n:ARCHIVE_TIME: old\n:END:\nBody\n*** DONE Child\n** TODO Keep\n* DONE Last\n")
+  let archived = archiveSubtree(src, 1, "/tmp/tasks.org", time)
+  let text = orgText(archived)
+  doAssert text.startsWith("* DONE [#A] 日本語 :tag:\nSCHEDULED: <2026-11-05 Thu>\n:PROPERTIES:")
+  doAssert text.contains(":ID: keep\n") and text.count(":PROPERTIES:") == 1
+  doAssert text.count(":ARCHIVE_TIME:") == 1 and text.contains(":ARCHIVE_TIME: 2026-11-05 Thu 10:20")
+  doAssert text.contains(":ARCHIVE_OLPATH: Parent\n") and text.contains(":ARCHIVE_TODO: DONE\n")
+  doAssert text.contains(":ARCHIVE_FILE: /tmp/tasks.org\n") and text.endsWith("** DONE Child")
+  doAssert doneSubtrees(src) == @[1, 10]
+  let all = archiveTrees(src, lines("#+title: Archive\n* Older\n"), doneSubtrees(src), "/tmp/tasks.org", time)
+  doAssert all.count == 2 and orgText(all.source) == "* Parent\n** TODO Keep\n"
+  doAssert orgText(all.archive).startsWith("#+title: Archive\n* Older\n* DONE [#A]")
+  doAssert orgText(all.archive).count("** DONE Child") == 1
+  doAssert orgText(all.archive).contains(":ARCHIVE_OLPATH: \n")
+  doAssert archiveTrees(src, lines(""), @[1, 8, 10], "a.org", time).count == 2
+  doAssert archiveTrees(src, lines(""), @[], "a.org", time).source == src
+  doAssert orgText(archiveSubtree(lines("* No TODO"), 0, "a.org", time)).contains(":ARCHIVE_TODO: \n")
+  var malformed = false
+  try: discard archiveSubtree(lines("* DONE Task\n:PROPERTIES:\n:ID: broken"), 0, "a.org", time)
+  except ValueError: malformed = true
+  doAssert malformed

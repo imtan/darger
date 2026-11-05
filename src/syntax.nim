@@ -250,7 +250,7 @@ proc detect*(path: string, firstLine: string): Lang =
   of ".toml": toml
   of ".yaml", ".yml": yaml
   of ".md", ".markdown": markdown
-  of ".org": org
+  of ".org", ".org_archive": org
   of ".html", ".htm", ".xhtml": html
   of ".vue": vue
   of ".svelte": svelte

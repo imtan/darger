@@ -521,7 +521,11 @@ proc parseDate*(s: string, at: int): tuple[ok: bool, date: DateTime] =
   ## The yyyy-mm-dd starting at s[at] (the day name, time and repeater after it are ignored).
   if at + 10 > s.len or s[at+4] != '-' or s[at+7] != '-': return
   try:
-    result.date = dateTime(parseInt(s[at..at+3]), Month(parseInt(s[at+5..at+6])), parseInt(s[at+8..at+9]))
+    let year = parseInt(s[at..at+3])
+    let month = parseInt(s[at+5..at+6])
+    let day = parseInt(s[at+8..at+9])
+    if month notin 1..12 or day < 1 or day > getDaysInMonth(Month(month), year): return
+    result.date = dateTime(year, Month(month), day)
     result.ok = true
   except ValueError, RangeDefect: discard
 
@@ -639,6 +643,7 @@ proc removeSubtree*(lines: seq[seq[Rune]], n: int): seq[seq[Rune]] =
   let z = subtreeEnd(lines, n)
   result = lines[0..<n] & lines[z+1..^1]
   if result.len == 0: result = @[newSeq[Rune]()]
+  elif lines[^1].len == 0 and result[^1].len != 0: result.add @[]
 
 proc insertSubtree*(lines, subtree: seq[seq[Rune]], parent: int): seq[seq[Rune]] =
   ## Append a child, or a level-one subtree at the file root (parent = -1).
@@ -769,3 +774,114 @@ proc modernDecorations*(lines: seq[seq[Rune]]): seq[seq[OrgDecoration]] =
         else: ""
       if symbol.len > 0:
         result[n].add OrgDecoration(first: at, last: at+3, text: (symbol & "  ").toRunes, kind: odCheckbox)
+
+# ---- Planning and archival metadata
+
+proc readOrgDate*(input: string, today: DateTime): DateTime =
+  let value = input.strip.toLowerAscii
+  let day = dateTime(today.year, today.month, today.monthday, zone = today.timezone)
+  if value.len == 0: return day
+  if value.len > 1 and value[0] in {'+', '-'}:
+    try: return day + initTimeInterval(days = parseInt(value))
+    except ValueError: discard
+  const weekdays = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+  let weekday = weekdays.find(value)
+  if weekday >= 0:
+    return day + initTimeInterval(days = (weekday - ord(day.weekday) + 7) mod 7)
+  if value.len == 10:
+    let parsed = parseDate(value, 0)
+    if parsed.ok: return dateTime(parsed.date.year, parsed.date.month, parsed.date.monthday, zone = today.timezone)
+  raise newException(ValueError, "Use YYYY-MM-DD, +days, mon..sun, or empty for today")
+
+proc isPlanning(line: seq[Rune]): bool =
+  let s = ($line).strip
+  s.startsWith("SCHEDULED:") or s.startsWith("DEADLINE:") or s.startsWith("CLOSED:")
+
+proc withPlanning*(lines: seq[seq[Rune]], n: int, key: string, date: DateTime): seq[seq[Rune]] =
+  if n notin 0..lines.high or not isHeadline(lines[n]):
+    raise newException(ValueError, "Not on a headline")
+  if key notin ["SCHEDULED", "DEADLINE"]: raise newException(ValueError, "Unknown planning keyword")
+  result = lines
+  let entry = key & ": " & timestamp(date)
+  if n+1 > lines.high or not isPlanning(lines[n+1]):
+    result.insert(entry.toRunes, n+1)
+    return
+  let line = $lines[n+1]
+  let at = line.find(key & ":")
+  if at < 0:
+    result[n+1] = (line & " " & entry).toRunes
+    return
+  var first = at + key.len + 1
+  while first < line.len and line[first] == ' ': inc first
+  if first >= line.len or line[first] != '<':
+    raise newException(ValueError, "Malformed planning timestamp")
+  let last = line.find('>', first)
+  if last < 0: raise newException(ValueError, "Unclosed planning timestamp")
+  result[n+1] = (line[0..<at] & entry & line[last+1..^1]).toRunes
+
+proc archiveSubtree*(lines: seq[seq[Rune]], n: int, file: string, time: DateTime): seq[seq[Rune]] =
+  if n notin 0..lines.high or not isHeadline(lines[n]):
+    raise newException(ValueError, "Not on a headline")
+  let h = headline(lines[n])
+  var parents: seq[tuple[level: int, title: string]]
+  for i in 0..<n:
+    let heading = headline(lines[i])
+    if heading.level == 0: continue
+    while parents.len > 0 and parents[^1].level >= heading.level: parents.setLen(parents.len-1)
+    parents.add (heading.level, heading.title)
+  while parents.len > 0 and parents[^1].level >= h.level: parents.setLen(parents.len-1)
+  var path: seq[string]
+  for parent in parents: path.add parent.title
+  for line in lines[n..subtreeEnd(lines, n)]: result.add shiftLevel(line, 1-h.level)
+  var drawer = 1
+  if drawer < result.len and isPlanning(result[drawer]): inc drawer
+  var ending = drawer
+  if drawer < result.len and ($result[drawer]).strip.toUpperAscii == ":PROPERTIES:":
+    inc ending
+    while ending < result.len and ($result[ending]).strip.toUpperAscii != ":END:":
+      if isHeadline(result[ending]): break
+      inc ending
+    if ending >= result.len or ($result[ending]).strip.toUpperAscii != ":END:":
+      raise newException(ValueError, "Unclosed property drawer")
+  else:
+    result.insert(":PROPERTIES:".toRunes, drawer)
+    result.insert(":END:".toRunes, drawer+1)
+    ending = drawer+1
+  for (key, value) in [("ARCHIVE_TIME", time.format("yyyy-MM-dd ddd HH:mm")),
+      ("ARCHIVE_FILE", file), ("ARCHIVE_OLPATH", path.join("/")), ("ARCHIVE_TODO", h.todo)]:
+    let prefix = ":" & key & ":"
+    let property = (prefix & " " & value).toRunes
+    var found = false
+    for i in drawer+1..<ending:
+      if ($result[i]).strip.toUpperAscii.startsWith(prefix):
+        result[i] = property
+        found = true
+        break
+    if not found:
+      result.insert(property, ending)
+      inc ending
+
+proc doneSubtrees*(lines: seq[seq[Rune]]): seq[int] =
+  var n = 0
+  while n < lines.len:
+    let h = headline(lines[n])
+    if h.level > 0 and isDone(h.todo):
+      result.add n
+      n = subtreeEnd(lines, n) + 1
+    else: inc n
+
+proc archiveTrees*(source, destination: seq[seq[Rune]], headings: seq[int], file: string,
+                   time: DateTime): tuple[source, archive: seq[seq[Rune]], count: int] =
+  var selected = headings
+  selected.sort()
+  var roots: seq[int]
+  var covered = -1
+  result = (source, destination, 0)
+  for n in selected:
+    if n <= covered: continue
+    let archived = archiveSubtree(source, n, file, time)
+    result.archive = insertSubtree(result.archive, archived, -1)
+    roots.add n
+    covered = subtreeEnd(source, n)
+    inc result.count
+  for i in countdown(roots.high, 0): result.source = removeSubtree(result.source, roots[i])

@@ -14,6 +14,7 @@ proc error(src, message: string, line: int) =
     doAssert message in e.msg, e.msg
 
 block reader:
+  check("'(nil :maxlevel . 3)", "(nil :maxlevel . 3)")
   check("; comment\n'(a 1 -2.5 (t nil) ())", "(a 1 -2.5 (t nil) nil)")
   check("'\"a\\n\\\"\\\\b\"", "\"a\\n\\\"\\\\b\"")
   check("'x", "x")

@@ -450,11 +450,12 @@ proc pickPriority(key: char): bool =
   if prioritySource notin reg or prioritySource.version != priorityVersion:
     echoLine = "Headline changed; run org-priority again"
     return true
+  let cur = prioritySource.cursor
   prioritySource.snapshot()
   let at = prioritySource.offset((priorityLine, 0))
   prioritySource.splice(at, at + prioritySource.lines[priorityLine].len,
     $withPriority(prioritySource.lines[priorityLine], if key == ' ': '\0' else: key.toUpperAscii))
-  prioritySource.cursor.col = min(prioritySource.cursor.col, prioritySource.lines[prioritySource.cursor.line].len)
+  prioritySource.cursor = (cur.line, min(cur.col, prioritySource.lines[cur.line].len))
   prioritySource.last = "edit"
   true
 
@@ -540,12 +541,81 @@ interp.defPrimitive("org-time-stamp", proc(args: seq[Value]): Value =
   args.arity(0, 0)
   b.insert(timestamp(now()))
   nilValue())
+var planningSource: Buffer
+var planningVersion, planningLine: int
+var planningKey: string
+
+definePrompt(Prompt(kind: "org-planning", text: true, onAccept: proc(value: string): bool =
+  if planningSource notin reg or planningSource.version != planningVersion:
+    echoLine = "Headline changed; run the planning command again"
+    return true
+  try:
+    let date = readOrgDate(value, now())
+    let text = orgText(withPlanning(planningSource.lines, planningLine, planningKey, date))
+    planningSource.snapshot()
+    replaceKeeping(planningSource, text)
+    planningSource.last = "edit"
+    echoLine = planningKey & ": " & timestamp(date)
+    true
+  except CatchableError as e:
+    echoLine = e.msg
+    false))
+for (name, key) in [("org-schedule", "SCHEDULED"), ("org-deadline", "DEADLINE")]:
+  closureScope:
+    let kind = key
+    interp.defPrimitive(name, proc(args: seq[Value]): Value =
+      args.arity(0, 0)
+      if orgBuffer():
+        let n = orgHeadline()
+        if n >= 0:
+          planningSource = b
+          planningVersion = b.version
+          planningLine = n
+          planningKey = kind
+          beginMini("org-planning", kind & " (YYYY-MM-DD, +days, fri; empty=today): ")
+      nilValue())
+
+proc archiveHeadings(headings: seq[int]) =
+  if headings.len == 0:
+    echoLine = "No done tasks to archive"
+    return
+  if b.path.len == 0:
+    echoLine = "Save this buffer to a file before archiving"
+    return
+  let path = b.path & "_archive"
+  try:
+    let open = reg.byPath(path)
+    let dest = if open != nil: open else: loadBuffer(path)
+    let change = archiveTrees(b.lines, dest.lines, headings, b.path, now())
+    if open != nil: dest.snapshot()
+    replaceKeeping(dest, orgText(change.archive))
+    dest.save()
+    dest.last = "edit"
+    b.snapshot()
+    replaceKeeping(b, orgText(change.source))
+    b.last = "edit"
+    echoLine = "Archived " & $change.count & " subtree(s) to " & shortPath(path)
+  except CatchableError as e: echoLine = e.msg
+
+interp.defPrimitive("org-archive-subtree", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  if orgBuffer():
+    let n = orgHeadline()
+    if n >= 0: archiveHeadings(@[n])
+  nilValue())
+interp.defPrimitive("org-archive-done-tasks", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  if orgBuffer():
+    syncTodoKeywords()
+    archiveHeadings(doneSubtrees(b.lines))
+  nilValue())
+
 proc agendaFiles(): seq[string] =
   ## org-agenda-files: a list of paths, or one path, ~ expanded; directories give their .org files.
   let v = interp.env.values["org-agenda-files"]
   let paths = if v.kind == vString: @[v.asString] elif v.kind == vNil: @[] else: v.asList.mapIt(it.asString)
   for p in paths:
-    let full = expandTilde(p)
+    let full = absolutePath(expandTilde(p))
     if dirExists(full):
       for f in walkFiles(full / "*.org"): result.add f
     elif fileExists(full): result.add full
@@ -593,12 +663,13 @@ proc applyRefile(value: string, create = false): bool =
     echoLine = "Choose a target file/headline"
     return false
   let f = refileFiles[file]
-  let dest = if f.buf != nil: f.buf else: loadBuffer(f.path)
-  if dest.text != f.text:
-    echoLine = "Target changed; run org-refile again"
-    return true
-  var lines = dest.lines
   try:
+    let open = if f.path.len == 0 and f.buf in reg: f.buf else: reg.byPath(f.path)
+    let dest = if open != nil: open else: loadBuffer(f.path)
+    if dest.text != f.text:
+      echoLine = "Target changed; run org-refile again"
+      return true
+    var lines = dest.lines
     if choice < 0:
       let made = ensureRefileParent(lines, value[f.label.len+1..^1])
       if made.lines != lines and not create:
@@ -623,9 +694,9 @@ proc applyRefile(value: string, create = false): bool =
       dest.last = "edit"
     else:
       # Finish writing the destination before removing anything from the source.
-      if f.buf != nil: dest.snapshot()
+      if open != nil: dest.snapshot()
       replaceKeeping(dest, orgText(moved.target))
-      if f.buf == nil: dest.save()
+      if open == nil: dest.save()
       dest.last = "edit"
       refileSource.snapshot()
       replaceKeeping(refileSource, orgText(moved.source))
@@ -990,6 +1061,9 @@ defaults.add """
 (setq org-capture-template "* TODO %?\n")
 (setq org-refile-targets '((nil :maxlevel . 3) (org-agenda-files :maxlevel . 3)))
 (global-set-key "C-c C-w" 'org-refile)
+(global-set-key "C-c C-s" 'org-schedule)
+(global-set-key "C-c C-d" 'org-deadline)
+(global-set-key "C-c C-x C-a" 'org-archive-subtree)
 (setq org-agenda-files nil)
 (setq org-super-agenda-groups
   '((:name "🔥 最重要" :priority "A")
