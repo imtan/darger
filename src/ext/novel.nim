@@ -2,6 +2,7 @@
 ## to left, characters top to bottom). Folds, inline pictures, review bands and paren
 ## highlights are not drawn in vertical panes yet.
 import std/[math, os, sets, strutils, tables, unicode]
+import experimental/diff
 import windy, boxy, pixie, pixie/fontformats/opentype
 import ../[core, buffer, lisp, syntax, render, olivetti, novel, skk, fontcatalog]
 import fonts
@@ -101,10 +102,10 @@ proc verticalPath(typeface: Typeface, rune: Rune): Path =
   result = newPath()
   result.addPath(vertical.face.getGlyphPath(stand))  # a copy: the face keeps its own
 
-proc columnGlyph(r: Renderer, rune: Rune, x, y, cell: int, tint: Color, wantBold: bool) =
+proc columnGlyph(r: Renderer, rune: Rune, x, y, cell: int, tint: Color, wantBold: bool, tcy = 0) =
   ## A rune in a square cell at window pixel x, y: the font's vertical glyph if it has
   ## one, else rotated or moved by verticalForm. Half-width runes stand upright, centred
-  ## across the column, one to a cell.
+  ## across the column, or in the left / right half for tate-chu-yoko.
   let code = int(rune)
   if rune in [Rune(9), Rune(32)] or code in 0x200B..0x200D or code in 0xFE00..0xFE0F or
       code in 0xE0100..0xE01EF: return
@@ -117,7 +118,7 @@ proc columnGlyph(r: Renderer, rune: Rune, x, y, cell: int, tint: Color, wantBold
       if candidate.typeface.hasGlyph(rune):
         (font, index) = (candidate, i)
         break
-  let key = "nv" & $generation & ":" & $cell & ":" & $index & ":" & $code
+  let key = "nv" & $generation & ":" & $cell & ":" & $index & ":" & $code & ":" & $tcy
   if key notin r.glyphs:
     let img = newImage(cell, cell)
     let size = cell.float32
@@ -134,7 +135,8 @@ proc columnGlyph(r: Renderer, rune: Rune, x, y, cell: int, tint: Color, wantBold
       let path = if form != nil: form else: typeface.getGlyphPath(rune)
       path.transform(scale(vec2(s)))
       let shape = if form != nil: vfUpright else: verticalForm(rune)
-      let upright = translate(vec2((size - width) / 2, baseline))
+      let centre = if tcy == 1: size / 4 elif tcy == 2: size * 3 / 4 else: size / 2
+      let upright = translate(vec2(centre - width / 2, baseline))
       let placed = case shape
         of vfRotate: translate(vec2(size / 2, size / 2)) * rotate(PI.float32 / 2) *
           translate(vec2(-width / 2, baseline - size / 2))
@@ -214,7 +216,7 @@ proc drawVertical(r: Renderer, window: Window, p: var PaneView, composition: seq
       for pass in 0..1:
         var cell = 0
         for i in spansHere[k].start..<spansHere[k].stop:
-          let width = runeWidth(rs[i])
+          let width = if tcySecond(rs, i): 0 else: runeWidth(rs[i])
           let at = if width == 0: max(0, cell - 1) else: cell
           let y = originY + at * g.cell
           let composing = compAt >= 0 and i >= compAt and i < compAt + comp.len
@@ -232,7 +234,8 @@ proc drawVertical(r: Renderer, window: Window, p: var PaneView, composition: seq
             let face = if composing or original >= faces.len: fPlain else: faces[original]
             r.columnGlyph(rs[i], x, y, g.cell,
               if underCursor: theme.bg elif matched: theme.searchFg else: faceColor(face, theme.fg),
-              not composing and original < bolds.len and bolds[original] == 1)
+              not composing and original < bolds.len and bolds[original] == 1,
+              if tcyFirst(rs, i): 1 elif tcySecond(rs, i): 2 else: 0)
             let mark = if composing or original >= marks.len: 0'i8 else: marks[original]
             if mark in 1'i8..5'i8:  # an underline goes down the right of the column
               r.gpu.drawRect(rect((x + g.cell + 1).float32, y.float32, 2, g.cell.float32),
@@ -388,6 +391,32 @@ interp.defPrimitive("novel-mode", proc(args: seq[Value]): Value =
     enabled.incl core.b
     syncFonts()
     echoLine = "Novel on" & fontNote()
+  nilValue())
+
+interp.defPrimitive("novel-format", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  let b = core.b
+  let original = b.text.toRunes
+  let selection = if b.regionActive and b.markSet: b.region else: (a: 0, z: original.len)
+  let before = $original[selection.a..<selection.z]
+  let after = novelFormat(before)
+  if before == after:
+    echoLine = "novel-format: nothing to change"
+  else:
+    let cursor = b.cursor
+    var oldRunes, newRunes: seq[int]
+    for r in before.runes: oldRunes.add int(r)
+    for r in after.runes: newRunes.add int(r)
+    # Count changed runes after aligning unchanged stretches, including insertions/deletions.
+    let changes = diffInt(oldRunes, newRunes)
+    var changed = 0
+    for change in changes:
+      changed += max(change.deletedA, change.insertedB)
+    b.snapshot()
+    b.splice(selection.a, selection.z, after)
+    b.cursor = (cursor.line, min(cursor.col, b.lines[cursor.line].len))
+    b.last = "novel-format"
+    echoLine = "novel-format: " & $changed & " characters changed"
   nilValue())
 
 visitHooks.add proc() =

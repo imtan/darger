@@ -23,7 +23,7 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
 - Font catalog: add more pinned entries; Iosevka Nerd Font (92 MB tar.xz) is left out of this slice. Arbitrary-URL installs stay out.
 
 - TRAMP second slice: remote rgrep / consult-ripgrep through ssh, and remote LSP.
-- Novel mode next slices: folds, inline pictures, review bands and paren highlights in vertical panes; soft wrap in the horizontal layout; ruby and tate-chu-yoko (2026 as one upright group); a per-buffer `novel-vertical` and a toggle command; a column length cap (chars per column); drawn drag selection with the mouse.
+- Novel mode next slices: folds, inline pictures, review bands and paren highlights in vertical panes; soft wrap in the horizontal layout; ruby; a per-buffer `novel-vertical` and a toggle command; a column length cap (chars per column); drawn drag selection with the mouse.
 
 Review first (2026-10-16, the user: "レビューに関する機能を優先的に充実させたい"). The
 review overlay (hunks of a proposed text over the buffer; y/k/u/n/p/a/q) is the
@@ -58,6 +58,8 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
     personal Emacs tools; port only on request.
 
 ## Log
+
+- 2026-11-05 novel typography: upright tate-chu-yoko punctuation and two-digit numbers in one cell, paired ellipsis/dash kinsoku; M-x novel-format normalises a region or the buffer with one undo step, kanji numbers, full-width punctuation and spacing, hh:mm → hh時mm分 (tnovel, tlisp; release build).
 
 - 2026-11-03 safe font installer (user: 「足りないフォントを自動でダウンロードする機能とか作れない?」): M-x font-install, pinned RinMincho / Nerd Fonts Symbols ZIPs, pure Nim SHA-256, exact zippy member extraction and staged replacement with rollback; deferred consent, immediate novel font reload and tree icon fallback. The zip is read by zippy, already there through pixie, so no tar or unzip and no new nimble dependency. render.nim: addFallbackFont, and loadFont takes symbols-only fonts. Offline tests (tfontinstall); real downloads, wrong hashes and the 404 checked by hand on macOS only.
 

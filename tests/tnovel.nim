@@ -99,6 +99,7 @@ block forms:
   doAssert verticalForm("ー".runeAt(0)) == vfRotate
   doAssert verticalForm("「".runeAt(0)) == vfRotate
   doAssert verticalForm("…".runeAt(0)) == vfRotate
+  doAssert verticalForm("─".runeAt(0)) == vfRotate
   doAssert verticalForm("、".runeAt(0)) == vfCorner
   doAssert verticalForm("っ".runeAt(0)) == vfSmall
   doAssert verticalForm("猫".runeAt(0)) == vfUpright
@@ -161,5 +162,57 @@ block realFont:  # RinMincho, where installed: its table and the glyphs it sends
     let upright = opentype.getGlyphPath("、".runeAt(0)).computeBounds()
     let turned = opentype.getGlyphPath(rune).computeBounds()
     doAssert turned.x > upright.x and turned.y < upright.y  # up and to the right
+
+block tateChuYoko:
+  doAssert texts("あ!?いう", 3) == @["あ!?い", "う"]
+  doAssert texts("あ12いう", 3) == @["あ12い", "う"]
+  doAssert texts("123あ", 3) == @["123", "あ"]
+  doAssert texts("1あ", 1) == @["1", "あ", ""]
+  for pair in ["!!", "!?", "?!", "??", "12"]:
+    let rs = ("あ" & pair & "い").toRunes
+    doAssert tcyFirst(rs, 1) and tcySecond(rs, 2)
+    doAssert cellOf(rs, (0, rs.len), 1) == cellOf(rs, (0, rs.len), 2)
+    doAssert colAtCell(rs, (0, rs.len), 1, true) == 1
+    doAssert texts(pair, 1) == @[pair, ""]
+    doAssert moveColumn(@[rs], 2, (0, 2), 1, -1).goal == 1
+    doAssert pointAtCell(@[rs], 2, (0, 0), 0, 1) == (0, 1)
+  for text in ["1", "123", "1234", "1a", "a2"]:
+    for i in 0..<text.toRunes.len: doAssert not tcySecond(text.toRunes, i)
+  doAssert tcySecond("!?!?".toRunes, 3)
+  doAssert not tcySecond("!?!?".toRunes, 2)
+
+block pairedBreaks:
+  for pair in ["……", "――", "——", "──"]:
+    doAssert texts("あい" & pair & "う", 3) == @["あい", pair & "う", ""]
+    doAssert texts(pair & pair & "う", 3) == @[pair, pair & "う", ""]
+    doAssert texts(pair, 1).len == 3  # no legal break: retain the fallback
+
+block formatting:
+  for (source, expected) in [
+      ("Hello, world!", "Ｈｅｌｌｏ， ｗｏｒｌｄ！"),
+      ("2026年11月5日、午後3時", "二〇二六年11月五日、午後三時"),
+      ("1500円と105円", "千五百円と百五円"),
+      ("12345", "一二三四五"), ("２０２６年１２月０日", "二〇二六年12月〇日"),
+      ("2026 1000 000", "二千二十六 千 〇"),
+      ("0 9 100 9999", "〇 九 百 九千九百九十九"),
+      ("０１２３４", "〇一二三四"), ("12年", "12年"),
+      ("？）？】？〕？］？』", "？）？】？〕？］？』"),
+      ("!!?!!?次", "!!?!!?　次"),
+      ("そうか...そうだな・・・", "そうか……そうだな……"),
+      ("……", "……"), ("…", "……"), ("………", "…………"),
+      ("それは─違う", "それは――違う"), ("ラーメン", "ラーメン"),
+      ("- -- --- — ―――", "- ―― ―――― ―― ――――"),
+      ("「本当？」", "「本当？」"), ("本当？そうか", "本当？　そうか"),
+      ("本当? そうか", "本当？　そうか"), ("なに!?すごい!!", "なに!?　すごい!!"),
+      ("「そうです。」", "「そうです」"), ("です。」次", "です」次"),
+      ("『はい。』", "『はい』"), ("？ 　そう", "？　そう"),
+      ("!?\n次", "!?\n次"), ("！？」", "！？」"),
+      ("(A,.:)\"", "（Ａ，．：）＂"), ("....", "……"), ("・・", "・・"),
+      ("", ""), ("!?　次", "!?　次"), ("!!!次", "!!！　次"),
+      ("15:30と3:05に", "15時30分と三時五分に"), ("10:00発", "10時発"), ("09:07", "九時七分"),
+      ("１５：３０", "15時30分"), ("25:00", "25：00"), ("3:2", "三：二"), ("123:45", "百二十三：45"),
+      ("0:00", "〇時"), ("24:59", "24時59分")]:
+    doAssert novelFormat(source) == expected, source & " -> " & novelFormat(source)
+    doAssert novelFormat(novelFormat(source)) == novelFormat(source), source
 
 echo "novel ok"

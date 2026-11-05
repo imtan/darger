@@ -6,7 +6,7 @@ import buffer, wrap
 const
   noColumnStart = "ーぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶ々ゝゞヽヾ〜…‥・：；！？!?,.，．）］｝〉》〕"
   noColumnEnd = "〈《〔［｛"
-  rotatedForms = "ー〜…‥―—–‐～－＝｜＿「」『』（）［］｛｝〈〉《》〔〕【】＜＞"
+  rotatedForms = "ー〜…‥―—─–‐～－＝｜＿「」『』（）［］｛｝〈〉《》〔〕【】＜＞"
   cornerForms = "、。，．"
   smallForms = "ぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶ"
 
@@ -19,12 +19,35 @@ type
     width*, cell*, pitch*, inset*, rows*, columns*: int
   VerticalForm* = enum vfUpright, vfRotate, vfCorner, vfSmall
 
-proc advance(r: Rune): int =
-  ## Cells a rune takes in a column: one, whatever its width; a combining mark none.
-  if runeWidth(r) == 0: 0 else: 1
+proc digit(r: Rune): bool = int(r) in ord('0')..ord('9')
+proc bang(r: Rune): bool = r in [Rune('!'), Rune('?')]
+
+proc tcySecond*(rs: seq[Rune], i: int): bool =
+  ## Punctuation pairs are grouped from the start of their run; digits must be exactly two.
+  if i <= 0 or i >= rs.len: return false
+  if digit(rs[i]) and digit(rs[i - 1]):
+    return (i == 1 or not digit(rs[i - 2])) and
+      (i + 1 == rs.len or not digit(rs[i + 1]))
+  if bang(rs[i]) and bang(rs[i - 1]):
+    var start = i - 1
+    while start > 0 and bang(rs[start - 1]): dec start
+    return (i - start) mod 2 == 1
+
+proc tcyFirst*(rs: seq[Rune], i: int): bool =
+  i >= 0 and tcySecond(rs, i + 1)
+
+proc advance(rs: seq[Rune], i: int): int =
+  ## A combining mark or the second member of tate-chu-yoko shares its base's cell.
+  if runeWidth(rs[i]) == 0 or tcySecond(rs, i): 0 else: 1
 
 proc legalBreak(rs: seq[Rune], at: int): bool =
-  legal(rs, at) and rs[at] notin noColumnStart.toRunes and rs[at - 1] notin noColumnEnd.toRunes
+  if tcySecond(rs, at): return false
+  if rs[at] in "…―—─".toRunes:
+    var start = at
+    while start > 0 and rs[start - 1] == rs[at]: dec start
+    if (at - start) mod 2 == 1: return false
+  legal(rs, at) and (rs[at] == Rune(0x2026) or rs[at] notin noColumnStart.toRunes) and
+    rs[at - 1] notin noColumnEnd.toRunes
 
 proc columns*(rs: seq[Rune], height: int): seq[ColumnSpan] =
   ## The columns of a line, each at most `height` cells. A column ending on a rune that
@@ -35,8 +58,8 @@ proc columns*(rs: seq[Rune], height: int): seq[ColumnSpan] =
   while start < rs.len:
     var stop = start
     cells = 0
-    while stop < rs.len and cells + advance(rs[stop]) <= height:
-      cells += advance(rs[stop])
+    while stop < rs.len and cells + advance(rs, stop) <= height:
+      cells += advance(rs, stop)
       inc stop
     if stop < rs.len:
       var back = stop
@@ -57,19 +80,19 @@ proc columnOf*(spans: seq[ColumnSpan], col: int): int =
 proc cellOf*(rs: seq[Rune], span: ColumnSpan, col: int): int =
   ## The cell of rune col in its column; a combining mark shares its base's cell.
   for i in span.start..<min(col, rs.len):
-    result += advance(rs[i])
-  if col < rs.len and advance(rs[col]) == 0: result = max(0, result - 1)
+    result += advance(rs, i)
+  if col < rs.len and advance(rs, col) == 0: result = max(0, result - 1)
 
 proc colAtCell*(rs: seq[Rune], span: ColumnSpan, cell: int, last: bool): int =
   ## The rune at a cell of a column. Past its end: the line's end in the last column,
   ## else the column's last rune (its end would already be the next column).
   var cells = 0
   for i in span.start..<span.stop:
-    if cells == cell and advance(rs[i]) > 0: return i
-    cells += advance(rs[i])
+    if cells == cell and advance(rs, i) > 0: return i
+    cells += advance(rs, i)
   if last: return span.stop
   result = max(span.start, span.stop - 1)
-  while result > span.start and advance(rs[result]) == 0: dec result
+  while result > span.start and advance(rs, result) == 0: dec result
 
 proc counter*(lines: seq[seq[Rune]], height: int): Counter =
   let lines = lines
@@ -211,3 +234,105 @@ proc vertGlyphs*(buf: string, gsub: int): Table[uint16, uint16] =
             elif kind == 7 and u16(sub + 2) == 1: result.addSubstitutions(sub + u32(sub + 4))
       if result.len > 0: break
   except ValueError: discard
+
+proc novelFormat*(text: string): string =
+  ## Normalise novel prose without changing line boundaries. Keep display pairs in ASCII.
+  var rs = text.toRunes
+  for r in rs.mitems:
+    if int(r) in 0xFF10..0xFF19: r = Rune(int(r) - 0xFEE0)
+  # Times: hh:mm (one or two hour digits, either colon) becomes hh時mm分, the minutes
+  # left out at :00 and leading zeros dropped; the digit rules below then apply.
+  var timed: seq[Rune]
+  var i = 0
+  while i < rs.len:
+    if digit(rs[i]) and (i == 0 or not digit(rs[i - 1])):
+      var h = i
+      while h < rs.len and digit(rs[h]): inc h
+      if h - i <= 2 and h + 3 <= rs.len and rs[h] in [Rune(':'), Rune(0xFF1A)] and
+          digit(rs[h + 1]) and digit(rs[h + 2]) and (h + 3 == rs.len or not digit(rs[h + 3])):
+        var hours, minutes = 0
+        for j in i..<h: hours = hours * 10 + int(rs[j]) - ord('0')
+        minutes = (int(rs[h + 1]) - ord('0')) * 10 + int(rs[h + 2]) - ord('0')
+        if hours <= 24 and minutes < 60:
+          timed.add ($hours).toRunes
+          timed.add Rune(0x6642)  # 時
+          if minutes > 0:
+            timed.add ($minutes).toRunes
+            timed.add Rune(0x5206)  # 分
+          i = h + 3
+          continue
+    timed.add rs[i]
+    inc i
+  rs = timed
+  var wide: seq[Rune]
+  i = 0
+  while i < rs.len:
+    let r = rs[i]
+    var stop = i + 1
+    if r in [Rune('.'), Rune('-')]:
+      while stop < rs.len and rs[stop] == r: inc stop
+    if (r == Rune('.') and stop - i >= 3) or r == Rune('-'):
+      wide.add rs[i..<stop]  # reserve these for the ellipsis/dash pass
+      i = stop
+      continue
+    if int(r) in 0x21..0x7E and not digit(r) and
+        not tcyFirst(rs, i) and not tcySecond(rs, i):
+      wide.add Rune(int(r) + 0xFEE0)
+    else: wide.add r
+    inc i
+  var numbered: seq[Rune]
+  let kanji = "〇一二三四五六七八九".toRunes
+  let units = " 十百千".toRunes
+  i = 0
+  while i < wide.len:
+    if not digit(wide[i]):
+      numbered.add wide[i]
+      inc i
+      continue
+    var stop = i
+    while stop < wide.len and digit(wide[stop]): inc stop
+    let count = stop - i
+    if count == 2:
+      numbered.add wide[i..<stop]
+    elif count in 3..4 and (stop == wide.len or wide[stop] != Rune(0x5E74)):
+      let before = numbered.len
+      for j in i..<stop:
+        let n = int(wide[j]) - ord('0')
+        let power = stop - j - 1
+        if n != 0:
+          if n != 1 or power == 0: numbered.add kanji[n]
+          if power > 0: numbered.add units[power]
+      if numbered.len == before: numbered.add kanji[0]
+    else:
+      for j in i..<stop: numbered.add kanji[int(wide[j]) - ord('0')]
+    i = stop
+  var paired: seq[Rune]
+  i = 0
+  while i < numbered.len:
+    let r = numbered[i]
+    var stop = i + 1
+    while stop < numbered.len and numbered[stop] == r: inc stop
+    let count = stop - i
+    if (r == Rune('.') or r == Rune(0x30FB)) and count >= 3:
+      paired.add "……".toRunes
+    elif r == Rune(0x2026) or r in "―—─".toRunes or (r == Rune('-') and count >= 2):
+      let mark = if r == Rune(0x2026): r else: Rune(0x2015)
+      for j in 0..<count + count mod 2: paired.add mark
+    else: paired.add numbered[i..<stop]
+    i = stop
+  var brackets: seq[Rune]
+  for i, r in paired:
+    if r == Rune(0x3002) and i + 1 < paired.len and paired[i + 1] in "」』".toRunes: continue
+    brackets.add r
+  i = 0
+  while i < brackets.len:
+    let r = brackets[i]
+    result.add $r
+    let after = r in "！？".toRunes or (bang(r) and tcySecond(brackets, i))
+    inc i
+    if after:
+      var stop = i
+      while stop < brackets.len and brackets[stop] in [Rune(' '), Rune(0x3000)]: inc stop
+      if stop < brackets.len and brackets[stop] notin "\r\n」』）】〕］！？!?".toRunes:
+        result.add "　"
+        i = stop

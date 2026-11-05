@@ -197,6 +197,7 @@ M-x font-install         カタログからフォントを取得 (RinMincho / Ne
 M-x novel-mode           小説モードを切替: 倫明朝 (https://rinmincho.pages.dev/) で縦書き。バッファごと、行番号なし
                          down / up 次 / 前の文字  left / right 次 / 前の列  C-v / M-v 列単位で 1 画面  C-l 列を中央 → 右端 → 左端
                          C-n / C-p は論理行のまま。ホイールは列単位、クリックはその文字へ
+M-x novel-format         選択範囲 (未選択なら全文) の英字・記号を全角化、数字を漢数字化 (2 桁は縦中横)、リーダー・ダッシュを偶数化、閉じ括弧前の句点と感嘆符・疑問符後の空白を整形、hh:mm は hh時mm分 に。小説モード外でも可、undo 1 回で戻す
   novel-font             既定 "RinMincho-Regular.ttf" (フォント置き場から探す。パスも可)。読めなければ通常のフォント
   novel-bold-font        既定 "RinMincho-Bold.ttf"
   novel-vertical         既定 t。nil で横書き (novel-body-width 既定 80 セルで中央寄せ)

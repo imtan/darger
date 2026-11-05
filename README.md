@@ -1037,7 +1037,17 @@ with those fonts and the echo line says why.
 - Vertical forms come from the font's own OpenType `vert` substitutions (`vrt2` in a font
   without `vert`). A font with neither gets brackets, dashes and ellipses rotated 90°, and
   、。，． and small kana moved to the upper right.
-- Half-width letters and digits stand upright, one to a cell, centred across the column.
+- Tate-chu-yoko keeps `!!`, `!?`, `?!`, `??` and exactly two-digit numbers upright side by
+  side in one cell; `……` and `――` pairs never split (except the no-legal-break fallback).
+  Other half-width letters and digits stand upright, one to a cell, centred across the column.
+- `M-x novel-format` normalises the active region, or the whole buffer, in one undo step,
+  even outside novel mode: full-width ASCII letters/punctuation (preserving tate-chu-yoko),
+  kanji numbers except two-digit runs (years and long numbers digit by digit), paired ellipses
+  and dashes, removal of `。` before `」』`, and a full-width space after exclamation/question
+  marks except at line ends or before closing brackets or further such marks; times written
+  `hh:mm` become `hh時mm分` (`10:00` → `10時`, `3:05` → `三時五分`). Spaces elsewhere,
+  `ー` and a single `-` stay unchanged. Based on 翔夜/エス's
+  [「縦書き小説の見栄えを良くする七つのルール」](https://note.com/c_zest/n/ne85625a7b86b).
 - Settings: `novel-font` and `novel-bold-font` (a file name looked for in the font directories,
   or a path), `novel-vertical` (default t; nil is horizontal, centred in `novel-body-width`
   cells, default 80), `novel-column-spacing` (default 1.7 ems), `novel-font-scale` (default
