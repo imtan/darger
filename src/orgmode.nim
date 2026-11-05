@@ -768,9 +768,9 @@ proc modernDecorations*(lines: seq[seq[Rune]]): seq[seq[OrgDecoration]] =
     let at = ind + after
     if at+2 < line.len and line[at] == Rune('[') and line[at+2] == Rune(']'):
       let symbol = case line[at+1].int
-        of ord(' '): "☐"
-        of ord('X'), ord('x'): "☑"
-        of ord('-'): "⊟"
+        of ord(' '): "□"
+        of ord('X'), ord('x'): "✓"
+        of ord('-'): "■"
         else: ""
       if symbol.len > 0:
         result[n].add OrgDecoration(first: at, last: at+3, text: (symbol & "  ").toRunes, kind: odCheckbox)

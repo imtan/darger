@@ -398,9 +398,9 @@ block modern:
   let before = orgText(text)
   let spans = modernDecorations(text)
   doAssert spans[0][0].kind == odTodo and spans[0][0].keyword == "NEXT"
-  doAssert spans[1].len == 2 and $spans[1][0].text == "•" and $spans[1][1].text == "☐  "
-  doAssert spans[2][0].first == 2 and $spans[2][1].text == "☑  "
-  doAssert spans[3].len == 1 and $spans[3][0].text == "⊟  "
+  doAssert spans[1].len == 2 and $spans[1][0].text == "•" and $spans[1][1].text == "□  "
+  doAssert spans[2][0].first == 2 and $spans[2][1].text == "✓  "
+  doAssert spans[3].len == 1 and $spans[3][0].text == "■  "
   doAssert ($spans[4][0].text).startsWith("─ nim ─")
   doAssert spans[5].len == 0 and spans[6].len == 0 and spans[9].len == 0
   doAssert spans[7][0].kind == odBlock and not ($spans[7][0].text).contains("end_src")

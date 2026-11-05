@@ -492,8 +492,10 @@ for (name, up) in [("org-priority-up", true), ("org-priority-down", false)]:
           b.last = command
       nilValue())
 keyFilters.add proc(c: string): bool =
-  # chord() omits Shift on arrows; route it through the added keymap entries in Org only.
+  # chord() omits Shift on arrows; route it through the added keymap entries on Org headlines
+  # only, so Shift-selection keeps working in the body.
   if mode.len > 0 or prefix.len > 0 or lang.name != "Org" or c notin ["up", "down"] or not shift(): return false
+  if not isHeadline(b.lines[b.cursor.line]): return false
   let key = "S-" & c
   if key notin keymap: return false
   discard interp.call(keymap[key], @[])
@@ -1066,16 +1068,16 @@ defaults.add """
 (global-set-key "C-c C-x C-a" 'org-archive-subtree)
 (setq org-agenda-files nil)
 (setq org-super-agenda-groups
-  '((:name "🔥 最重要" :priority "A")
-    (:name "⏭️ 次にやる" :todo "NEXT")
-    (:name "📅 今日やる" :scheduled today)
-    (:name "🎮 ゲーム制作" :tag "game")
-    (:name "✍️ 執筆・思考" :tag "write")
-    (:name "🧠 研究・学習" :tag "study")
-    (:name "🩺 体調・生活" :tag "health")
-    (:name "🧹 雑務" :tag "life")
-    (:name "⏳ 待ち" :todo "WAITING")
-    (:name "📥 未整理（Inbox）" :todo "TODO")))
+  '((:name "最重要" :priority "A")
+    (:name "次にやる" :todo "NEXT")
+    (:name "今日やる" :scheduled today)
+    (:name "ゲーム制作" :tag "game")
+    (:name "執筆・思考" :tag "write")
+    (:name "研究・学習" :tag "study")
+    (:name "体調・生活" :tag "health")
+    (:name "雑務" :tag "life")
+    (:name "待ち" :todo "WAITING")
+    (:name "未整理（Inbox）" :todo "TODO")))
 (global-set-key "S-up" 'org-priority-up)
 (global-set-key "S-down" 'org-priority-down)
 (setq org-todo-keywords nil)

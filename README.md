@@ -336,6 +336,8 @@ fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK
 | Org: promote / demote / move subtree up / down | M-Left / M-Right / M-Up / M-Down |
 | Org: headline list / open link / timestamp | C-c C-j / C-c C-o / C-c . |
 | Org: fold the headline / the whole file | TAB / Shift-TAB |
+| Org: refile / schedule / deadline / archive | C-c C-w / C-c C-s / C-c C-d / C-c C-x C-a |
+| Org: priority up / down (on a headline) | Shift-Up / Shift-Down |
 | Org: journal entry / quick add / capture | C-c j / C-c q / C-c t |
 | Org: image from Eagle by keyword / by folder | C-M-e / C-c e |
 | Org: paste the clipboard image | C-M-y |
@@ -1125,6 +1127,27 @@ agenda would show for today: TODO headlines scheduled today or earlier
 (`TODO:`), each with its file's name; Enter goes to the headline (M-, comes back),
 C-g returns. DONE items and headlines dated for other days are left out. Bind it
 yourself, e.g. `(global-set-key "C-c a" 'org-agenda)` replaces the agent prompt.
+
+`org-super-agenda-groups` sorts the agenda into named groups, like org-super-agenda:
+each `(:name "NAME" KEY VALUE)` takes the items matching `:priority "A"`, `:todo "NEXT"`,
+`:tag "game"` or `:scheduled today`, first match wins, and the rest go under "その他".
+The default follows a Daily dashboard (最重要 / 次にやる / 今日やる / tags / 待ち / 未整理).
+Headlines carry priorities `[#A]` `[#B]` `[#C]` in colour; `M-x org-priority` asks for
+one (a / b / c, SPC removes it) and Shift-Up / Shift-Down on a headline steps it
+(elsewhere they still select).
+
+C-c C-w (`org-refile`) moves the subtree at point under a headline picked by its
+`file.org/Parent/Child` path from the current buffer and `org-agenda-files`
+(`org-refile-targets`, `:maxlevel` 3 by default), re-levelling it; a parent that does not
+exist is created after a confirmation. C-c C-s / C-c C-d set `SCHEDULED:` / `DEADLINE:`
+from `2026-11-10`, `+3`, `fri` or an empty answer (today). C-c C-x C-a moves the subtree
+to `FILE_archive` with Emacs' `ARCHIVE_TIME` / `ARCHIVE_FILE` / `ARCHIVE_OLPATH` /
+`ARCHIVE_TODO` properties; `M-x org-archive-done-tasks` archives every DONE subtree.
+
+`org-modern-mode` (on by default; `M-x org-modern-mode` toggles it) draws TODO keywords
+as badges coloured by `org-todo-keyword-faces`, `#+begin_src` / `#+end_src` as thin
+rules keeping the language, checkboxes as □ ✓ ■ and `-` / `+` bullets as •. Only the
+display changes: the cursor's line shows the text as it is.
 
 org-roam notes are Org files under `org-roam-directory` (default `~/org-roam`,
 `(setq org-roam-directory "~/notes")` in `~/.darger.el`) with an ID property drawer

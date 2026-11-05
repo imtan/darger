@@ -322,6 +322,8 @@ CJK と対応する絵文字範囲は 2 セルを占めます。結合文字、�
 | Org: 昇格 / 降格 / サブツリーを上 / 下へ | M-Left / M-Right / M-Up / M-Down |
 | Org: 見出し一覧 / リンクを開く / タイムスタンプ | C-c C-j / C-c C-o / C-c . |
 | Org: 見出しを折りたたむ / ファイル全体 | TAB / Shift-TAB |
+| Org: refile / スケジュール / 締切 / アーカイブ | C-c C-w / C-c C-s / C-c C-d / C-c C-x C-a |
+| Org: 優先度を上げる / 下げる (見出し上) | Shift-Up / Shift-Down |
 | Org: 日報エントリ / クイック追記 / capture | C-c j / C-c q / C-c t |
 | Org: Eagle から画像 (キーワード / フォルダ) | C-M-e / C-c e |
 | Org: クリップボードの画像を貼り付け | C-M-y |
@@ -1020,6 +1022,25 @@ C-g で取消)。ファイルがなければ C-c j と同じように作りま�
 ない TODO (`TODO:`) をファイル名付きで並べ、Enter で見出しへ (M-, で戻る)、C-g で元の位置に
 戻ります。DONE と他の日の項目は出ません。キーは自分で割り当ててください。例えば
 `(global-set-key "C-c a" 'org-agenda)` はエージェントのプロンプトを置き換えます。
+
+`org-super-agenda-groups` は org-super-agenda のようにアジェンダを名前付きのグループに分けます。
+`(:name "名前" キー 値)` の一つ一つが `:priority "A"`、`:todo "NEXT"`、`:tag "game"`、
+`:scheduled today` に合う項目を取り (先に合ったグループが勝つ)、残りは「その他」に入ります。
+既定は Daily dashboard (最重要 / 次にやる / 今日やる / タグ別 / 待ち / 未整理) です。
+見出しの優先度 `[#A]` `[#B]` `[#C]` は色付きで、`M-x org-priority` が a / b / c (SPC で削除) を尋ね、
+見出し上の Shift-Up / Shift-Down が一段ずつ変えます (見出し以外では従来どおり選択)。
+
+C-c C-w (`org-refile`) はポイントのサブツリーを、今のバッファと `org-agenda-files` の見出し
+(`org-refile-targets`、既定 `:maxlevel` 3) から `file.org/親/子` のパスで選んだ見出しの下へ、
+レベルを付け直して移します。ない親見出しは確認してから作ります。C-c C-s / C-c C-d は
+`2026-11-10`、`+3`、`fri`、空 (今日) から `SCHEDULED:` / `DEADLINE:` を付けます。C-c C-x C-a は
+サブツリーを Emacs と同じ `ARCHIVE_TIME` / `ARCHIVE_FILE` / `ARCHIVE_OLPATH` / `ARCHIVE_TODO`
+付きで `FILE_archive` へ移し、`M-x org-archive-done-tasks` は DONE をまとめてアーカイブします。
+
+`org-modern-mode` (既定で有効、`M-x org-modern-mode` で切り替え) は TODO キーワードを
+`org-todo-keyword-faces` の色のバッジに、`#+begin_src` / `#+end_src` を言語名を残した細線に、
+チェックボックスを □ ✓ ■ に、`-` / `+` の箇条を • にして描きます。変わるのは表示だけで、
+カーソルのある行は元のテキストのまま見えます。
 
 org-roam ノートは `org-roam-directory` (デフォルト `~/org-roam`。`~/.darger.el` で
 `(setq org-roam-directory "~/notes")`) の下にある、ID プロパティドロワーと `#+title:` を持つ
