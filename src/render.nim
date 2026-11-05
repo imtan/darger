@@ -423,12 +423,20 @@ proc faceColor*(f: Face, tint: Color): Color =
   of fBuiltin: theme.builtin
   of fAnsi0..fAnsi7: theme.ansi[ord(f) - ord(fAnsi0)]
 
+type TextDecoration* = object
+  first*, last*: int
+  text*: seq[Rune]
+  foreground*, background*: Color
+  hasBackground*: bool
+
+var lineDecorators*: seq[proc(buf: Buffer, line, cursorLine: int): seq[TextDecoration]]
+
 proc drawLine(r: Renderer, line: seq[Rune], row, scroll: int, cursor = -1,
               selectionStart = -1, selectionEnd = -1, matchStart = -1, matchEnd = -1,
               composition: seq[Rune] = @[], imeCursor = 0,
               x0 = 0, width = -1, tint = theme.fg, faces: seq[Face] = @[],
               marks: seq[int8] = @[], paren = [-1, -1], bgs: seq[int8] = @[],
-              bolds: seq[int8] = @[]) =
+              bolds: seq[int8] = @[], decorations: seq[TextDecoration] = @[]) =
   let visible = if width < 0: r.pw else: width
   let rs = displayLine(line, composition, cursor)
   let caret = if composition.len > 0 and cursor >= 0: cursor + imeCursor else: cursor
@@ -449,8 +457,14 @@ proc drawLine(r: Renderer, line: seq[Rune], row, scroll: int, cursor = -1,
       # The popup has a frame, so wide runes cut by its edges are skipped.
       let shown = if width < 0: at + size > scroll and at < scroll + visible
         else: at >= scroll and at + size <= scroll + visible
+      var decoration = -1
+      if not composing:
+        for j, span in decorations:
+          if original >= span.first and original < span.last: decoration = j
       if shown:
         if pass == 0:
+          if decoration >= 0 and decorations[decoration].hasBackground:
+            r.fill(x0+at-scroll, row, size, decorations[decoration].background)
           let bg = if composing or original >= bgs.len: 0'i8 else: bgs[original]
           if bg in 1'i8..8'i8: r.fill(x0+at-scroll, row, size, theme.ansi[bg - 1])
           elif bg in 9'i8..12'i8:  # a review's refined (changed) part of a line
@@ -463,8 +477,10 @@ proc drawLine(r: Renderer, line: seq[Rune], row, scroll: int, cursor = -1,
           if not composing and original in paren: r.fill(x0+at-scroll, row, size, theme.paren)
         else:
           let face = if composing or original >= faces.len: fPlain else: faces[original]
-          r.glyph(rune, r.cellX(x0+at-scroll), r.rowY(row),
-            if underCursor: theme.bg elif matched: theme.searchFg else: faceColor(face, tint),
+          let glyph = if decoration >= 0: decorations[decoration].text[original - decorations[decoration].first] else: rune
+          let color = if decoration >= 0: decorations[decoration].foreground else: faceColor(face, tint)
+          r.glyph(glyph, r.cellX(x0+at-scroll), r.rowY(row),
+            if underCursor: theme.bg elif matched: theme.searchFg else: color,
             bold = not composing and original < bolds.len and bolds[original] == 1)
           let mark = if composing or original >= marks.len: 0'i8 else: marks[original]
           if mark in 1'i8..5'i8:  # a diagnostic (1-4) or a plain underline (5): 2 px at the bottom
@@ -852,6 +868,8 @@ proc drawPane(r: Renderer, window: Window, p: var PaneView, composition: seq[Run
         tint = if line == cursor.line: theme.lineNoNow else: theme.lineNo)
     # A folded headline ends in "..." like Emacs' ellipsis for hidden text.
     let shownLine = if line < fold.len and fold[line] == 2: b.lines[line] & " ...".toRunes else: b.lines[line]
+    var decorations: seq[TextDecoration]
+    for decorate in lineDecorators: decorations.add decorate(b, line, cursor.line)
     r.drawLine(shownLine, row, left, at,
       if p.active and b.regionActive: selection.a-offset else: -1,
       if p.active and b.regionActive: selection.z-offset else: -1,
@@ -861,7 +879,7 @@ proc drawPane(r: Renderer, window: Window, p: var PaneView, composition: seq[Run
       faces = if line < p.faces.len: p.faces[line] else: @[],
       marks = if line < p.marks.len: p.marks[line] else: @[], paren = paren,
       x0 = gutter, width = cols, bgs = if line < p.bgs.len: p.bgs[line] else: @[],
-      bolds = if line < p.bolds.len: p.bolds[line] else: @[])
+      bolds = if line < p.bolds.len: p.bolds[line] else: @[], decorations = decorations)
     offset += b.lines[line].len + 1
     inc row
     # The rows under a line hold its picture, cropped at the pane's bottom.

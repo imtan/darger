@@ -60,6 +60,8 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 ## Log
 
 - 2026-11-05 novel display rules: mapped display-only typography in vertical panes (novel-display-rules, default t), source-preserving cursor/region/search and column navigation, raw IME composition line; novel-format shares the transform for explicit rewrites (tnovel, tlisp; release build).
+- 2026-11-05 Org modern display: background TODO badges from org-todo-keyword-faces, dim source-block rules, checkbox and list glyphs, original text on each pane cursor line, org-modern-mode toggle; renderer line decorations preserve buffer positions, folds and image rows (torg, tsyntax, tpanes, tbuffer; build passed; GUI smoke blocked by sandbox OpenGL initialization, nimble app installation sandbox-denied).
+
 - 2026-11-05 Org priorities and super-agenda: A/B/C cookies, M-x org-priority and unclaimed S-up/S-down, configurable first-match groups with the Daily dashboard defaults and その他; pure grouping and priority tests (torg, tsyntax, tlisp; build passed; nimble app installation sandbox-denied).
 
 - 2026-11-05 org-refile: C-c C-w completes file/outline paths from the current buffer and agenda files, configurable :maxlevel, confirmed parent creation, safe subtree moves with level adjustment and stale-prompt checks (torg, tbuffer, tcomplete, tlisp; build passed; nimble app release build passed, installation sandbox-denied).

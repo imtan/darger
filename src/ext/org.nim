@@ -1,7 +1,8 @@
 ## Org mode and org-roam: structure editing on Org buffers and a directory of notes
 ## linked by id. Built on orgmode.nim (parsing) and roam.nim (the notes).
 import std/[os, strutils, unicode, times, tables, browsers, sequtils]
-import ../[core, buffer, buffers, lisp, lsp, orgmode, roam, syntax, remote]
+import ../[core, buffer, buffers, lisp, lsp, orgmode, roam, syntax, remote, render]
+from pixie import Color, parseHtmlColor, mix
 when defined(macosx): import ../macwin
 
 var
@@ -353,6 +354,66 @@ proc syncTodoKeywords() =
       orgTodoFaces.add (w, active[min(n, active.high)])
       inc n
   shownBuf = nil  # highlight again
+
+type ModernCache = object
+  version: int
+  spec: string
+  lines: seq[seq[OrgDecoration]]
+
+var modernCache: Table[Buffer, ModernCache]
+
+proc todoColors(word: string): tuple[fg, bg: Color] =
+  result.fg = theme.keyword
+  for (keyword, face) in orgTodoFaces:
+    if keyword == word: result.fg = faceColor(face, theme.fg)
+  var background = ""
+  for spec in interp.env.values["org-todo-keyword-faces"].asList:
+    let xs = spec.asList
+    if xs.len < 2 or xs[0].asString != word: continue
+    var face = xs[^1]
+    var foreground = ""
+    if face.kind == vString: foreground = face.asString
+    elif face.kind == vList:
+      let props = face.asList
+      var i = 0
+      while i + 1 < props.len:
+        if props[i].str == ":foreground": foreground = props[i+1].asString
+        elif props[i].str == ":background": background = props[i+1].asString
+        i += 2
+    if foreground.len > 0:
+      # X11's SteelBlue1 is used in config.org; CSS uses SteelBlue without a suffix.
+      if foreground.toLowerAscii == "steelblue1": foreground = "#63b8ff"
+      try: result.fg = parseHtmlColor(foreground)
+      except CatchableError: discard
+  result.bg = mix(theme.bg, result.fg, 0.25)
+  if background.len > 0:
+    try: result.bg = parseHtmlColor(background)
+    except CatchableError: discard
+
+lineDecorators.add proc(buf: Buffer, line, cursorLine: int): seq[TextDecoration] =
+  if interp.env.values["org-modern-mode"].kind == vNil or line == cursorLine or
+      detect(buf.path, "").name != "Org": return
+  if buf notin modernCache or modernCache[buf].version != buf.version or modernCache[buf].spec != todoSpec:
+    modernCache[buf] = ModernCache(version: buf.version, spec: todoSpec,
+      lines: modernDecorations(buf.lines))
+  for span in modernCache[buf].lines[line]:
+    var decoration = TextDecoration(first: span.first, last: span.last, text: span.text,
+      foreground: (if span.kind == odBlock: theme.comment else: theme.fg))
+    if span.kind == odTodo:
+      let colors = todoColors(span.keyword)
+      decoration.foreground = colors.fg
+      decoration.background = colors.bg
+      decoration.hasBackground = true
+    result.add decoration
+killHooks.add proc(buf: Buffer) = modernCache.del buf
+
+interp.defPrimitive("org-toggle-modern", proc(args: seq[Value]): Value =
+  args.arity(0, 1)
+  let enabled = if args.len == 0: interp.env.values["org-modern-mode"].kind == vNil
+    else: args[0].kind != vNil and (args[0].kind != vNumber or args[0].number > 0)
+  interp.env.values["org-modern-mode"] = if enabled: Value(kind: vTrue) else: nilValue()
+  echoLine = if enabled: "Org modern on" else: "Org modern off"
+  nilValue())
 
 proc pickTodo*(key: char) =
   ## A fast-selection key: that keyword on the headline; SPC removes it.
@@ -944,6 +1005,8 @@ defaults.add """
 (global-set-key "S-up" 'org-priority-up)
 (global-set-key "S-down" 'org-priority-down)
 (setq org-todo-keywords nil)
+(setq org-todo-keyword-faces nil)
+(setq org-modern-mode t)
 (global-set-key "C-c j" 'org-journal-new-entry)
 (global-set-key "C-c q" 'org-journal-quick-add)
 (global-set-key "C-c t" 'org-capture)

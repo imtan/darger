@@ -717,3 +717,55 @@ proc groupAgenda*(items: seq[AgendaItem], groups: seq[AgendaGroup]): seq[AgendaS
     sections[at].items.add item
   for section in sections:
     if section.items.len > 0: result.add section
+
+# ---- Display-only Org modern spans. Rune positions never move, including hidden syntax.
+type
+  OrgDecorationKind* = enum odTodo, odBlock, odCheckbox, odBullet
+  OrgDecoration* = object
+    first*, last*: int       # rune range [first, last)
+    text*: seq[Rune]         # same number of rune slots, keeping mouse/region positions
+    kind*: OrgDecorationKind
+    keyword*: string
+
+proc modernDecorations*(lines: seq[seq[Rune]]): seq[seq[OrgDecoration]] =
+  result = newSeq[seq[OrgDecoration]](lines.len)
+  var ending = ""
+  for n, line in lines:
+    var ind = 0
+    while ind < line.len and line[ind] in [Rune(' '), Rune('\t')]: inc ind
+    let text = $line[ind..^1]
+    let tokens = strutils.splitWhitespace(text)
+    let token = if tokens.len > 0: tokens[0].toLowerAscii else: ""
+    if ending.len > 0:
+      if token != ending: continue
+      ending = ""
+      if token != "#+end_src": continue
+    elif token.startsWith("#+begin_"):
+      ending = "#+end_" & token[8..^1]
+      if token != "#+begin_src": continue
+    if token in ["#+begin_src", "#+end_src"]:
+      let language = if token == "#+begin_src" and tokens.len > 1: tokens[1] else: ""
+      var shown = ("─" & (if language.len > 0: " " & language & " " else: "")).toRunes
+      while shown.len < line.len - ind: shown.add Rune(0x2500)
+      shown.setLen(line.len - ind)
+      result[n].add OrgDecoration(first: ind, last: line.len, text: shown, kind: odBlock)
+      continue
+    let h = headline(line)
+    if h.todo.len > 0:
+      var start = h.level + 1
+      while start < line.len and line[start] == Rune(' '): inc start
+      result[n].add OrgDecoration(first: start, last: start + h.todo.runeLen,
+        text: h.todo.toRunes, kind: odTodo, keyword: h.todo)
+    let (bullet, after) = itemStart(text)
+    if bullet.len == 0: continue
+    if bullet in ["-", "+"]:
+      result[n].add OrgDecoration(first: ind, last: ind+1, text: "•".toRunes, kind: odBullet)
+    let at = ind + after
+    if at+2 < line.len and line[at] == Rune('[') and line[at+2] == Rune(']'):
+      let symbol = case line[at+1].int
+        of ord(' '): "☐"
+        of ord('X'), ord('x'): "☑"
+        of ord('-'): "⊟"
+        else: ""
+      if symbol.len > 0:
+        result[n].add OrgDecoration(first: at, last: at+3, text: (symbol & "  ").toRunes, kind: odCheckbox)
