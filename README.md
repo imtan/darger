@@ -1040,6 +1040,11 @@ with those fonts and the echo line says why.
 - Tate-chu-yoko keeps `!!`, `!?`, `?!`, `??` and exactly two-digit numbers upright side by
   side in one cell; `……` and `――` pairs never split (except the no-legal-break fallback).
   Other half-width letters and digits stand upright, one to a cell, centred across the column.
+- Vertical panes apply these rules to the display only (`novel-display-rules`, default t):
+  digits, ASCII, `...` and `15:30` stay exactly as typed in the buffer and on disk.
+  Set `(setq novel-display-rules nil)` for the raw display; `M-x novel-format` remains
+  available to rewrite the text. A rewritten group shares one source cursor position:
+  clicks land at its start and Down / Up skip the group. The IME composition line stays raw.
 - `M-x novel-format` normalises the active region, or the whole buffer, in one undo step,
   even outside novel mode: full-width ASCII letters/punctuation (preserving tate-chu-yoko),
   kanji numbers except two-digit runs (years and long numbers digit by digit), paired ellipses

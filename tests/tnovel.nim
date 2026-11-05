@@ -214,5 +214,55 @@ block formatting:
       ("0:00", "〇時"), ("24:59", "24時59分")]:
     doAssert novelFormat(source) == expected, source & " -> " & novelFormat(source)
     doAssert novelFormat(novelFormat(source)) == novelFormat(source), source
+    if Rune(10) notin source.toRunes:
+      let shown = displayLine(source.toRunes)
+      doAssert shown.runes == novelFormat(source).toRunes
+      doAssert shown.origin.len == shown.runes.len
+      doAssert shown.index.len == source.runeLen + 1
+      doAssert shown.index[^1] == shown.runes.len
+      for i, origin in shown.origin:
+        doAssert origin >= 0 and origin < source.runeLen
+        if i > 0: doAssert shown.origin[i - 1] <= origin
+      for i in 1..<shown.index.len: doAssert shown.index[i - 1] <= shown.index[i]
+
+block displayMapping:
+  for (source, expected, origin, index) in [
+      ("A1", "Ａ一", @[0, 1], @[0, 1, 2]),
+      ("15:30発", "15時30分発", @[0, 0, 0, 0, 0, 0, 5], @[0, 0, 0, 0, 0, 6, 7]),
+      ("そうです。」", "そうです」", @[0, 1, 2, 3, 5], @[0, 1, 2, 3, 4, 4, 5]),
+      ("本当？そうか", "本当？　そうか", @[0, 1, 2, 2, 3, 4, 5], @[0, 1, 2, 4, 5, 6, 7]),
+      ("?  次", "？　次", @[0, 0, 3], @[0, 0, 0, 2, 3]),
+      ("...次", "……次", @[0, 0, 3], @[0, 0, 0, 2, 3])]:
+    let rs = source.toRunes
+    let shown = displayLine(rs)
+    doAssert $rs == source  # Display never mutates the buffer's rune sequence.
+    doAssert $shown.runes == expected
+    doAssert shown.origin == origin, source & " " & $shown.origin
+    doAssert shown.index == index, source & " " & $shown.index
+    for col in 0..<shown.runes.len: doAssert shown.sourceCol(col) == origin[col]
+    doAssert shown.sourceCol(shown.runes.len) == rs.len
+  let time = displayLine("15:30発".toRunes)
+  doAssert time.stepSource(0, 1) == 5
+  doAssert time.stepSource(2, 1) == 5
+  doAssert time.stepSource(2, -1) == 0
+  doAssert time.stepSource(5, -1) == 0
+  doAssert time.displayRange(1, 3) == (0, 6)  # search/region entirely inside the time
+  doAssert time.displayRange(2, 2) == (0, 0)  # an empty selection stays empty
+  doAssert time.displayRange(5, 6) == (6, 7)
+  doAssert time.displayRange(-3, -1) == (0, 0)
+  doAssert time.displayRange(8, 10) == (7, 7)
+  let deleted = displayLine("そうです。」".toRunes)
+  doAssert deleted.stepSource(3, 1) == 5
+  doAssert deleted.stepSource(5, -1) == 3
+  doAssert deleted.displayRange(4, 5) == (4, 4)  # deleted punctuation has no glyph
+  let punctuation = displayLine("!?次".toRunes)
+  doAssert punctuation.origin == @[0, 0, 0, 2]
+  doAssert punctuation.index == @[0, 0, 3, 4]
+  doAssert punctuation.stepSource(0, 1) == 2
+  let spans = columns(time.runes, 3)
+  doAssert spans.len == 2
+  doAssert time.sourceCol(colAtCell(time.runes, spans[1], 0, true)) == 0
+  doAssert cellOf(time.runes, spans[0], time.index[3]) == 0
+  doAssert novelFormat("A1\r\n15:30\n") == "Ａ一\r\n15時30分\n"
 
 echo "novel ok"

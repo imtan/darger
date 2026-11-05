@@ -11,6 +11,13 @@ const
   smallForms = "ぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶ"
 
 type
+  DisplayLine* = object
+    runes*: seq[Rune]      ## Display text; the source is never modified.
+    origin*: seq[int]      ## Source group start for each display rune.
+    index*: seq[int]       ## Display group start for each source position, including EOF.
+  MappedRunes = object
+    runes: seq[Rune]
+    origin, ends: seq[int] # Exclusive source ends distinguish consumed groups from deletions.
   ColumnSpan* = tuple[start, stop: int]    ## the runes start..<stop of a line, one column
   Spot* = tuple[line, column: int]   ## a column of a logical line
   Counter* = proc(line: int): int    ## how many columns a line takes
@@ -235,14 +242,28 @@ proc vertGlyphs*(buf: string, gsub: int): Table[uint16, uint16] =
       if result.len > 0: break
   except ValueError: discard
 
-proc novelFormat*(text: string): string =
-  ## Normalise novel prose without changing line boundaries. Keep display pairs in ASCII.
-  var rs = text.toRunes
-  for r in rs.mitems:
-    if int(r) in 0xFF10..0xFF19: r = Rune(int(r) - 0xFEE0)
+proc addMapped(dst: var MappedRunes, rs: openArray[Rune], origin, finish: int) =
+  for r in rs:
+    dst.runes.add r
+    dst.origin.add origin
+    dst.ends.add finish
+
+proc copyMapped(dst: var MappedRunes, src: MappedRunes, a, z: int) =
+  for i in a..<z: dst.addMapped([src.runes[i]], src.origin[i], src.ends[i])
+
+proc groupMapped(dst: var MappedRunes, src: MappedRunes, a, z: int, rs: openArray[Rune]) =
+  dst.addMapped(rs, src.origin[a], src.ends[z - 1])
+
+proc displayLine*(source: seq[Rune]): DisplayLine =
+  ## Each rewrite carries its source interval through the following passes. Deleted
+  ## positions map to the next group; positions consumed by a rewrite map to its start.
+  var initial: MappedRunes
+  for i, r in source:
+    initial.addMapped([if int(r) in 0xFF10..0xFF19: Rune(int(r) - 0xFEE0) else: r], i, i + 1)
+  var rs = initial.runes
   # Times: hh:mm (one or two hour digits, either colon) becomes hh時mm分, the minutes
   # left out at :00 and leading zeros dropped; the digit rules below then apply.
-  var timed: seq[Rune]
+  var timed: MappedRunes
   var i = 0
   while i < rs.len:
     if digit(rs[i]) and (i == 0 or not digit(rs[i - 1])):
@@ -254,85 +275,148 @@ proc novelFormat*(text: string): string =
         for j in i..<h: hours = hours * 10 + int(rs[j]) - ord('0')
         minutes = (int(rs[h + 1]) - ord('0')) * 10 + int(rs[h + 2]) - ord('0')
         if hours <= 24 and minutes < 60:
-          timed.add ($hours).toRunes
-          timed.add Rune(0x6642)  # 時
+          var time = ($hours).toRunes
+          time.add Rune(0x6642)  # 時
           if minutes > 0:
-            timed.add ($minutes).toRunes
-            timed.add Rune(0x5206)  # 分
+            time.add ($minutes).toRunes
+            time.add Rune(0x5206)  # 分
+          timed.groupMapped(initial, i, h + 3, time)
           i = h + 3
           continue
-    timed.add rs[i]
+    timed.copyMapped(initial, i, i + 1)
     inc i
-  rs = timed
-  var wide: seq[Rune]
+  rs = timed.runes
+  var wide: MappedRunes
   i = 0
   while i < rs.len:
     let r = rs[i]
+    if bang(r) and tcyFirst(rs, i):
+      wide.groupMapped(timed, i, i + 2, rs[i..<i + 2])
+      i += 2
+      continue
     var stop = i + 1
     if r in [Rune('.'), Rune('-')]:
       while stop < rs.len and rs[stop] == r: inc stop
     if (r == Rune('.') and stop - i >= 3) or r == Rune('-'):
-      wide.add rs[i..<stop]  # reserve these for the ellipsis/dash pass
+      wide.copyMapped(timed, i, stop)  # reserve these for the ellipsis/dash pass
       i = stop
       continue
     if int(r) in 0x21..0x7E and not digit(r) and
         not tcyFirst(rs, i) and not tcySecond(rs, i):
-      wide.add Rune(int(r) + 0xFEE0)
-    else: wide.add r
+      wide.groupMapped(timed, i, i + 1, [Rune(int(r) + 0xFEE0)])
+    else: wide.copyMapped(timed, i, i + 1)
     inc i
-  var numbered: seq[Rune]
+  var numbered: MappedRunes
   let kanji = "〇一二三四五六七八九".toRunes
   let units = " 十百千".toRunes
   i = 0
-  while i < wide.len:
-    if not digit(wide[i]):
-      numbered.add wide[i]
+  while i < wide.runes.len:
+    if not digit(wide.runes[i]):
+      numbered.copyMapped(wide, i, i + 1)
       inc i
       continue
     var stop = i
-    while stop < wide.len and digit(wide[stop]): inc stop
+    while stop < wide.runes.len and digit(wide.runes[stop]): inc stop
     let count = stop - i
     if count == 2:
-      numbered.add wide[i..<stop]
-    elif count in 3..4 and (stop == wide.len or wide[stop] != Rune(0x5E74)):
-      let before = numbered.len
+      numbered.copyMapped(wide, i, stop)
+    elif count in 3..4 and (stop == wide.runes.len or wide.runes[stop] != Rune(0x5E74)):
+      var number: seq[Rune]
       for j in i..<stop:
-        let n = int(wide[j]) - ord('0')
+        let n = int(wide.runes[j]) - ord('0')
         let power = stop - j - 1
         if n != 0:
-          if n != 1 or power == 0: numbered.add kanji[n]
-          if power > 0: numbered.add units[power]
-      if numbered.len == before: numbered.add kanji[0]
+          if n != 1 or power == 0: number.add kanji[n]
+          if power > 0: number.add units[power]
+      if number.len == 0: number.add kanji[0]
+      numbered.groupMapped(wide, i, stop, number)
     else:
-      for j in i..<stop: numbered.add kanji[int(wide[j]) - ord('0')]
+      for j in i..<stop:
+        numbered.groupMapped(wide, j, j + 1, [kanji[int(wide.runes[j]) - ord('0')]])
     i = stop
-  var paired: seq[Rune]
+  var paired: MappedRunes
   i = 0
-  while i < numbered.len:
-    let r = numbered[i]
+  while i < numbered.runes.len:
+    let r = numbered.runes[i]
     var stop = i + 1
-    while stop < numbered.len and numbered[stop] == r: inc stop
+    while stop < numbered.runes.len and numbered.runes[stop] == r: inc stop
     let count = stop - i
     if (r == Rune('.') or r == Rune(0x30FB)) and count >= 3:
-      paired.add "……".toRunes
+      paired.groupMapped(numbered, i, stop, "……".toRunes)
     elif r == Rune(0x2026) or r in "―—─".toRunes or (r == Rune('-') and count >= 2):
       let mark = if r == Rune(0x2026): r else: Rune(0x2015)
-      for j in 0..<count + count mod 2: paired.add mark
-    else: paired.add numbered[i..<stop]
+      var pair: seq[Rune]
+      for j in 0..<count + count mod 2: pair.add mark
+      paired.groupMapped(numbered, i, stop, pair)
+    else: paired.copyMapped(numbered, i, stop)
     i = stop
-  var brackets: seq[Rune]
-  for i, r in paired:
-    if r == Rune(0x3002) and i + 1 < paired.len and paired[i + 1] in "」』".toRunes: continue
-    brackets.add r
+  var brackets: MappedRunes
+  for i, r in paired.runes:
+    if r == Rune(0x3002) and i + 1 < paired.runes.len and paired.runes[i + 1] in "」』".toRunes: continue
+    brackets.copyMapped(paired, i, i + 1)
+  var spaced: MappedRunes
   i = 0
-  while i < brackets.len:
-    let r = brackets[i]
-    result.add $r
-    let after = r in "！？".toRunes or (bang(r) and tcySecond(brackets, i))
+  while i < brackets.runes.len:
+    let r = brackets.runes[i]
+    spaced.copyMapped(brackets, i, i + 1)
+    let after = r in "！？".toRunes or (bang(r) and tcySecond(brackets.runes, i))
     inc i
     if after:
       var stop = i
-      while stop < brackets.len and brackets[stop] in [Rune(' '), Rune(0x3000)]: inc stop
-      if stop < brackets.len and brackets[stop] notin "\r\n」』）】〕］！？!?".toRunes:
-        result.add "　"
+      while stop < brackets.runes.len and brackets.runes[stop] in [Rune(' '), Rune(0x3000)]: inc stop
+      if stop < brackets.runes.len and brackets.runes[stop] notin "\r\n」』）】〕］！？!?".toRunes:
+        spaced.groupMapped(brackets, i - 1, stop, "　".toRunes)
         i = stop
+
+  result.runes = spaced.runes
+  result.origin = spaced.origin
+  result.index = newSeq[int](source.len + 1)
+  for i in 0..<source.len: result.index[i] = -1
+  var filled, first = 0
+  for i, origin in spaced.origin:
+    if i == 0 or origin != spaced.origin[i - 1]: first = i
+    for j in max(filled, origin)..<spaced.ends[i]: result.index[j] = first
+    filled = max(filled, spaced.ends[i])
+  result.index[source.len] = result.runes.len
+  for i in countdown(source.high, 0):
+    if result.index[i] < 0: result.index[i] = result.index[i + 1]
+
+proc novelFormat*(text: string): string =
+  ## Use the same mapped rewrite, preserving line separators verbatim.
+  var line: seq[Rune]
+  for r in text.runes:
+    if r in [Rune(10), Rune(13)]:
+      result.add $displayLine(line).runes
+      result.add $r
+      line.setLen(0)
+    else: line.add r
+  result.add $displayLine(line).runes
+
+proc sourceCol*(line: DisplayLine, col: int): int =
+  ## A display hit lands at its source group's start; EOF remains EOF.
+  if col >= line.runes.len: line.index.high else: line.origin[max(0, col)]
+
+proc stepSource*(line: DisplayLine, col, direction: int): int =
+  ## Skip all source positions sharing the cursor's displayed group. Up from inside
+  ## a group returns to its start before moving to the preceding group.
+  let at = line.index[col]
+  if direction > 0:
+    result = col + 1
+    while result < line.index.high and line.index[result] == at: inc result
+    result = line.sourceCol(line.index[min(result, line.index.high)])
+  elif col > 0:
+    let start = line.sourceCol(at)
+    if start < col: return start
+    var previous = col - 1
+    while previous > 0 and line.index[previous] >= at: dec previous
+    result = line.sourceCol(line.index[previous])
+  else: result = 0
+
+proc displayRange*(line: DisplayLine, a, z: int): tuple[a, z: int] =
+  ## Highlight every group touched by a source range, even a match entirely inside one.
+  let first = clamp(a, 0, line.index.high)
+  let stop = clamp(z, first, line.index.high)
+  result = (line.index[first], line.index[stop])
+  if stop > first and result.z < line.runes.len and line.origin[result.z] < stop:
+    let origin = line.origin[result.z]
+    while result.z < line.runes.len and line.origin[result.z] == origin: inc result.z

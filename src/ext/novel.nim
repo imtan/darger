@@ -44,6 +44,63 @@ proc vertical(): bool =
 
 proc isVertical(buf: Buffer): bool = buf in enabled and vertical()
 
+proc displayRules(): bool =
+  let v = setting("novel-display-rules")
+  v == nil or v.kind != vNil
+
+proc paneLine(rs: seq[Rune], raw = false): DisplayLine =
+  if displayRules() and not raw: return novel.displayLine(rs)
+  result.runes = rs
+  for i in 0..<rs.len: result.origin.add i
+  for i in 0..rs.len: result.index.add i
+
+type ColumnView = object
+  line: proc(line: int): DisplayLine
+  count: Counter
+  rows, lineCount: int
+
+proc columnView(buf: Buffer, rows: int): ColumnView =
+  ## Cache only within this operation: edits and setting changes need no invalidation.
+  var cache: Table[int, DisplayLine]
+  let composition = if buf != core.b: @[]
+    elif window.imeCompositionString.len > 0: window.imeCompositionString.toRunes
+    else: inputMethod.preedit().toRunes
+  let rawLine = if composition.len > 0: buf.cursor.line else: -1
+  let cursor = buf.cursor.col
+  let line = proc(n: int): DisplayLine =
+    if n notin cache:
+      if n == rawLine:
+        var shown = paneLine(render.displayLine(buf.lines[n], composition, cursor), raw = true)
+        for i in 0..<shown.origin.len:
+          shown.origin[i] = if i < cursor: i elif i < cursor + composition.len: cursor
+                            else: i - composition.len
+        shown.index.setLen(buf.lines[n].len + 1)
+        for i in 0..<shown.index.len:
+          shown.index[i] = i + (if i >= cursor: composition.len else: 0)
+        cache[n] = shown
+      else: cache[n] = paneLine(buf.lines[n])
+    cache[n]
+  result.line = line
+  result.count = proc(n: int): int = columns(line(n).runes, rows).len
+  result.rows = rows
+  result.lineCount = buf.lines.len
+
+proc displayPoint(v: ColumnView, p: Point): Point =
+  (p.line, v.line(p.line).index[p.col])
+
+proc sourcePoint(v: ColumnView, p: Point): Point =
+  (p.line, v.line(p.line).sourceCol(p.col))
+
+proc spot(v: ColumnView, p: Point): Spot =
+  let d = v.displayPoint(p)
+  (d.line, columnOf(columns(v.line(d.line).runes, v.rows), d.col))
+
+proc pointAt(v: ColumnView, anchor: Spot, delta, cell: int): Point =
+  let at = stepSpot(v.count, v.lineCount, anchor, delta)
+  let rs = v.line(at.line).runes
+  let spans = columns(rs, v.rows)
+  v.sourcePoint((at.line, colAtCell(rs, spans[at.column], cell, at.column == spans.high)))
+
 proc tryFont(path: string, problem: var string): Font =
   try: result = loadFont(path)
   except CatchableError as e: problem = path & ": " & e.msg
@@ -181,14 +238,19 @@ proc drawVertical(r: Renderer, window: Window, p: var PaneView, composition: seq
   let cursor = if p.active: b.cursor else: p.cursor
   let g = r.gridOf(p.w, p.h)
   var spansOf: Table[int, seq[ColumnSpan]]
-  proc display(line: int): seq[Rune] =
-    if line == cursor.line: displayLine(b.lines[line], comp, cursor.col) else: b.lines[line]
+  var displayOf: Table[int, DisplayLine]
+  proc display(line: int): DisplayLine =
+    if line notin displayOf:
+      displayOf[line] = if line == cursor.line and comp.len > 0:
+        paneLine(render.displayLine(b.lines[line], comp, cursor.col), raw = true)
+      else: paneLine(b.lines[line])
+    displayOf[line]
   proc spans(line: int): seq[ColumnSpan] =
-    if line notin spansOf: spansOf[line] = columns(display(line), g.rows)
+    if line notin spansOf: spansOf[line] = columns(display(line).runes, g.rows)
     spansOf[line]
   let count: Counter = proc(line: int): int = spans(line).len
-  let caret = cursor.col + (if comp.len > 0: imeCursor else: 0)
-  let cursorRunes = display(cursor.line)
+  let caret = if comp.len > 0: cursor.col + imeCursor else: display(cursor.line).index[cursor.col]
+  let cursorRunes = display(cursor.line).runes
   let cursorColumn = columnOf(spans(cursor.line), caret)
   let anchor = scrollToShow(count, b.lines.len, (p.top, p.left), (cursor.line, cursorColumn), g.columns)
   p.top = anchor.line
@@ -202,12 +264,22 @@ proc drawVertical(r: Renderer, window: Window, p: var PaneView, composition: seq
   var line = anchor.line
   var offset = b.offset((line, 0))
   while line < b.lines.len and column < g.columns:
-    let rs = display(line)
+    let shown = display(line)
+    let rs = shown.runes
     let spansHere = spans(line)
     let faces = if line < p.faces.len: p.faces[line] else: @[]
     let bolds = if line < p.bolds.len: p.bolds[line] else: @[]
     let marks = if line < p.marks.len: p.marks[line] else: @[]
     let compAt = if line == cursor.line and comp.len > 0: cursor.col else: -1
+    proc displayCol(source: int): int =
+      let col = clamp(source - offset, 0, b.lines[line].len)
+      if compAt >= 0: col + (if col >= compAt: comp.len else: 0)
+      else: shown.index[col]
+    let selected = if compAt >= 0: (a: displayCol(selection.a), z: displayCol(selection.z))
+      else: shown.displayRange(selection.a - offset, selection.z - offset)
+    let matchedRange = if compAt >= 0:
+        (a: displayCol(p.matchStart), z: displayCol(p.matchStart + p.matchLen))
+      else: shown.displayRange(p.matchStart - offset, p.matchStart + p.matchLen - offset)
     for k in (if line == anchor.line: anchor.column else: 0)..spansHere.high:
       if column >= g.columns: break
       let x = originX + g.columnLeft(column)
@@ -220,14 +292,14 @@ proc drawVertical(r: Renderer, window: Window, p: var PaneView, composition: seq
           let at = if width == 0: max(0, cell - 1) else: cell
           let y = originY + at * g.cell
           let composing = compAt >= 0 and i >= compAt and i < compAt + comp.len
-          let original = if compAt >= 0 and i >= compAt + comp.len: i - comp.len else: i
-          let place = offset + original
-          let matched = not composing and p.matchStart >= 0 and place >= p.matchStart and
-            place < p.matchStart + p.matchLen
+          let original = if compAt >= 0:
+            (if i >= compAt + comp.len: i - comp.len else: i)
+          else: shown.origin[i]
+          let matched = not composing and p.matchStart >= 0 and i >= matchedRange.a and i < matchedRange.z
           let underCursor = onCursor and at == cursorCell
           if pass == 0:
             let box = rect(x.float32, y.float32, g.cell.float32, g.cell.float32)
-            if composing or (place >= selection.a and place < selection.z):
+            if composing or (i >= selected.a and i < selected.z):
               r.gpu.drawRect(box, theme.region)
             if matched: r.gpu.drawRect(box, theme.search)
           else:
@@ -261,15 +333,29 @@ proc selectedGrid(): Grid = renderer.gridOf(pane.w, pane.h)
 proc moveByColumns(delta: int) =
   ## Left / Right: the next / previous column, keeping the place in it.
   echoLine = ""
-  let (point, goal) = moveColumn(core.b.lines, selectedGrid().rows, core.b.cursor, delta, core.b.goal)
-  core.b.cursor = point
+  let v = columnView(core.b, selectedGrid().rows)
+  let cursor = v.displayPoint(core.b.cursor)
+  let rs = v.line(cursor.line).runes
+  let spans = columns(rs, v.rows)
+  let k = columnOf(spans, cursor.col)
+  let goal = if core.b.goal >= 0: core.b.goal else: cellOf(rs, spans[k], cursor.col)
+  var at = stepSpot(v.count, v.lineCount, (cursor.line, k), delta)
+  while at != (cursor.line, k):
+    let target = v.pointAt(at, 0, goal)
+    if v.displayPoint(target) != cursor:
+      core.b.cursor = target
+      break
+    # A rewritten group can span several columns, all mapping to the same source point.
+    let next = stepSpot(v.count, v.lineCount, at, if delta > 0: 1 else: -1)
+    if next == at: break
+    at = next
   core.b.goal = goal
   core.b.last = "move"
 
 proc pageColumns(direction: int) =
   ## C-v / M-v: a screen of columns, less two kept for context.
   let g = selectedGrid()
-  let count = counter(core.b.lines, g.rows)
+  let count = columnView(core.b, g.rows).count
   let lineCount = core.b.lines.len
   let anchor = clampSpot(count, lineCount, (renderer.top, renderer.left))
   let last: Spot = (lineCount - 1, count(lineCount - 1) - 1)
@@ -292,8 +378,8 @@ proc recentreColumns() =
     of 0: g.columns div 2
     of 1: 0
     else: g.columns - 1
-  let moved = stepSpot(counter(core.b.lines, g.rows), core.b.lines.len,
-    spotOf(core.b.lines, g.rows, core.b.cursor), -back)
+  let v = columnView(core.b, g.rows)
+  let moved = stepSpot(v.count, v.lineCount, v.spot(core.b.cursor), -back)
   renderer.top = moved.line
   renderer.left = moved.column
   recentreCycle = (recentreCycle + 1) mod 3
@@ -301,7 +387,8 @@ proc recentreColumns() =
 proc wheelColumns(p: Pane, buf: Buffer, delta: int) =
   ## A wheel notch moves a column; the cursor follows to stay on screen, as mwheel-scroll does.
   let g = renderer.gridOf(p.w, p.h)
-  let count = counter(buf.lines, g.rows)
+  let v = columnView(buf, g.rows)
+  let count = v.count
   let anchor = clampSpot(count, buf.lines.len, if p == pane: (renderer.top, renderer.left) else: (p.top, p.left))
   let last: Spot = (buf.lines.high, count(buf.lines.high) - 1)
   if delta > 0 and distance(count, anchor, last, g.columns) < g.columns: return
@@ -309,10 +396,15 @@ proc wheelColumns(p: Pane, buf: Buffer, delta: int) =
   var cursor = if p == pane: buf.cursor else: p.cursor
   cursor.line = min(cursor.line, buf.lines.high)
   cursor.col = min(cursor.col, buf.lines[cursor.line].len)
-  let spot = spotOf(buf.lines, g.rows, cursor)
-  if spot < moved: cursor = pointAtCell(buf.lines, g.rows, moved, 0, 0)
+  let spot = v.spot(cursor)
+  if spot < moved: cursor = v.pointAt(moved, 0, 0)
   elif distance(count, moved, spot, g.columns) >= g.columns:
-    cursor = pointAtCell(buf.lines, g.rows, moved, g.columns - 1, 0)
+    cursor = v.pointAt(moved, g.columns - 1, 0)
+  while v.spot(cursor) < moved:
+    let next = v.line(cursor.line).stepSource(cursor.col, 1)
+    if next > cursor.col: cursor.col = next
+    elif cursor.line < buf.lines.high: cursor = (cursor.line + 1, 0)
+    else: break
   if p == pane:
     (renderer.top, renderer.left) = moved
     buf.cursor = cursor
@@ -336,15 +428,28 @@ paneHooks.add proc(r: Renderer, window: Window, p: var PaneView, composition: se
     r.glyphHook = proc(rune: Rune, x, y: int, tint: Color, wantBold: bool): bool =
       r.rowGlyph(rune, x, y, tint, wantBold)
 
+proc moveAlong(direction: int) =
+  let b = core.b
+  let shown = paneLine(b.lines[b.cursor.line])
+  if (direction > 0 and b.cursor.col == b.lines[b.cursor.line].len) or
+      (direction < 0 and b.cursor.col == 0):
+    discard runCommand(if direction > 0: "forward" else: "backward")
+  else:
+    b.cursor.col = shown.stepSource(b.cursor.col, direction)
+    b.goal = -1
+    b.last = "move"
+    echoLine = ""
+
 keyFilters.add proc(c: string): bool =
   ## Arrows follow the writing direction: Down / Up along the text, Left / Right across
   ## the columns. SKK's candidates keep their keys.
   if c != "C-l": recentreCycle = 0
-  if mode.len > 0 or prefix.len > 0 or not isVertical(core.b) or inputMethod.composing: return false
+  if mode.len > 0 or prefix.len > 0 or not isVertical(core.b) or inputMethod.composing or
+      window.imeCompositionString.len > 0: return false
   result = true
   case c
-  of "down": discard runCommand("forward")
-  of "up": discard runCommand("backward")
+  of "down": moveAlong(1)
+  of "up": moveAlong(-1)
   of "left": moveByColumns(1)
   of "right": moveByColumns(-1)
   of "C-v", "pagedown": pageColumns(1)
@@ -366,8 +471,9 @@ mouseFilters.add proc(p: Pane, cx, cy, button: int, pressed: bool): bool =
     let at = window.mousePos
     let column = min(g.columnAtX(at.x.int - renderer.cellX(0)), g.columns - 1)
     let cell = g.cellAtY(at.y.int - renderer.rowY(0))
-    let anchor = clampSpot(counter(core.b.lines, g.rows), core.b.lines.len, (renderer.top, renderer.left))
-    core.b.cursor = pointAtCell(core.b.lines, g.rows, anchor, column, cell)
+    let v = columnView(core.b, g.rows)
+    let anchor = clampSpot(v.count, v.lineCount, (renderer.top, renderer.left))
+    core.b.cursor = v.pointAt(anchor, column, cell)
     core.b.regionActive = false
     core.b.goal = -1
     moveDirection = 0
@@ -442,6 +548,7 @@ defaults.add """
 (setq novel-font "RinMincho-Regular.ttf")
 (setq novel-bold-font "RinMincho-Bold.ttf")
 (setq novel-vertical t)
+(setq novel-display-rules t)
 (setq novel-column-spacing 1.7)
 (setq novel-font-scale 1.25)
 (setq novel-body-width 80)
