@@ -641,7 +641,7 @@ cursor placement and scrolling; on the alternate screen without reports, the whe
 sends arrow keys, as terminals do for `less` or `vim`. Killing the buffer or quitting
 hangs the program up.
 
-Claude Code runs in such a terminal with the bindings of the user's Emacs setup:
+Claude Code runs in such a terminal with the bindings of the claude-code.el setup it replaces:
 C-c C c (`claude-code`) starts `claude-command` (default `claude`) in the project root
 (the nearest `.git` above the file) in `*claude-code: <project>*`, shown in a window on
 the right (splitting when there is one window) and selected, or just goes there when
@@ -837,8 +837,8 @@ start with the first term come first, otherwise the source order is kept.
 the matches as `path:line: text`, consult-style: typing narrows them, moving the
 selection previews the spot, Enter jumps there (M-, comes back) and C-g returns.
 `(consult-ripgrep "dir")` searches that directory, and C-c n s
-(`consult-ripgrep-org`) the `org-roam-directory`, like the user's
-`my/consult-ripgrep-org`. The search runs to completion before the list opens.
+(`consult-ripgrep-org`) the `org-roam-directory`, as a `consult-ripgrep` wrapper
+over the notes would. The search runs to completion before the list opens.
 
 ## Asking the agent where
 
@@ -867,7 +867,7 @@ the file's own.
 
 ## Migemo
 
-As in the user's Emacs, a romaji query also finds the Japanese it spells, in isearch
+As with migemo in Emacs, a romaji query also finds the Japanese it spells, in isearch
 (C-s / C-r), consult-line, consult-ripgrep's narrowing and every completion prompt:
 `kensaku` matches `けんさく`, `ケンサク` and the SKK dictionary's words read that way
 (検索, 研削, …; a reading prefix counts, so `kens` already finds 検索), besides
@@ -1000,7 +1000,7 @@ zooms.
 
 C-M-y (`org-insert-clipboard-image`) saves the clipboard's image as
 `img/YYYY-mm-dd-HH-MM-SS.png` next to the file (the buffer must have one) and inserts
-`[[file:img/…]]`, like the user's Emacs command, with no pngpaste needed.
+`[[file:img/…]]`, like the usual Emacs paste-image commands, with no pngpaste needed.
 
 Image links show inline, as org-display-inline-images: a line with `[[file:…png]]`
 (also jpg, gif, webp, bmp; `~` and paths relative to the file work; WebP through macOS' sips) gets the picture
@@ -1066,7 +1066,7 @@ with those fonts and the echo line says why.
 - Not drawn in vertical panes yet: folds (hidden lines show), inline pictures, review bands and
   paren highlights. The horizontal layout does not soft-wrap yet.
 
-Images from Eagle (eagle.cool), as the user's Emacs does: C-M-e
+Images from Eagle (eagle.cool), as an Emacs helper for its local API would: C-M-e
 (`org-insert-eagle-image`) asks for a keyword (empty for the newest items) and lists
 the matching images from Eagle's local API as `name.ext  [tags]`; C-c e
 (`org-insert-eagle-image-from-folder`) lists Eagle's folders (`parent/child`) first.
@@ -1101,7 +1101,7 @@ day's sections are there before the first entry, and an ID property drawer at th
 top when `org-journal-add-id` is `t` (default `nil`), making the day an org-roam
 node. With `org-journal-condition-prompt` `t` (default `nil`) a new entry asks
 `体調 [1-5]` with one key: a digit puts that many `★` after the time and leaves the
-cursor after them, any other key skips, as the user's Emacs hook does. The formats
+cursor after them, any other key skips, as an org-journal hook would. The formats
 take strftime's `%Y %y %m %d %e %H %M %S %R
 %A %a %B %b %j %%`; under a Japanese locale (`LANG=ja_JP.UTF-8`) `%A` and `%B` give
 `火曜日` and `10月`, as Emacs does. C-c q (`org-journal-quick-add`) adds one
