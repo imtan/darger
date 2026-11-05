@@ -60,6 +60,8 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 ## Log
 
 - 2026-11-05 novel display rules: mapped display-only typography in vertical panes (novel-display-rules, default t), source-preserving cursor/region/search and column navigation, raw IME composition line; novel-format shares the transform for explicit rewrites (tnovel, tlisp; release build).
+- 2026-11-05 org-refile: C-c C-w completes file/outline paths from the current buffer and agenda files, configurable :maxlevel, confirmed parent creation, safe subtree moves with level adjustment and stale-prompt checks (torg, tbuffer, tcomplete, tlisp; build passed; nimble app release build passed, installation sandbox-denied).
+
 - 2026-11-05 novel typography: upright tate-chu-yoko punctuation and two-digit numbers in one cell, paired ellipsis/dash kinsoku; M-x novel-format normalises a region or the buffer with one undo step, kanji numbers, full-width punctuation and spacing, hh:mm → hh時mm分 (tnovel, tlisp; release build).
 
 - 2026-11-03 safe font installer (user: 「足りないフォントを自動でダウンロードする機能とか作れない?」): M-x font-install, pinned RinMincho / Nerd Fonts Symbols ZIPs, pure Nim SHA-256, exact zippy member extraction and staged replacement with rollback; deferred consent, immediate novel font reload and tree icon fallback. The zip is read by zippy, already there through pixie, so no tar or unzip and no new nimble dependency. render.nim: addFallbackFont, and loadFont takes symbols-only fonts. Offline tests (tfontinstall); real downloads, wrong hashes and the 404 checked by hand on macOS only.

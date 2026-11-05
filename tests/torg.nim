@@ -331,3 +331,30 @@ DEADLINE: <2026-10-10 Sat>""")
     " Meeting <2026-10-16 Fri 14:00>", "In 4 d.: TODO today task", "TODO: TODO undated"], $rows
   doAssert items[0].line == 13 and items[1].path == "/x/tasks.org"
   doAssert agendaRow(items[2]).startsWith("tasks:     Scheduled:   ")
+
+block refile:
+  let src = lines("* TODO 移動 :tag:\nbody\n*** Child\ntext\n* Keep\n")
+  let dst = lines("* Parent\n** Child\n*** Deep\n**** Too deep\n* Other\n")
+  let ts = refileTargets(dst)
+  doAssert ts.mapIt(it.path) == @["Parent", "Parent/Child", "Parent/Child/Deep", "Other"]
+  doAssert refileTargets(dst, 1).len == 2
+  let moved = refileSubtree(src, dst, 0, 1)
+  doAssert orgText(moved.source) == "* Keep\n"
+  doAssert orgText(moved.target) == "* Parent\n** Child\n*** Deep\n**** Too deep\n*** TODO 移動 :tag:\nbody\n***** Child\ntext\n* Other\n"
+  doAssert orgText(refileSubtree(src, src, 0, 4, true).source) == "* Keep\n** TODO 移動 :tag:\nbody\n**** Child\ntext\n"
+  doAssert orgText(refileSubtree(src, src, 4, 0, true).source) == "* TODO 移動 :tag:\nbody\n*** Child\ntext\n** Keep\n"
+  for parent in [0, 2]:
+    var rejected = false
+    try: discard refileSubtree(src, src, 0, parent, true)
+    except ValueError: rejected = true
+    doAssert rejected
+  let made = ensureRefileParent(dst, "Parent/New/日本語")
+  doAssert headline(made.lines[made.line]).level == 3
+  doAssert orgText(made.lines).contains("** New\n*** 日本語\n* Other")
+  doAssert ensureRefileParent(made.lines, "Parent/New/日本語").lines == made.lines
+  doAssert orgText(refileSubtree(lines("* Last"), lines(""), 0, -1).source) == ""
+  doAssert orgText(refileSubtree(lines("* Last"), lines(""), 0, -1).target) == "* Last\n"
+  var ambiguous = false
+  try: discard ensureRefileParent(lines("* A\n* A\n"), "A/B")
+  except ValueError: ambiguous = true
+  doAssert ambiguous

@@ -564,3 +564,85 @@ proc agendaOrder*(items: seq[AgendaItem]): seq[AgendaItem] =
 proc agendaRow*(it: AgendaItem, width = 12): string =
   ## `  Scheduled:   TODO title` with the file's name first.
   alignLeft(extractFilename(it.path).changeFileExt("") & ":", 10) & " " & alignLeft(agendaLabel(it), width) & " " & it.text
+
+# ---- Refiling: outline paths and subtree moves, independent of buffers and files
+
+type RefileTarget* = object
+  line*, level*: int
+  path*: string
+
+proc orgText*(lines: seq[seq[Rune]]): string =
+  for i, line in lines:
+    if i > 0: result.add '\n'
+    result.add $line
+
+proc orgLines*(text: string): seq[seq[Rune]] =
+  for line in text.split('\n'): result.add line.toRunes
+
+proc refileTargets*(lines: seq[seq[Rune]], maxlevel = 3): seq[RefileTarget] =
+  var parents: seq[RefileTarget]
+  for n, line in lines:
+    let h = headline(line)
+    if h.level == 0: continue
+    while parents.len > 0 and parents[^1].level >= h.level: parents.setLen(parents.len - 1)
+    let path = (if parents.len > 0: parents[^1].path & "/" else: "") & h.title
+    let target = RefileTarget(line: n, level: h.level, path: path)
+    parents.add target
+    if h.level <= maxlevel: result.add target
+
+proc removeSubtree*(lines: seq[seq[Rune]], n: int): seq[seq[Rune]] =
+  if n notin 0..lines.high or not isHeadline(lines[n]):
+    raise newException(ValueError, "Not on a headline")
+  let z = subtreeEnd(lines, n)
+  result = lines[0..<n] & lines[z+1..^1]
+  if result.len == 0: result = @[newSeq[Rune]()]
+
+proc insertSubtree*(lines, subtree: seq[seq[Rune]], parent: int): seq[seq[Rune]] =
+  ## Append a child, or a level-one subtree at the file root (parent = -1).
+  if parent < -1 or parent > lines.high or (parent >= 0 and not isHeadline(lines[parent])):
+    raise newException(ValueError, "Invalid refile parent")
+  let level = if parent < 0: 1 else: headline(lines[parent]).level + 1
+  let delta = level - headline(subtree[0]).level
+  var moved: seq[seq[Rune]]
+  for line in subtree: moved.add shiftLevel(line, delta)
+  # The final empty line represents the terminating newline, not an extra body line.
+  if moved.len > 1 and moved[^1].len == 0: moved.setLen(moved.len - 1)
+  var at = if parent < 0: lines.len else: subtreeEnd(lines, parent) + 1
+  if at == lines.len and lines[^1].len == 0: dec at
+  result = lines[0..<at] & moved & lines[at..^1]
+  if result[^1].len != 0: result.add @[]
+
+proc refileSubtree*(source, target: seq[seq[Rune]], n, parent: int,
+                    sameFile = false): tuple[source, target: seq[seq[Rune]]] =
+  if n notin 0..source.high or not isHeadline(source[n]):
+    raise newException(ValueError, "Not on a headline")
+  let z = subtreeEnd(source, n)
+  if sameFile and parent in n..z:
+    raise newException(ValueError, "Cannot refile a subtree into itself")
+  result.source = removeSubtree(source, n)
+  var dest = target
+  var p = parent
+  if sameFile:
+    dest = result.source
+    if p > z: p -= z - n + 1
+  result.target = insertSubtree(dest, source[n..z], p)
+  if sameFile: result.source = result.target
+
+proc ensureRefileParent*(lines: seq[seq[Rune]], path: string): tuple[lines: seq[seq[Rune]], line: int] =
+  ## Create the missing suffix of an outline path; callers must ask before applying it.
+  result = (lines, -1)
+  var prefix = ""
+  for title in path.split('/'):
+    if title.strip.len == 0: raise newException(ValueError, "Empty parent headline")
+    prefix.add (if prefix.len > 0: "/" else: "") & title
+    var found = -1
+    for t in refileTargets(result.lines, int.high):
+      if t.path == prefix:
+        if found >= 0: raise newException(ValueError, "Ambiguous parent headline: " & prefix)
+        found = t.line
+    if found < 0:
+      let level = if result.line < 0: 1 else: headline(result.lines[result.line]).level + 1
+      result.lines = insertSubtree(result.lines, @[(repeat('*', level) & " " & title).toRunes], result.line)
+      for t in refileTargets(result.lines, int.high):
+        if t.path == prefix: found = t.line
+    result.line = found

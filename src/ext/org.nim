@@ -433,6 +433,135 @@ proc agendaFiles(): seq[string] =
       for f in walkFiles(full / "*.org"): result.add f
     elif fileExists(full): result.add full
 
+type RefileFile = object
+  path, label, text: string
+  buf: Buffer
+  maxlevel: int
+
+var
+  refileSource: Buffer
+  refileVersion, refileLine: int
+  refileFiles: seq[RefileFile]
+  refileRows: seq[string]
+  refileChoices: seq[tuple[file, line: int]]
+  refilePending: string
+
+proc refileMaxlevel(current: bool): int =
+  result = 3
+  for spec in interp.env.values["org-refile-targets"].asList:
+    let xs = spec.asList
+    if xs.len < 3: continue
+    if (current and xs[0].kind == vNil) or
+        (not current and xs[0].kind == vSymbol and xs[0].str == "org-agenda-files"):
+      for i in 1..<xs.len - 1:
+        if xs[i].kind == vSymbol and xs[i].str == ":maxlevel":
+          let at = if xs[i+1].kind == vSymbol and xs[i+1].str == ".": i+2 else: i+1
+          if at < xs.len and xs[at].kind == vNumber: result = max(1, xs[at].number.int)
+
+proc applyRefile(value: string, create = false): bool =
+  if refileSource notin reg or refileSource.version != refileVersion:
+    echoLine = "Source changed; run org-refile again"
+    return true
+  var file = -1
+  var parent = -1
+  let choice = refileRows.find(value)
+  if choice >= 0:
+    (file, parent) = refileChoices[choice]
+  else:
+    for i, f in refileFiles:
+      if value.startsWith(f.label & "/"):
+        file = i
+        break
+  if file < 0:
+    echoLine = "Choose a target file/headline"
+    return false
+  let f = refileFiles[file]
+  let dest = if f.buf != nil: f.buf else: loadBuffer(f.path)
+  if dest.text != f.text:
+    echoLine = "Target changed; run org-refile again"
+    return true
+  var lines = dest.lines
+  try:
+    if choice < 0:
+      let made = ensureRefileParent(lines, value[f.label.len+1..^1])
+      if made.lines != lines and not create:
+        refilePending = value
+        beginMini("org-refile-confirm", "Create parent " & value & "? (yes/no): ")
+        return true
+      lines = made.lines
+      parent = made.line
+      if headline(lines[parent]).level > f.maxlevel:
+        echoLine = "Parent exceeds org-refile-targets :maxlevel"
+        return false
+    let same = dest == refileSource
+    # Creating a parent may shift the source's line; resolve that before moving it.
+    var n = refileLine
+    if same and lines != dest.lines:
+      let delta = lines.len - dest.lines.len
+      if lines[n] != dest.lines[n]: n += delta
+    let moved = refileSubtree(if same: lines else: refileSource.lines, lines, n, parent, same)
+    if same:
+      dest.snapshot()
+      replaceKeeping(dest, orgText(moved.target))
+      dest.last = "edit"
+    else:
+      # Finish writing the destination before removing anything from the source.
+      if f.buf != nil: dest.snapshot()
+      replaceKeeping(dest, orgText(moved.target))
+      if f.buf == nil: dest.save()
+      dest.last = "edit"
+      refileSource.snapshot()
+      replaceKeeping(refileSource, orgText(moved.source))
+      refileSource.last = "edit"
+    echoLine = "Refiled to " & value
+    true
+  except CatchableError as e:
+    echoLine = e.msg
+    false
+
+definePrompt(Prompt(kind: "org-refile", text: true,
+  candidates: proc(): seq[string] = refileRows,
+  onAccept: proc(value: string): bool = applyRefile(value)))
+definePrompt(Prompt(kind: "org-refile-confirm", onAccept: proc(value: string): bool =
+  if value.toLowerAscii in ["y", "yes"]: return applyRefile(refilePending, true)
+  true))
+
+interp.defPrimitive("org-refile", proc(args: seq[Value]): Value =
+  args.arity(0, 0)
+  if not orgBuffer(): return nilValue()
+  let n = orgHeadline()
+  if n < 0: return nilValue()
+  refileSource = b
+  refileVersion = b.version
+  refileLine = n
+  refileFiles = @[]
+  refileRows = @[]
+  refileChoices = @[]
+  var paths = @[b.path]
+  for path in agendaFiles():
+    if path notin paths: paths.add path
+  for path in paths:
+    let buf = if path == b.path: b else: reg.byPath(path)
+    let text = if buf != nil: buf.text else: loadBuffer(path).text
+    let label = if path.len == 0: "*current*" else: extractFilename(path)
+    refileFiles.add RefileFile(path: path, label: label, text: text, buf: buf,
+      maxlevel: refileMaxlevel(buf == b))
+  for i in 0..<refileFiles.len:
+    let label = refileFiles[i].label
+    if refileFiles.countIt(it.label == label) > 1:
+      for j in 0..<refileFiles.len:
+        if refileFiles[j].label == label: refileFiles[j].label = refileFiles[j].path
+  for i, f in refileFiles:
+    let ts = refileTargets(orgLines(f.text), f.maxlevel)
+    for t in ts:
+      if f.buf == b and t.line in n..subtreeEnd(b.lines, n): continue
+      var row = f.label & "/" & t.path
+      if ts.countIt(it.path == t.path) > 1: row.add " [line " & $(t.line+1) & "]"
+      refileRows.add row
+      refileChoices.add (i, t.line)
+  beginMini("org-refile", "Refile to (file/headline): ")
+  nilValue())
+
 proc orgAgenda*() =
   ## M-x org-agenda: today's scheduled, deadline and dated items and the undated TODOs
   ## of org-agenda-files, as a list; Enter goes to the headline, C-g comes back.
@@ -720,6 +849,8 @@ defaults.add """
 (setq org-capture-file "~/org/inbox.org")
 (setq org-capture-headline "")
 (setq org-capture-template "* TODO %?\n")
+(setq org-refile-targets '((nil :maxlevel . 3) (org-agenda-files :maxlevel . 3)))
+(global-set-key "C-c C-w" 'org-refile)
 (setq org-agenda-files nil)
 (setq org-todo-keywords nil)
 (global-set-key "C-c j" 'org-journal-new-entry)
