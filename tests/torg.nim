@@ -279,6 +279,21 @@ block:
   # the date headline, added when the day's file lacks it
   doAssert withDateLine("#+title: t\n", "* Day") == "#+title: t\n* Day\n"
   doAssert withDateLine("* Day\n** x\n", "* Day") == "* Day\n** x\n"
+  # another tool's date headline is the day's: no second top-level headline
+  doAssert withDateLine("* 2026年 11月 05 木曜日\n** 10:54 x\n", "* Thursday, 05 November 2026") ==
+    "* 2026年 11月 05 木曜日\n** 10:54 x\n"
+  # the file header, added when a file written elsewhere lacks it
+  let header = "#+title: 2026-11-05 Journal\n#+startup: folded\n\n"
+  doAssert withHeader("* Day\n", header) == header & "* Day\n"
+  doAssert withHeader("#+TITLE: mine\n* Day\n", header) == "#+TITLE: mine\n* Day\n"
+  doAssert withHeader("", header) == header
+  doAssert withHeader("* Day\n", "") == "* Day\n"
+  doAssert withHeader("x\n", "plain header") == "plain header\nx\n"
+  doAssert withHeader("plain header\nx\n", "plain header") == "plain header\nx\n"
+  # quick add with a time format that ends in a newline: the text goes under the headline
+  doAssert quickEntry("*** =09:07=", "一行目\n二行目", true) == "*** =09:07=\n一行目\n二行目"
+  doAssert quickEntry("*** =09:07=", "  \n", true) == "*** =09:07="
+  doAssert quickEntry("*** =09:07=", "一行目", false) == "*** =09:07= 一行目"
 
 doAssert conditionMark(3) == " ★★★ " and conditionMark(5).count("★") == 5 and conditionMark(0) == "" and conditionMark(6) == ""
 

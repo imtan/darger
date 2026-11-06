@@ -1105,12 +1105,17 @@ node. With `org-journal-condition-prompt` `t` (default `nil`) a new entry asks
 `体調 [1-5]` with one key: a digit puts that many `★` after the time and leaves the
 cursor after them, any other key skips, as an org-journal hook would. The formats
 take strftime's `%Y %y %m %d %e %H %M %S %R
-%A %a %B %b %j %%`; under a Japanese locale (`LANG=ja_JP.UTF-8`) `%A` and `%B` give
-`火曜日` and `10月`, as Emacs does. C-c q (`org-journal-quick-add`) adds one
+%A %a %B %b %j %%`; `(setq system-time-locale "C")` forces English names and `"ja_JP.UTF-8"`
+Japanese ones; without it, under a Japanese locale (`LANG=ja_JP.UTF-8`) `%A` and `%B` give
+`火曜日` and `10月`, as Emacs does. A day's file written by another tool is brought
+into shape on the next C-c j / C-c q: the header is added when its `#+title:` is missing,
+and an existing top-level headline counts as the date headline, so none is added twice.
+C-c q (`org-journal-quick-add`) adds one
 line to the same day's file without leaving the current buffer: it prompts
-`Journal: ` and Enter adds `org-journal-time-prefix` + the time (the
-`org-journal-time-format` without its trailing newline) + the text, e.g.
-`*** =14:30= 手書きの方が残る` (empty input adds nothing, C-g cancels). The file is
+`Journal: ` and Enter adds `org-journal-time-prefix` + the time + the text: on the
+same line when `org-journal-time-format` has no trailing newline (`** 14:30 手書きの方が残る`),
+under the time headline when it ends with one, as C-c j lays entries out
+(`*** =14:30=` then the text on the next line). Empty input adds nothing, C-g cancels. The file is
 created as C-c j creates it, but no `体調` is asked. The line goes at the end of the
 file, or with `org-journal-quick-add-headline` (default `""`) at the end of that
 headline's section (above its trailing blank lines; the headline is added at the

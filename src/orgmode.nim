@@ -459,15 +459,41 @@ proc conditionMark*(n: int): string =
   if n in 1..5: " " & "★".repeat(n) & " " else: ""
 
 proc withDateLine*(text, dateLine: string): string =
-  ## text with the day's date headline added at the end when no line is it yet.
+  ## text with the day's date headline added at the end when no line is it yet. A
+  ## journal file has one top-level headline, so one written by another tool in its
+  ## own date format counts and no second one is added.
   for l in text.split('\n'):
-    if l == dateLine: return text
+    if l == dateLine or l.startsWith("* "): return text
   appendedText(text, dateLine & "\n")
 
-proc quickEntry*(stamp, text: string): string =
+proc withHeader*(text, header: string): string =
+  ## text with org-journal-file-header (date-expanded) put first when the file lacks it:
+  ## a `#+key:` line is looked for by its key, any other first line as it is.
+  if header.len == 0: return text
+  var first = ""
+  for l in header.split('\n'):
+    if l.len > 0:
+      first = l
+      break
+  if first.len == 0: return text
+  let key = if first.startsWith("#+") and first.contains(':'): first[0..first.find(':')].toLowerAscii else: ""
+  for l in text.split('\n'):
+    if (key.len > 0 and l.toLowerAscii.startsWith(key)) or (key.len == 0 and l == first): return text
+  result = header
+  if not result.endsWith('\n'): result.add '\n'
+  result.add text
+
+proc quickEntry*(stamp, text: string, bodyBelow = false): string =
   ## A quick-add entry: the time stamp and the text's first line as the headline, the
-  ## other lines as its body (text trimmed first), as yuruorg's 日報クイック追記.
+  ## other lines as its body (text trimmed first), as yuruorg's 日報クイック追記. With
+  ## bodyBelow (an org-journal-time-format ending in a newline, as Emacs lays entries
+  ## out) the whole text goes under the time headline instead.
   let parts = unicode.strip(text).replace("\r\n", "\n").replace('\r', '\n').split('\n')
+  if bodyBelow:
+    result = stamp
+    for l in parts:
+      if l.len > 0 or result != stamp: result.add "\n" & l
+    return
   result = if parts[0].len == 0: stamp else: stamp & " " & parts[0]
   for l in parts[1..^1]: result.add "\n" & l
 

@@ -242,6 +242,8 @@ C-c j                    日報 (org-journal)。org-journal-dir の今日のフ�
                          org-journal-condition-prompt t なら体調 [1-5] を 1 キーで聞く (★)
                          org-journal-dir は /ssh:HOST:~/path でもよい (SSH 越しに読み書き)
 C-c q                    日報に 1 行クイック追記 (バッファはそのまま。Journal: で入力、体調は聞かない)
+                         時刻書式が改行で終わるなら入力は時刻見出しの下の行に (C-c j と同じ配置)
+                         system-time-locale "C" で英語の曜日・月名、"ja_JP.UTF-8" で日本語 (未設定は LANG 次第)
                          org-journal-quick-add-headline "** 今日の出来事" でその節の末尾へ (yuruorg と同じ)
 C-c t                    capture。入力を org-capture-file の org-capture-headline の下に追記
 C-M-e / C-c e            Eagle の画像をキーワード / フォルダから選んで [[file:~/…]] を挿入

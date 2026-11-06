@@ -144,12 +144,16 @@ proc roamDir*(): string = expandTilde(interp.env.values["org-roam-directory"].as
 proc setting(name: string): string = interp.env.values[name].asString
 
 proc japaneseLocale(): bool =
-  ## %A / %B in Japanese, as Emacs' format-time-string gives under a Japanese locale.
-  for v in ["LC_ALL", "LC_TIME", "LANG"]:
-    let s = getEnv(v)
+  ## %A / %B in Japanese, as Emacs' format-time-string gives under a Japanese locale:
+  ## system-time-locale when set ("C" / "en..." English, "ja..." Japanese), else the
+  ## process's LC_ALL / LC_TIME / LANG. Without any, English, as Emacs.app launched
+  ## from the Finder writes (the system's language is not consulted, as Emacs does not).
+  let v = interp.env.values.getOrDefault("system-time-locale")
+  if v != nil and v.kind == vString and v.str.len > 0: return v.str.startsWith("ja")
+  for name in ["LC_ALL", "LC_TIME", "LANG"]:
+    let s = getEnv(name)
     if s.len > 0: return s.startsWith("ja")
-  when defined(macosx): systemLocale().startsWith("ja")  # apps launched from the Finder have no LANG
-  else: false
+  false
 
 var conditionLine = -1  # the journal headline the 体調 prompt is about
 
@@ -209,7 +213,7 @@ proc journalNewEntry*() =
     b.snapshot()
     b.splice(0, 0, firstText)
     b.save()
-  var text = withDateLine(b.text, j.dateLine)
+  var text = withDateLine(withHeader(b.text, strftime(setting("org-journal-file-header"), j.day, j.ja)), j.dateLine)
   text = appendedText(text, setting("org-journal-time-prefix") & strftime(setting("org-journal-time-format"), j.t, j.ja))
   b.snapshot()
   b.splice(0, b.text.runeLen, text)
@@ -241,8 +245,9 @@ proc journalQuickAdd*(entry: string): bool =
   ## An open buffer of the file is edited (one undo step) and saved; else the file is.
   if unicode.strip(entry).len == 0: return true
   let j = journalDay()
+  let timeFormat = setting("org-journal-time-format")
   let stamp = setting("org-journal-time-prefix") &
-    strutils.strip(strftime(setting("org-journal-time-format"), j.t, j.ja), leading = false)
+    strutils.strip(strftime(timeFormat, j.t, j.ja), leading = false)
   var buf = reg.byPath(j.path)
   let open = buf != nil
   var base = ""
@@ -255,8 +260,9 @@ proc journalQuickAdd*(entry: string): bool =
     buf = newBuffer()
     buf.path = if j.remote: j.path else: absolutePath(j.path)
     base = journalFirstText(j)
-  let text = appendQuickEntry(withDateLine(base, j.dateLine),
-    setting("org-journal-quick-add-headline"), quickEntry(stamp, entry))
+  let header = strftime(setting("org-journal-file-header"), j.day, j.ja)
+  let text = appendQuickEntry(withDateLine(withHeader(base, header), j.dateLine),
+    setting("org-journal-quick-add-headline"), quickEntry(stamp, entry, timeFormat.endsWith("\n")))
   if open:
     buf.snapshot()
     replaceKeeping(buf, text)
