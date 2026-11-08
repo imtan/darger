@@ -1039,7 +1039,8 @@ with those fonts and the echo line says why.
 
 - Keys in a vertical pane: Down / Up move to the next / previous character, Left / Right to
   the next / previous column, C-v / M-v page by columns, C-l puts the cursor's column in the
-  middle, rightmost, then leftmost. C-n / C-p stay logical lines. The wheel scrolls columns
+  middle, rightmost, then leftmost. C-n / C-p move a column too (the visual line of a
+vertical pane), keeping the place in it. The wheel scrolls columns
   and a click puts point on the character under it. Line numbers are hidden.
 - Vertical forms come from the font's own OpenType `vert` substitutions (`vrt2` in a font
   without `vert`). A font with neither gets brackets, dashes and ellipses rotated 90°, and

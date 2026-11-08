@@ -442,7 +442,8 @@ proc moveAlong(direction: int) =
 
 keyFilters.add proc(c: string): bool =
   ## Arrows follow the writing direction: Down / Up along the text, Left / Right across
-  ## the columns. SKK's candidates keep their keys.
+  ## the columns; C-n / C-p move a column too, as next-line moves a visual line in
+  ## Emacs. SKK's candidates keep their keys (the filter yields while composing).
   if c != "C-l": recentreCycle = 0
   if mode.len > 0 or prefix.len > 0 or not isVertical(core.b) or inputMethod.composing or
       window.imeCompositionString.len > 0: return false
@@ -450,8 +451,8 @@ keyFilters.add proc(c: string): bool =
   case c
   of "down": moveAlong(1)
   of "up": moveAlong(-1)
-  of "left": moveByColumns(1)
-  of "right": moveByColumns(-1)
+  of "left", "C-n": moveByColumns(1)
+  of "right", "C-p": moveByColumns(-1)
   of "C-v", "pagedown": pageColumns(1)
   of "M-v", "pageup": pageColumns(-1)
   of "C-l": recentreColumns()
