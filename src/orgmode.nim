@@ -368,8 +368,8 @@ proc strftime*(fmt: string, t: DateTime, japanese = false): string =
     of 'S': result.add t.format("ss")
     of 'R': result.add t.format("HH:mm")
     of 'j': result.add align($(t.yearday + 1), 3, '0')  # yearday counts from 0
-    of 'A': result.add (if japanese: weekdaysJa[ord(t.weekday) + 1 mod 7] else: t.format("dddd"))
-    of 'a': result.add (if japanese: weekdaysShortJa[ord(t.weekday) + 1 mod 7] else: t.format("ddd"))
+    of 'A': result.add (if japanese: weekdaysJa[(ord(t.weekday) + 1) mod 7] else: t.format("dddd"))
+    of 'a': result.add (if japanese: weekdaysShortJa[(ord(t.weekday) + 1) mod 7] else: t.format("ddd"))
     of 'B', 'b': result.add (if japanese: $ord(t.month) & "月" elif c == 'B': t.format("MMMM") else: t.format("MMM"))
     of '%': result.add '%'
     else: result.add '%' & c
@@ -465,6 +465,19 @@ proc withDateLine*(text, dateLine: string): string =
   for l in text.split('\n'):
     if l == dateLine or l.startsWith("* "): return text
   appendedText(text, dateLine & "\n")
+
+proc withId*(text, id: string): string =
+  ## text with an ID property drawer first when it has none at the top, so the day is
+  ## an org-roam node; id is the one to give it. A drawer already there is kept.
+  if id.len == 0: return text
+  var i = 0
+  let lines = text.split('\n')
+  while i < lines.len and lines[i].len == 0: inc i
+  if i < lines.len and lines[i].strip.toUpperAscii == ":PROPERTIES:":
+    for l in lines[i + 1 .. ^1]:
+      if l.strip.toUpperAscii == ":END:": break
+      if l.strip.toUpperAscii.startsWith(":ID:"): return text
+  ":PROPERTIES:\n:ID:       " & id & "\n:END:\n" & text
 
 proc withHeader*(text, header: string): string =
   ## text with org-journal-file-header (date-expanded) put first when the file lacks it:

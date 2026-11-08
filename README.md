@@ -1100,13 +1100,15 @@ TRAMP form, `/ssh:HOST:~/Dropbox/Org`: the day's file is then read, created (the
 directory with `mkdir -p`) and saved over SSH, as with C-x C-f. A new file gets the contents of
 `org-journal-daily-template-file` (default none) under the date headline, so the
 day's sections are there before the first entry, and an ID property drawer at the
-top when `org-journal-add-id` is `t` (default `nil`), making the day an org-roam
-node. With `org-journal-condition-prompt` `t` (default `nil`) a new entry asks
+top, making the day an org-roam node, when `org-journal-add-id` is `t`, or with the
+default `'auto` when `org-journal-dir` lies in `org-roam-directory` (`nil` never); a
+day's file without one gets it on the next C-c j / C-c q. With `org-journal-condition-prompt` `t` (default `nil`) a new entry asks
 `体調 [1-5]` with one key: a digit puts that many `★` after the time and leaves the
 cursor after them, any other key skips, as an org-journal hook would. The formats
 take strftime's `%Y %y %m %d %e %H %M %S %R
 %A %a %B %b %j %%`; `(setq system-time-locale "C")` forces English names and `"ja_JP.UTF-8"`
-Japanese ones; without it, under a Japanese locale (`LANG=ja_JP.UTF-8`) `%A` and `%B` give
+Japanese ones; without it, under a Japanese locale (`LANG=ja_JP.UTF-8`, or the system
+language on macOS when the app has no LANG) `%A` and `%B` give
 `火曜日` and `10月`, as Emacs does. A day's file written by another tool is brought
 into shape on the next C-c j / C-c q: the header is added when its `#+title:` is missing,
 and an existing top-level headline counts as the date headline, so none is added twice.

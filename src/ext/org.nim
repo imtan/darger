@@ -146,14 +146,16 @@ proc setting(name: string): string = interp.env.values[name].asString
 proc japaneseLocale(): bool =
   ## %A / %B in Japanese, as Emacs' format-time-string gives under a Japanese locale:
   ## system-time-locale when set ("C" / "en..." English, "ja..." Japanese), else the
-  ## process's LC_ALL / LC_TIME / LANG. Without any, English, as Emacs.app launched
-  ## from the Finder writes (the system's language is not consulted, as Emacs does not).
+  ## process's LC_ALL / LC_TIME / LANG, else on macOS the system language (apps launched
+  ## from the Finder have no LANG; Emacs.app writes English there unless its
+  ## system-time-locale says otherwise).
   let v = interp.env.values.getOrDefault("system-time-locale")
   if v != nil and v.kind == vString and v.str.len > 0: return v.str.startsWith("ja")
   for name in ["LC_ALL", "LC_TIME", "LANG"]:
     let s = getEnv(name)
     if s.len > 0: return s.startsWith("ja")
-  false
+  when defined(macosx): systemLocale().startsWith("ja")
+  else: false
 
 var conditionLine = -1  # the journal headline the 体調 prompt is about
 
@@ -169,7 +171,15 @@ proc recordCondition*(n: int) =
 type JournalDay = object
   t, day: DateTime    # now, and the day it belongs to (org-extend-today-until)
   ja, remote: bool
+  wantsId: bool       # the day's file gets an ID drawer: org-journal-add-id, or it lives in org-roam-directory
   dir, path, dateLine: string
+
+proc insideRoam(dir: string): bool =
+  ## A local journal directory at or under org-roam-directory: its days are roam notes.
+  if isRemote(dir): return false
+  let roam = absolutePath(roamDir()).normalizedPath
+  let here = absolutePath(dir).normalizedPath
+  here == roam or here.startsWith(roam & $DirSep)
 
 proc journalDay(): JournalDay =
   ## Today's journal file under org-journal-dir. Before org-extend-today-until o'clock
@@ -182,6 +192,9 @@ proc journalDay(): JournalDay =
   let name = strftime(setting("org-journal-file-format"), result.day, result.ja)
   result.path = if result.remote: remoteJoin(result.dir, name) else: result.dir / name
   result.dateLine = setting("org-journal-date-prefix") & strftime(setting("org-journal-date-format"), result.day, result.ja)
+  let addId = interp.env.values["org-journal-add-id"]
+  result.wantsId = addId.kind != vNil and not (addId.kind == vSymbol and addId.str == "auto") or
+    (addId.kind == vSymbol and addId.str == "auto" and insideRoam(result.dir))
 
 proc journalFirstText(j: JournalDay): string =
   ## A new day's file: org-journal-file-header, the date headline, then the day's template
@@ -193,7 +206,7 @@ proc journalFirstText(j: JournalDay): string =
     elif isRemote(templatePath): remoteLoad(templatePath).text
     elif fileExists(templatePath): readFile(templatePath)
     else: ""
-  let id = if interp.env.values["org-journal-add-id"].kind != vNil: newId() else: ""
+  let id = if j.wantsId: newId() else: ""
   newJournalText(strftime(setting("org-journal-file-header"), j.day, j.ja), j.dateLine, dayTemplate, id)
 
 proc journalNewEntry*() =
@@ -214,6 +227,7 @@ proc journalNewEntry*() =
     b.splice(0, 0, firstText)
     b.save()
   var text = withDateLine(withHeader(b.text, strftime(setting("org-journal-file-header"), j.day, j.ja)), j.dateLine)
+  if j.wantsId: text = withId(text, newId())
   text = appendedText(text, setting("org-journal-time-prefix") & strftime(setting("org-journal-time-format"), j.t, j.ja))
   b.snapshot()
   b.splice(0, b.text.runeLen, text)
@@ -261,8 +275,9 @@ proc journalQuickAdd*(entry: string): bool =
     buf.path = if j.remote: j.path else: absolutePath(j.path)
     base = journalFirstText(j)
   let header = strftime(setting("org-journal-file-header"), j.day, j.ja)
-  let text = appendQuickEntry(withDateLine(withHeader(base, header), j.dateLine),
+  var text = appendQuickEntry(withDateLine(withHeader(base, header), j.dateLine),
     setting("org-journal-quick-add-headline"), quickEntry(stamp, entry, timeFormat.endsWith("\n")))
+  if j.wantsId: text = withId(text, newId())
   if open:
     buf.snapshot()
     replaceKeeping(buf, text)
@@ -1061,7 +1076,7 @@ defaults.add """
 (setq org-journal-time-format "%R ")
 (setq org-extend-today-until "0")
 (setq org-journal-daily-template-file "")
-(setq org-journal-add-id nil)
+(setq org-journal-add-id 'auto)
 (setq org-journal-condition-prompt nil)
 (setq org-journal-quick-add-headline "")
 (setq org-capture-file "~/org/inbox.org")

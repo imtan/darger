@@ -59,6 +59,7 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 ## Log
 
+- 2026-11-08 journal IDs and Japanese names: org-journal-add-id 'auto gives journal files in org-roam-directory an ID drawer (new days, and existing days on the next C-c j / C-c q via withId); the date names use the macOS system language again when LANG is unset (system-time-locale still overrides)
 - 2026-11-06 journal format as Emacs: system-time-locale setting and no system-language guess (Emacs.app writes English names); a day's file from another tool gets the header once and keeps its own date headline; quick add puts the text under the time headline when the time format ends in a newline (torg)
 - 2026-11-05 clipboard yank: C-y prefers clipboard text copied elsewhere since the editor last set or took it (pushed onto the kill ring, M-y cycles on); C-c C-y clipboard-yank always pastes the clipboard; buffer.newerClipboard with tbuffer tests
 - 2026-11-05 novel display rules: mapped display-only typography in vertical panes (novel-display-rules, default t), source-preserving cursor/region/search and column navigation, raw IME composition line; novel-format shares the transform for explicit rewrites (tnovel, tlisp; release build).

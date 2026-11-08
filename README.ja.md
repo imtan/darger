@@ -998,13 +998,16 @@ C-c j (`org-journal-new-entry`) は org-journal のように日報を付けま�
 ファイルに書きます。`org-journal-dir` は `/ssh:HOST:~/Dropbox/Org` のような TRAMP 形式の
 リモートディレクトリでもよく、その日のファイルは C-x C-f と同じく SSH 越しに読み、作り
 (ディレクトリは `mkdir -p`)、保存します。新しいファイルには `org-journal-daily-template-file` (既定なし) の内容が
-日付見出しの下に入り、最初のエントリの前にその日の節が揃います。`org-journal-add-id` が `t`
-(既定 `nil`) なら先頭に ID プロパティドロワーが付き、その日が org-roam のノードになります。
+日付見出しの下に入り、最初のエントリの前にその日の節が揃います。`org-journal-add-id` が `t`、
+または既定の `'auto` で `org-journal-dir` が `org-roam-directory` の中にあれば、先頭に ID
+プロパティドロワーが付いてその日が org-roam のノードになります (`nil` なら付けない)。ID のない
+その日のファイルも、次の C-c j / C-c q で付きます。
 `org-journal-condition-prompt` が `t` (既定 `nil`) なら、新しいエントリの後に `体調 [1-5]` を
 1 キーで聞きます。数字ならその数の `★` を時刻の後ろに置いてカーソルをその後ろに、他のキーなら
 スキップします (Emacs のフックと同じ)。書式は strftime の `%Y %y %m %d %e %H %M %S %R %A %a %B %b %j %%` を
 受け付け、`(setq system-time-locale "C")` で英語名、`"ja_JP.UTF-8"` で日本語名に固定できます。
-未設定なら日本語ロケール (`LANG=ja_JP.UTF-8`) では Emacs と同じく `%A` が `火曜日`、`%B` が
+未設定なら日本語ロケール (`LANG=ja_JP.UTF-8`、LANG のない macOS のアプリではシステム言語) で
+Emacs と同じく `%A` が `火曜日`、`%B` が
 `10月` になります。他のツールが書いたその日のファイルは次の C-c j / C-c q で形を揃えます。
 `#+title:` がなければヘッダを先頭に足し、既にある最上位見出しを日付見出しとみなして二重には
 足しません。C-c q (`org-journal-quick-add`) は今のバッファのまま同じ日のファイルに 1 行

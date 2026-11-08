@@ -224,6 +224,10 @@ doAssert strftime("%Y%m%d.org", tue) == "20261013.org"
 doAssert strftime("%A, %d %B %Y", tue) == "Tuesday, 13 October 2026"
 doAssert strftime("%A, %d %B %Y", tue, japanese = true) == "火曜日, 13 10月 2026"
 doAssert strftime("%a %b %e %j %y", tue, japanese = true) == "火 10月 13 286 26"
+let sun = tue + 5.days  # Sunday: the last weekday, which once indexed past the Japanese names
+doAssert strftime("%A %a", sun, japanese = true) == "日曜日 日"
+doAssert strftime("%A", sun) == "Sunday"
+doAssert strftime("%A %a", tue + 6.days, japanese = true) == "月曜日 月"
 doAssert strftime("=%R=\n", tue) == "=09:04=\n"
 doAssert strftime("%H:%M:%S 100%% %q", tue) == "09:04:00 100% %q"
 doAssert strftime("#+title: %Y-%m-%d Journal\n#+startup: folded\n\n", tue) == "#+title: 2026-10-13 Journal\n#+startup: folded\n\n"
@@ -290,6 +294,15 @@ block:
   doAssert withHeader("* Day\n", "") == "* Day\n"
   doAssert withHeader("x\n", "plain header") == "plain header\nx\n"
   doAssert withHeader("plain header\nx\n", "plain header") == "plain header\nx\n"
+  # the ID drawer, first in the file, once
+  let withDrawer = withId("#+title: t\n* Day\n", "abc")
+  doAssert withDrawer == ":PROPERTIES:\n:ID:       abc\n:END:\n#+title: t\n* Day\n"
+  doAssert withId(withDrawer, "other") == withDrawer
+  doAssert withId(":properties:\n:id: x\n:end:\n", "y") == ":properties:\n:id: x\n:end:\n"
+  doAssert withId("* Day\n", "") == "* Day\n"
+  doAssert withId("", "abc") == ":PROPERTIES:\n:ID:       abc\n:END:\n"
+  # a drawer under a headline is not the file's: the file gets its own
+  doAssert withId("* Day\n:PROPERTIES:\n:ID: h\n:END:\n", "f").startsWith(":PROPERTIES:\n:ID:       f\n")
   # quick add with a time format that ends in a newline: the text goes under the headline
   doAssert quickEntry("*** =09:07=", "一行目\n二行目", true) == "*** =09:07=\n一行目\n二行目"
   doAssert quickEntry("*** =09:07=", "  \n", true) == "*** =09:07="
