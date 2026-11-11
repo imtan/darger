@@ -1148,6 +1148,22 @@ proc leavesHydra*(full: string): bool =
   ## An unbound key after a hydra prefix leaves it; built-in chords stay chords.
   full notin keymap and full notin builtinChords and sticky(full).len > 0
 
+proc overlayMove*(buf: Buffer, full, command: string): bool =
+  ## Cursor movement shared by the overlays (web page, RSS list, review); false when full is none.
+  result = true
+  if full in ["n", "C-n", "down", "p", "C-p", "up"] or command in ["next-line", "previous-line"]:
+    buf.vertical(if full in ["p", "C-p", "up"] or command == "previous-line": -1 else: 1)
+  elif full in ["C-v", "M-v", "pagedown", "pageup", " ", "backspace"]:
+    page(buf, if full in [" ", "C-v", "pagedown"]: "C-v" else: "M-v")
+  elif command in ["bob", "eob"] or full in ["M-<", "M->"]:
+    let line = if command == "eob" or full == "M->": buf.lines.high else: 0
+    buf.cursor = (line, 0)
+    buf.goal = -1
+  elif command in ["forward", "backward", "bol", "eol"]:
+    discard buf.command(command)
+  elif full == "C-l": recenter(buf)
+  else: result = false
+
 proc overlayKey*(c: string): string =
   ## Prefix, hydra and zoom keys shared by the overlays; "" when c was consumed.
   if c == "C-g" and prefix.len > 0:
@@ -1676,7 +1692,7 @@ proc langOf*(buf: Buffer): Lang =
     if slot.lang.name.len > 0 and slot.langPath == buf.path: return slot.lang
   detect(buf.path, if buf.lines.len > 0: $buf.lines[0] else: "")
 
-proc facesOf(buf: Buffer): seq[seq[Face]] =
+proc facesOf*(buf: Buffer): seq[seq[Face]] =
   ## Highlighting for a non-selected pane, cached per buffer version.
   if buf in paneFaces and paneFaces[buf].version == buf.version: return paneFaces[buf].faces
   for provider in faceProviders:

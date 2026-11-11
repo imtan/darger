@@ -3,7 +3,7 @@ import ../remote
 ## chat per project root with a live transcript (C-c c, chat.nim).
 import std/[os, osproc, tempfiles, strutils, unicode, times, tables, sequtils]
 from windy import closeIme
-import ../[core, buffer, buffers, render, lisp, review, chat, lsp, changes, ledger, wrap]
+import ../[core, buffer, buffers, render, lisp, review, chat, lsp, changes, ledger, wrap, syntax]
 
 when defined(windows):
   import std/[winlean, streams]
@@ -208,6 +208,8 @@ proc toggleSides() =
   for i, name in ["*review: before*", "*review: after*"]:
     sideBufs[i] = newBuffer()
     reg.add(sideBufs[i], name)
+    reg.slot(sideBufs[i]).lang = lang  # the reviewed file's language colours both sides
+    reg.slot(sideBufs[i]).langPath = sideBufs[i].path
   sidesOn = true
   reviewSuspended = true
   mode = ""
@@ -1115,17 +1117,28 @@ proc dispatchReview*(c: string) =
     finishReview()
     return
   else:
+    # Movement keys read the review as any buffer: the hunk stays where n / p left it.
+    if mode == "review" and reviewBuf != nil and overlayMove(reviewBuf, c, keymap.getOrDefault(c).symName): return
     echoLine = c & " is undefined"
     return
   if sidesOn: refreshSides()
   elif mode == "review": rebuildReview()
 
+const editingCommands = ["indent", "newline", "tab", "open-line", "delete", "backspace", "kill-line",
+  "kill-word", "backward-kill-word", "kill-region", "yank", "yank-pop", "clipboard-yank", "undo",
+  "transpose", "upcase", "downcase", "capitalize"]
+
 proc sideKey(c: string): bool =
   if mode.len > 0 or prefix.len > 0 or not sidesOn or b notin sideBufs: return false
   if c in ["n", "p", "y", "k", "u", "a", "A", "q", "|", "?", "C-g"]:
     dispatchReview(c)
-  # All other keys are consumed: these ordinary buffers are read-only.
-  true
+    return true
+  # Typed characters and editing keys are swallowed (these ordinary buffers are
+  # read-only); movement, scrolling, search, window and prefix keys run as usual.
+  if c.runeLen == 1 or keymap.getOrDefault(c).symName in editingCommands:
+    echoLine = "The comparison is read-only (n p y k u a A q | ?)"
+    return true
+  false
 
 keyFilters.add sideKey
 runeFilters.add proc(r: Rune): bool = sideKey($r)
@@ -1202,6 +1215,7 @@ interp.defPrimitive("vc-review", proc(args: seq[Value]): Value =
   nilValue())
 
 defineMode(core.Mode(name: "review", tag: "[Review]", editing: true, buffer: proc(): Buffer = reviewBuf,
+  faces: proc(): seq[seq[Face]] = (if reviewBuf == nil: @[] else: facesOf(reviewBuf)),  # the file's language
   colors: proc(): seq[int8] = reviewColors, bgs: proc(): seq[seq[int8]] = reviewBgs,
   message: proc(): string = reviewMessage() & (if echoLine != reviewMessage(): "  " & echoLine else: ""),
   onKey: dispatchReview, onClose: proc() = finishReview(true)))

@@ -140,22 +140,6 @@ proc webArrived*(f: Fetch) =
     renderer.top = 0
   elif overlayOf(mode) != "web": echoLine = "Page loaded (C-c w Enter)"  # shown behind a G prompt
 
-proc overlayMove*(buf: Buffer, full, command: string): bool =
-  ## Cursor movement shared by the web page and the RSS list; false when full is none.
-  result = true
-  if full in ["n", "C-n", "down", "p", "C-p", "up"] or command in ["next-line", "previous-line"]:
-    buf.vertical(if full in ["p", "C-p", "up"] or command == "previous-line": -1 else: 1)
-  elif full in ["C-v", "M-v", "pagedown", "pageup", " ", "backspace"]:
-    page(buf, if full in [" ", "C-v", "pagedown"]: "C-v" else: "M-v")
-  elif command in ["bob", "eob"] or full in ["M-<", "M->"]:
-    let line = if command == "eob" or full == "M->": buf.lines.high else: 0
-    buf.cursor = (line, 0)
-    buf.goal = -1
-  elif command in ["forward", "backward", "bol", "eol"]:
-    discard buf.command(command)
-  elif full == "C-l": recenter(buf)
-  else: result = false
-
 proc dispatchWeb*(c: string) =
   if c == "C-g" and webFetch != nil:
     webFetch.cancel()

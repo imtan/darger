@@ -59,6 +59,7 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 ## Log
 
+- 2026-11-11 review reading: cursor keys, C-n / C-p, C-v / M-v, M-< / M->, C-l move in the review overlay (overlayMove shared from core) and the side-by-side panes let every non-editing key through; the review and both sides are highlighted in the file's language (user: C-n / C-p and syntax colours in the understanding comparison)
 - 2026-11-11 understanding range: t in *understanding* (and understanding-range "tip") compares with the base's tip as `git diff base` does instead of the merge base; remembered with the base per repository (ledger loadBases third column, rangeFor; tledger)
 - 2026-11-08 novel: C-n / C-p move one visual column in vertical panes, as Left / Right do (user: C-n jumped a whole paragraph); C-f / C-b stay forward / backward char, which already reads down / up
 - 2026-11-08 journal IDs and Japanese names: org-journal-add-id 'auto gives journal files in org-roam-directory an ID drawer (new days, and existing days on the next C-c j / C-c q via withId); the date names use the macOS system language again when LANG is unset (system-time-locale still overrides)

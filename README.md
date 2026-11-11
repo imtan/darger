@@ -408,7 +408,9 @@ u undoes the decision, n / p move, l lists the hunks (`3  -1 +2  [taken]  first
 line`) to jump to one, a takes every pending hunk and finishes, A keeps every
 pending one and finishes, w applies the decisions made so far and keeps reviewing
 the rest, q or Enter applies the decisions (pending hunks stay as they are), C-g
-cancels, ? lists the keys. Within a pending hunk, the k-th removed and added lines
+cancels, ? lists the keys. The cursor keys, C-n / C-p, C-v / M-v, M-< / M-> and C-l
+read the review as any buffer (the hunk stays where n / p left it), and the text is
+coloured in the file's language. Within a pending hunk, the k-th removed and added lines
 are compared and the part that differs is highlighted brighter, like
 diff-refine-hunk. The echo line names the source, the hunk and its `-removed
 +added` line counts.
@@ -416,7 +418,9 @@ diff-refine-hunk. The echo line names the source, the hunk and its `-removed
 `|` toggles two read-only panes: `*review: before*` on the left and
 `*review: after*` on the right, with blank padding to align the lines. n / p move
 both panes to the current hunk; y / k / u decide, a / A / q finish, C-g cancels,
-and ? shows help. Press `|` again to return to the unified review. A split made
+and ? shows help; movement, scrolling, search, window and prefix keys work as in any
+buffer, only editing keys are refused, and both sides are coloured in the file's
+language. Press `|` again to return to the unified review. A split made
 by this toggle is closed when leaving; existing panes are restored.
 
 e opens the current hunk's proposed lines as plain text in an editable `*hunk*`
