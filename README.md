@@ -479,7 +479,9 @@ commit (`:REV:`), so the debt is kept per branch: `M-x understanding-debt` lists
 current branch's open entries (`understanding-debt-all` every branch's).
 `M-x branch-debt` turns the branch's own work into debt: the files changed since the
 merge base with the base branch (`main`, `master` or `develop`, or
-`understanding-base-branch`) that no DONE entry of this branch attests to at their
+`understanding-base-branch`), or from the base's tip as `git diff base` shows them when
+`understanding-range` is `"tip"` (default `"merge-base"`; `t` in `*understanding*`
+toggles it and remembers it with the base), that no DONE entry of this branch attests to at their
 current commit, with their `+/-` counts and `(uncommitted)`; Enter opens the file
 in a comparison read base to branch (removed lines are the base's, added ones
 yours), where nothing is taken: x explains, X asks, U attests, and q records every

@@ -161,24 +161,32 @@ proc debtCount*(text: string): tuple[debt, understood: int] =
     if l.startsWith("* TODO "): inc result.debt
     elif l.startsWith("* DONE "): inc result.understood
 
-proc loadBases*(path: string): seq[tuple[root, base: string]] =
-  ## The base branch chosen for each repository, one `root<TAB>base` per line.
+proc loadBases*(path: string): seq[tuple[root, base, range: string]] =
+  ## The base branch chosen for each repository, one `root<TAB>base[<TAB>range]` per
+  ## line; range is "tip" (the diff against the base's tip, as `git diff base`) or
+  ## "merge-base" (the branch's own changes since it forked), the default when absent.
   var text: string
   try: text = readFile(path)
   except CatchableError: return
   for l in text.splitLines:
     let parts = l.split('\t')
-    if parts.len == 2 and parts[0].len > 0 and parts[1].len > 0: result.add (parts[0], parts[1])
+    if parts.len >= 2 and parts[0].len > 0 and parts[1].len > 0:
+      result.add (parts[0], parts[1], (if parts.len >= 3 and parts[2] == "tip": "tip" else: "merge-base"))
 
-proc baseFor*(bases: seq[tuple[root, base: string]], root: string): string =
-  for (r, b) in bases:
+proc baseFor*(bases: seq[tuple[root, base, range: string]], root: string): string =
+  for (r, b, _) in bases:
     if r == root: return b
 
-proc rememberBase*(path, root, base: string) =
+proc rangeFor*(bases: seq[tuple[root, base, range: string]], root: string): string =
+  ## "" when the repository has no remembered base.
+  for (r, _, range) in bases:
+    if r == root: return range
+
+proc rememberBase*(path, root, base: string, range = "merge-base") =
   var bases = loadBases(path).filterIt(it.root != root)
-  bases.insert((root, base), 0)
+  bases.insert((root, base, (if range == "tip": "tip" else: "merge-base")), 0)
   if bases.len > 100: bases.setLen(100)
-  try: writeFile(path, bases.mapIt(it.root & "\t" & it.base).join("\n") & "\n")
+  try: writeFile(path, bases.mapIt(it.root & "\t" & it.base & "\t" & it.range).join("\n") & "\n")
   except CatchableError: discard
 
 proc glossaryTerms*(explanation: string): seq[tuple[term, definition: string]] =

@@ -892,12 +892,19 @@ type BranchFile* = object
   dirty*: bool        ## uncommitted changes in the working tree
   understood*: bool   ## a DONE entry of the branch attests to it at its current commit
 
-proc branchChanges*(root, branch, base: string): tuple[mergeBase: string, files: seq[BranchFile], error: string] =
-  ## The branch's work: files changed since the merge base with `base`, with +/- line
-  ## counts, in three git calls for the whole list (numstat, the dirty files, and the
-  ## last-change commits of the files the ledger knows), so large branches stay quick.
+proc tipRange*(): bool =
+  ## understanding-range 'tip: compare with the base's tip, as `git diff base`; the
+  ## default 'merge-base compares with the point the branch forked from.
+  let v = interp.env.values.getOrDefault("understanding-range")
+  v != nil and v.kind in [vString, vSymbol] and v.str == "tip"
+
+proc branchChanges*(root, branch, base: string, tip = false): tuple[mergeBase: string, files: seq[BranchFile], error: string] =
+  ## The branch's work: files changed since the merge base with `base` (or, with tip,
+  ## from the base's tip itself, as `git diff base` shows), with +/- line counts, in
+  ## three git calls for the whole list (numstat, the dirty files, and the last-change
+  ## commits of the files the ledger knows), so large branches stay quick.
   result.mergeBase = base
-  if branch != base:
+  if branch != base and not tip:
     let (mb, ok) = git(root, "merge-base " & quoteShell(base) & " HEAD")
     if ok and mb.len > 0: result.mergeBase = mb
   let (numstat, ok) = git(root, "diff --numstat " & quoteShell(result.mergeBase))
@@ -967,7 +974,7 @@ interp.defPrimitive("branch-debt", proc(args: seq[Value]): Value =
   if base.len == 0:
     echoLine = "No base branch found (setq understanding-base-branch \"name\")"
     return nilValue()
-  let changes = branchChanges(branchRoot, branch, base)
+  let changes = branchChanges(branchRoot, branch, base, tipRange())
   if changes.error.len > 0:
     echoLine = "git: " & changes.error
     return nilValue()
@@ -1243,6 +1250,7 @@ defaults.add """
 (global-set-key "C-c a" 'agent-prompt)
 (setq understanding-ledger "~/.darger-understanding.org")
 (setq understanding-base-branch nil)
+(setq understanding-range "merge-base")
 (setq glossary-file "~/.darger-glossary.org")
 (global-set-key "C-c c" 'agent-chat)
 (setq agent-command "claude -p --output-format text")

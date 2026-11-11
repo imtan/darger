@@ -443,7 +443,8 @@ x で今のハンクの説明をエージェントに求めます (何を変え�
 入るので、負債はブランチごとに持てます。`M-x understanding-debt` は今のブランチの未返済分を一覧し
 (`understanding-debt-all` で全ブランチ)、`M-x branch-debt` はブランチ自身の仕事を負債にします:
 base ブランチ (`main` / `master` / `develop`、または `understanding-base-branch`) との merge base
-から変わったファイルのうち、今のコミットでこのブランチの DONE エントリがないものを `+/-` 行数と
+から変わったファイル (`understanding-range` が `"tip"` なら `git diff base` と同じく base の先端との差分。
+既定は `"merge-base"`。`*understanding*` の `t` で切り替え、base と一緒に記憶) のうち、今のコミットでこのブランチの DONE エントリがないものを `+/-` 行数と
 `(uncommitted)` 付きで一覧。Enter でそのファイルを base → ブランチの向きで読む比較を開きます (削除行が base、追加行が自分の
 変更。採用の操作はなし)。x で説明、X で質問、U で自己申告、q で全ハンク (理解済みか否か) を台帳に
 記録します。もう一度実行すると申告済みのファイルは

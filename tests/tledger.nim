@@ -50,9 +50,13 @@ block baseMemory:
   rememberBase(p, "/r/one", "develop")
   rememberBase(p, "/r/two", "main")
   rememberBase(p, "/r/one", "release")      # replaced, moved to the top
+  rememberBase(p, "/r/three", "origin/develop", "tip")
   let bases = loadBases(p)
-  doAssert bases == @[("/r/one", "release"), ("/r/two", "main")], $bases
+  doAssert bases == @[("/r/three", "origin/develop", "tip"), ("/r/one", "release", "merge-base"), ("/r/two", "main", "merge-base")], $bases
   doAssert baseFor(bases, "/r/one") == "release" and baseFor(bases, "/r/none") == ""
+  doAssert rangeFor(bases, "/r/three") == "tip" and rangeFor(bases, "/r/one") == "merge-base" and rangeFor(bases, "/r/none") == ""
+  writeFile(p, "/old\tmain\n")  # a line from before the range column
+  doAssert loadBases(p) == @[("/old", "main", "merge-base")]
   removeFile(p)
 
 doAssert glossaryTerms("text\n- okuri :: kana after the stem\n  - nested :: ignored?\n- bad line\n- x ::\n") ==

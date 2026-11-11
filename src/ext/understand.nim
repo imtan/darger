@@ -55,14 +55,15 @@ proc buildUnderstanding(keepLine = -1) =
     if base.len == 0:
       add("Branch " & ubranch & ": no base branch chosen (b)", Row(), fKeyword)
     else:
-      let changes = branchChanges(uroot, ubranch, base)
+      let changes = branchChanges(uroot, ubranch, base, tipRange())
       let mergeBase = changes.mergeBase
       var todo, done: seq[tuple[rel, text: string]]
       for f in changes.files:
         let text = "    " & f.rel & "   " & plusMinus(f) & (if f.dirty: "   (uncommitted)" else: "")
         if f.understood: done.add (f.rel, text)
         else: todo.add (f.rel, text)
-      add("Branch " & ubranch & " vs " & base & (if changes.error.len > 0: "   git: " & changes.error else: ""), Row(), fKeyword)
+      add("Branch " & ubranch & " vs " & base & (if tipRange(): "  (git diff " & base & ")" else: "  (since the merge base)") &
+        (if changes.error.len > 0: "   git: " & changes.error else: ""), Row(), fKeyword)
       add("  To understand (" & $todo.len & ")", Row(), fConstant)
       for (rel, text) in todo:
         add(text, Row(kind: rkFile, rel: rel, base: mergeBase), (if "(uncommitted)" in text: fAnsi3 else: fPlain))
@@ -115,7 +116,7 @@ definePrompt(Prompt(kind: "understanding-base", text: true,
   onAccept: proc(value: string): bool =
     if value.len == 0: return true
     ubase = value
-    rememberBase(basesPath(), uroot, value)
+    rememberBase(basesPath(), uroot, value, if tipRange(): "tip" else: "merge-base")
     interp.env.values["understanding-base-branch"] = stringValue(value)  # branch-debt follows, this session
     buildUnderstanding()
     echoLine = "Comparing with " & value & " (remembered for " & extractFilename(uroot) & "; b changes it)"
@@ -128,7 +129,11 @@ proc openUnderstanding*() =
   uroot = currentRoot()
   ubranch = branchOf(uroot)
   ubase = settingBase()
-  if ubase.len == 0: ubase = baseFor(loadBases(basesPath()), uroot)
+  if ubase.len == 0:
+    let bases = loadBases(basesPath())
+    ubase = baseFor(bases, uroot)
+    if ubase.len > 0:  # the range remembered with the base, for this session
+      interp.env.values["understanding-range"] = stringValue(rangeFor(bases, uroot))
   buildUnderstanding()
   switchTo(ubuf)
   if ubase.len == 0 and ubranch.len > 0: chooseBase(first = true)
@@ -187,6 +192,13 @@ proc understandingKey(c: string): bool =
       except CatchableError as e: echoLine = e.msg
     else: echoLine = "x explains an open debt"
   of "b": chooseBase()
+  of "t":
+    let tip = not tipRange()
+    interp.env.values["understanding-range"] = stringValue(if tip: "tip" else: "merge-base")
+    if ubase.len > 0: rememberBase(basesPath(), uroot, ubase, if tip: "tip" else: "merge-base")
+    buildUnderstanding(here)
+    echoLine = if tip: "Comparing with the tip of " & ubase & ", as git diff " & ubase & " (t: since the merge base)"
+               else: "Comparing since the merge base with " & ubase & " (t: the tip, as git diff)"
   of "U":
     if row.kind == rkFile:
       attestFile(row.rel, row.base)
@@ -200,7 +212,7 @@ proc understandingKey(c: string): bool =
     buildUnderstanding(here)
     echoLine = "Rebuilt"
   of "q": leaveUnderstanding()
-  of "?": echoLine = "Enter: compare the file with the base / go to the debt   x: explain debt   b: base branch   U: whole file understood   o: the ledger   g: rebuild   q: leave"
+  of "?": echoLine = "Enter: compare the file with the base / go to the debt   x: explain debt   b: base branch   t: tip / merge base   U: whole file understood   o: the ledger   g: rebuild   q: leave"
   else: return false
   true
 keyFilters.add understandingKey
