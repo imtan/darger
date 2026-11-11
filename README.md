@@ -190,8 +190,7 @@ file visited from the command line, C-x C-f or `find-file`, and every file saved
 moved to the top. `*scratch*` is never recorded, and errors reading or writing the
 list are ignored.
 
-F1 (or `M-x help`) toggles the built-in manual (Japanese) outside prompts and
-review. In it, navigation keys and C-v / M-v / PageDown / PageUp / C-l scroll; q,
+F1 (or `M-x help`) toggles the built-in manual (Japanese) outside prompts. In it, navigation keys and C-v / M-v / PageDown / PageUp / C-l scroll; q,
 Enter, Escape, C-g or F1 close it and C-x C-c quits. The edited buffer is never
 touched.
 
@@ -266,7 +265,7 @@ blue-cooler and magenta-warmer, as in Emacs). The tokenizer is table-driven and
 approximate: block comments, multi-line strings, Markdown fences and Org
 `#+begin_src` blocks carry across lines, but there is no real parsing. The whole
 buffer is re-highlighted after each change (a few ms for 3000 lines); the help,
-dashboard and review overlays stay plain.
+dashboard overlays stay plain.
 
 Like `show-paren-mode`, the bracket after point, or else the closing bracket before
 it, is highlighted together with its partner: `()`, `[]`, `{}` and `（）「」『』【】`.
@@ -276,7 +275,7 @@ its own, so a mismatched `( [ ) ]` still pairs, and the search stops 5000 lines 
 File buffers and `*scratch*` show line numbers in a gutter on the left: right-aligned,
 at least 3 digits wide, dim (the theme's `lineNo`) with the cursor's line bright
 (`lineNoNow`), then 2 empty cells. The overlays (help, dashboard, buffer list, filer,
-web page, RSS list, review) have none.
+web page, RSS list) have none.
 
 CJK and the supported emoji ranges occupy two cells; combining marks, variation
 selectors, joiners and skin-tone modifiers occupy zero cells. U+2600..27BF stays
@@ -400,6 +399,12 @@ and gives `- `, `* ` and numbered list items a hanging indent. The original text
 is retained; resizing alone does not reflow an already displayed buffer.
 
 ## Review
+
+Reviews use the ordinary read-only buffer `*review*`, with review keys local to
+that buffer. C-x b, C-x o, C-x C-f, M-x, isearch and all movement keys remain
+available. Leaving the buffer keeps the review alive; returning resumes it.
+Finishing returns to the target buffer. Killing `*review*` cancels the review;
+killing its target also cancels it. The review buffer has no file path.
 
 A review shows the buffer with another version's changes as hunks, the way the
 agent's edits are reviewed: removed lines in red, added in green, the current hunk
@@ -772,7 +777,7 @@ own buffer, point and scroll (a buffer shown in two windows has a point in each)
 and its own mode line; the selected window's is bright, the others dimmed, and a `│`
 column separates side-by-side windows. A split is refused when a half would be
 smaller than 3 rows or 10 columns. The selected window is the one every command,
-prompt, overlay (dired, eww, the manual, a review) and the cursor box act in; the
+prompt, overlay (dired, eww, the manual) and the cursor box act in; the
 others just show their buffer with its highlighting and folds. Killing a buffer
 shown in another window puts the most recently used buffer there. The prompt popup
 and the echo line belong to the frame, not to a window.
@@ -1215,7 +1220,16 @@ from the file goes back to its default, while feeds, LSP servers and `defun`s al
 added stay until restart. The echo line reports `Loaded ~/.darger.el` or the error, and
 `No ~/.darger.el (C-c , creates it)` at every start without one;
 `M-x load-init` reloads it by hand. C-c , opens it
-(`(find-file "~/.darger.el")`, which switches to its buffer when it is already open). Besides `global-set-key`, `setq`, `message`,
+(`(find-file "~/.darger.el")`, which switches to its buffer when it is already open).
+
+`(local-set-key "n" 'next-line)` binds a key only in the current buffer; symbols,
+lambdas and multi-key chords work as with `global-set-key`. Local bindings take
+precedence over global bindings and disappear when the buffer is killed.
+`(buffer-read-only t)` refuses typing and built-in editing commands in the current
+buffer; `(buffer-read-only nil)` enables editing again. Movement, search and
+extension commands remain available.
+
+Besides `global-set-key`, `setq`, `message`,
 `insert` and `command`, it can use `(load-theme "catppuccin")`, `(set-font "path")`,
 `(set-fallback-fonts "path;path")`, `(find-file "path")`
 (`~` expands), `save-buffer`, `kill-emacs`, `skk-mode`, `zoom-in` / `zoom-out` /

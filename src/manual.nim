@@ -147,6 +147,8 @@ C-c G g                  agent-chat (既存のチャット)
                          翻訳・校正は置換、要約・キーワード・タイトルは直後に追記する案をレビュー
                          ブログ下書きは別ウィンドウの *agent draft*。元の文章は変更しない
 C-c a                    agent-command に指示を送る (結果はレビューで y/k/u/n/p/l/w/a/A/q、? でキー一覧)
+                         *review* は読み取り専用。キーはバッファ内だけ有効。C-x b/o、C-x C-f、M-x、検索も使える
+                         離れてもレビューは残り、戻れば続行。*review* または対象バッファの破棄で中止
                          矢印 / C-n C-p / C-v M-v / C-l は普通に移動 (ハンクは n/p の位置のまま)。言語の色付き
   | (レビュー中)         左に元の文、右に提案を行位置を揃えて表示。n/p、y/k/u、a/A/q、C-g、?。再度 | で戻る
                          移動・検索・ウィンドウのキーは普通に使え、編集キーだけ拒否。両側とも言語の色付き
@@ -293,6 +295,8 @@ M-:                      Lisp 式を評価
 
 設定ファイル: ~/.darger.el
   (global-set-key "C-c f" 'forward-word)
+  (local-set-key "n" 'next-line)  ; 現在のバッファだけ。グローバルな割当より優先
+  (buffer-read-only t)           ; 文字入力・編集を拒否。nil で解除。移動や検索は可能
   (setq frame-alpha 0.85)  ウィンドウ全体を半透明に (macOS。1 で不透明)
   (setq agent-command "...")
   (load-theme "catppuccin")    ; 既定は modus-vivendi

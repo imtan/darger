@@ -34,6 +34,7 @@ var
   agentOutput*: ChatOutput
   reviewState*: Review
   reviewBuf*: Buffer
+  reviewTarget*: Buffer
   reviewColors*: seq[int8]
   reviewBgs*: seq[seq[int8]]
   currentHunk*, savedTop*, savedLeft*: int
@@ -50,11 +51,13 @@ else:
 
 var
   reviewSource = "Agent"  # what the proposed text is: the agent, the file on disk, git HEAD, a file
+  reviewAgent: Buffer         # the review instance awaiting an agent reply
   reviewRequest = false   # the running agent answers a request for changes to the open review
   reviewExplain = false   # the running agent explains a hunk (x)
   reviewAsk = false       # the running agent answers a question about a hunk (X)
   reviewReadOnly = false  # a comparison (branch base -> buffer): nothing is taken, only understood
-  afterReview*: proc()    # run once when the review closes (the understanding buffer comes back)
+  afterReview*: proc()    # run once when the next review closes (the understanding buffer comes back)
+  reviewAfter: proc()
   onAgentResult*: proc(text: string)  # takes the next one-shot agent's output instead of a review
   askQuestion = ""
   explainHunk = -1
@@ -64,15 +67,27 @@ var
   hunkBuf: Buffer
   reviewPane: Pane
   reviewSuspended = false
+  killingReview = false
   sidesOn = false
   sidesSplit = false
   sideBufs: array[2, Buffer]
   sidePanes: array[2, Pane]
   sideViews: array[2, SideView]
-  sideOriginal: Buffer
   sideReused: Pane
   sideOther: Pane
   explainText: string         # unwrapped source, independent of pane width
+
+proc dispatchReview*(c: string)
+proc finishReview*(cancel = false)
+proc reviewOpen*(): bool = reviewBuf != nil
+proc reviewCurrent*(): bool = reviewOpen() and (b == reviewBuf or (sidesOn and b in sideBufs))
+
+proc reviewKeys(buf: Buffer, sides = false) =
+  setReadOnly(buf, true)
+  let keys = if sides: "n p y k u a A q | ? C-g"
+    else: "y k u n p l a A w e r x X U | q ? enter C-m C-j C-g"
+  for key in strutils.splitWhitespace(keys):
+    setLocalKey(buf, key, interp.evalString("(lambda () (review-key \"" & key & "\"))", "<review-keys>"))
 
 proc resetUnderstanding() =
   explained = newSeq[bool](reviewState.hunks.len)
@@ -121,15 +136,17 @@ proc recordUnderstanding() =
   ## every hunk (the branch's own work, understood or not), with the file's commit.
   let path = ledgerPath()
   if path.len == 0 or reviewSource notin ["Agent", "file on disk", "branch base"]: return
-  let root = currentRoot()
+  let root = rootFromDir(if reviewTarget.path.len > 0:
+    (if isRemote(reviewTarget.path): remoteParent(reviewTarget.path) else: parentDir(reviewTarget.path))
+    else: getCurrentDir())
   let branch = branchOf(root)
-  let rev = if b.path.len > 0: fileRev(root, b.path) else: ""
+  let rev = if reviewTarget.path.len > 0: fileRev(root, reviewTarget.path) else: ""
   var entries: seq[LedgerEntry]
   var shift = 0
   for i, h in reviewState.hunks:
     if reviewReadOnly or reviewState.decisions[i] == accepted:
       let (removed, added) = reviewState.hunkText(i)
-      entries.add LedgerEntry(file: (if b.path.len > 0: b.path else: "(unnamed)"),
+      entries.add LedgerEntry(file: (if reviewTarget.path.len > 0: reviewTarget.path else: "(unnamed)"),
         line: (if reviewReadOnly: h.startB + 1 else: h.startA + shift + 1),
         project: extractFilename(root), source: reviewSource, removed: removed, added: added, branch: branch, rev: rev,
         explanation: (if i < explained.len and explained[i]: explanations[i] else: ""), at: now())
@@ -148,13 +165,19 @@ proc reviewMessage*(): string =
 
 proc rebuildReview*() =
   let display = reviewState.view(currentHunk)
-  reviewBuf = newBuffer(display.text)
-  reviewBuf.path = b.path
+  reviewBuf.splice(0, reviewBuf.text.runeLen, display.text)
+  reviewBuf.modified = false
   reviewColors = display.colors
   reviewBgs = display.bgs
   reviewBuf.cursor = (min(display.starts[currentHunk], reviewBuf.lines.high), 0)
-  renderer.top = max(0, reviewBuf.cursor.line - 3)  # a few lines of context above the hunk
-  renderer.left = 0
+  for p in layout.leaves:
+    if p.buf == reviewBuf:
+      p.cursor = reviewBuf.cursor
+      p.top = max(0, reviewBuf.cursor.line - 3)
+      p.left = 0
+  if b == reviewBuf:
+    renderer.top = max(0, reviewBuf.cursor.line - 3)
+    renderer.left = 0
   echoLine = reviewMessage()
 
 proc refreshSides() =
@@ -179,8 +202,8 @@ proc closeSides() =
   if not sidesOn: return
   sidesOn = false
   reviewSuspended = false
-  selectPane(reviewPane)
-  switchTo(sideOriginal)
+  if reviewPane in layout.leaves: selectPane(reviewPane)
+  switchTo(reviewBuf)
   if sidesSplit:
     deleteOtherPanes()
   elif sideReused in layout.leaves:
@@ -194,11 +217,10 @@ proc closeSides() =
 proc toggleSides() =
   if sidesOn:
     closeSides()
-    mode = "review"
+    switchTo(reviewBuf)
     rebuildReview()
     return
   reviewPane = pane
-  sideOriginal = b
   sidesSplit = layout.leaves.len == 1
   let other = otherPaneFor()
   if other == nil or other == reviewPane: return
@@ -208,6 +230,7 @@ proc toggleSides() =
   for i, name in ["*review: before*", "*review: after*"]:
     sideBufs[i] = newBuffer()
     reg.add(sideBufs[i], name)
+    reviewKeys(sideBufs[i], true)
     reg.slot(sideBufs[i]).lang = lang  # the reviewed file's language colours both sides
     reg.slot(sideBufs[i]).langPath = sideBufs[i].path
   sidesOn = true
@@ -219,9 +242,11 @@ proc toggleSides() =
   refreshSides()
 
 bandProviders.add proc(buf: Buffer): seq[int8] =
+  if buf == reviewBuf: return reviewColors
   for i in 0..1:
     if sidesOn and buf == sideBufs[i]: return sideViews[i].colors
 backProviders.add proc(buf: Buffer): seq[seq[int8]] =
+  if buf == reviewBuf: return reviewBgs
   for i in 0..1:
     if sidesOn and buf == sideBufs[i]: return sideViews[i].bgs
 
@@ -229,20 +254,35 @@ proc beginReviewText(proposed, source: string)  # forward: the review replaced i
 
 proc openReview() =
   reviewSuspended = false
-  closeOverlay()  # the agent finished while the manual or dashboard was open
+  if mode in modes: closeOverlay()  # close an unrelated view before showing the buffer
   b.finish()
   savedTop = renderer.top
   savedLeft = renderer.left
   currentHunk = 0
-  mode = "review"
+  reviewAfter = afterReview
+  afterReview = nil
+  reviewTarget = b
+  reviewBuf = newBuffer()
+  reg.add(reviewBuf, "*review*")
+  reg.slot(reviewBuf).lang = lang
+  reg.slot(reviewBuf).langPath = ""
+  reviewKeys(reviewBuf)
+  mode = ""
+  switchTo(reviewBuf)
+  reviewPane = pane
   prefix = ""
   matchStart = -1
-  window.closeIme()
+  if window != nil: window.closeIme()
   rebuildReview()
 
 proc beginReview*(proposed: string, source = "Agent") =
   ## A hunk-by-hunk review of the current buffer against `proposed`: y takes the
   ## proposed version of a hunk, k keeps the buffer's. Any source can propose text.
+  if reviewOpen():
+    let nextTarget = if reviewCurrent(): reviewTarget else: b
+    reviewAfter = nil
+    finishReview(true)
+    switchTo(nextTarget)
   reviewSuspended = false
   reviewSource = source
   reviewReadOnly = false
@@ -256,6 +296,11 @@ proc beginReview*(proposed: string, source = "Agent") =
 proc beginComparison*(base: string, source: string) =
   ## The buffer as the outcome of work from `base` (a branch's base version): hunks
   ## read base -> buffer, nothing is taken; x, X and U build understanding, q records.
+  if reviewOpen():
+    let nextTarget = if reviewCurrent(): reviewTarget else: b
+    reviewAfter = nil
+    finishReview(true)
+    switchTo(nextTarget)
   reviewSuspended = false
   reviewSource = source
   reviewReadOnly = true
@@ -272,10 +317,7 @@ proc replaceReview(next: Review, source: string, at = 0) =
   reviewState = next
   resetUnderstanding()
   if reviewState.hunks.len == 0:
-    mode = ""
-    reviewBuf = nil
-    renderer.top = savedTop
-    renderer.left = savedLeft
+    finishReview(true)
     echoLine = source & ": no changes"
   else:
     currentHunk = min(at, reviewState.hunks.high)
@@ -283,14 +325,14 @@ proc replaceReview(next: Review, source: string, at = 0) =
 
 proc beginReviewText(proposed, source: string) =
   ## The open review's proposal replaced (decisions start over); closes it when nothing differs.
-  replaceReview(newReview(b.text, proposed), source)
+  replaceReview(newReview(reviewTarget.text, proposed), source)
 
 proc resumeHunkReview(): bool =
   result = reviewSuspended and reviewBuf != nil and reviewPane in layout.leaves
   reviewSuspended = false
   if result:
     selectPane(reviewPane)
-    mode = "review"
+    switchTo(reviewBuf)
 
 proc editHunk() =
   reviewPane = pane
@@ -299,9 +341,7 @@ proc editHunk() =
   hunkBuf = newBuffer(reviewState.hunkText(currentHunk).added)
   reg.add(hunkBuf, "*hunk*")
   reviewSuspended = true
-  mode = ""  # overlays follow the selected pane; edit as an ordinary buffer
-  renderer.top = savedTop
-  renderer.left = savedLeft
+  mode = ""
   selectPane(other)
   switchTo(hunkBuf)
   echoLine = "Edit the proposed lines; C-c C-c applies, C-c C-k cancels"
@@ -339,20 +379,18 @@ killHooks.add proc(buf: Buffer) =
   if buf == hunkBuf:
     hunkBuf = nil
     if resumeHunkReview(): rebuildReview()
-  elif reviewSuspended and reviewPane != nil and buf == reviewPane.buf:
-    reviewSuspended = false
 
 proc applyDecisions(): int =
   ## The accepted hunks into the buffer; returns how many.
   let text = reviewState.appliedText()
   for decision in reviewState.decisions:
     if decision == accepted: inc result
-  if text != b.text:
-    let point = b.offset(b.cursor)
-    b.snapshot()
-    b.splice(0, b.text.runeLen, text)
-    b.cursor = b.point(point)
-    b.finish()
+  if text != reviewTarget.text:
+    let point = reviewTarget.offset(reviewTarget.cursor)
+    reviewTarget.snapshot()
+    reviewTarget.splice(0, reviewTarget.text.runeLen, text)
+    reviewTarget.cursor = reviewTarget.point(point)
+    reviewTarget.finish()
 
 proc applyAndContinue() =
   ## w: the decisions so far go into the buffer; the pending hunks stay under review.
@@ -360,12 +398,11 @@ proc applyAndContinue() =
   let taken = applyDecisions()
   let proposed = reviewState.proposedText()
   let source = reviewSource
-  reviewState = newReview(b.text, proposed)
+  reviewState = newReview(reviewTarget.text, proposed)
   resetUnderstanding()
   reviewSource = source
   if reviewState.hunks.len == 0:
-    mode = ""
-    reviewBuf = nil
+    finishReview(true)
     echoLine = "Applied " & $taken & " hunks; nothing left to review"
     return
   currentHunk = min(currentHunk, reviewState.hunks.high)
@@ -373,6 +410,7 @@ proc applyAndContinue() =
   echoLine = "Applied " & $taken & " hunks; " & $reviewState.hunks.len & " left"
 
 proc finishReview*(cancel = false) =
+  if not reviewOpen(): return
   closeSides()  # decisions and ledger entries belong to the original buffer
   reviewSuspended = false
   if cancel: echoLine = "Review cancelled"
@@ -387,16 +425,46 @@ proc finishReview*(cancel = false) =
     recordUnderstanding()
     echoLine = "Applied " & $applyDecisions() & " of " & $total & " hunks"
   mode = ""
-  reviewBuf = nil
+  let old = reviewBuf
+  reviewBuf = nil  # clear before kill hooks run
+  if reviewTarget in reg: switchTo(reviewTarget)
+  reviewTarget = nil
+  if not killingReview: killBuffer(old)
   reviewColors = @[]
   reviewBgs = @[]
   reviewState = Review()
+  resetUnderstanding()
   renderer.top = savedTop
   renderer.left = savedLeft
-  if afterReview != nil:
-    let f = afterReview
-    afterReview = nil
+  if reviewAfter != nil:
+    let f = reviewAfter
+    reviewAfter = nil
     f()
+
+killHooks.add proc(buf: Buffer) =
+  if reviewOpen() and buf == reviewBuf:
+    # The caller will remove this buffer; avoid recursively killing it.
+    killingReview = true
+    try: finishReview(true)
+    finally: killingReview = false
+  elif reviewOpen() and buf == reviewTarget:
+    reviewAfter = nil
+    finishReview(true)
+
+# facesOf also consults providers: let its nested call reach language highlighting.
+var reviewFacesActive = false
+faceProviders.add proc(buf: Buffer): seq[seq[Face]] =
+  if buf == reviewBuf and not reviewFacesActive:
+    reviewFacesActive = true
+    try: result = facesOf(buf)
+    finally: reviewFacesActive = false
+
+modeNameProviders.add proc(buf: Buffer): string =
+  if buf == reviewBuf: "Review" else: ""
+messageHooks.add proc(): string =
+  if b == reviewBuf and reviewOpen() and mode.len == 0:
+    reviewMessage() & (if echoLine.len > 0 and echoLine != reviewMessage(): "  " & echoLine else: "")
+  else: ""
 
 proc cleanAgentFiles*() =
   if agentDir.len == 0: return
@@ -626,6 +694,11 @@ proc pollAgent*(): bool =
         let f = onAgentResult
         onAgentResult = nil
         f(text)
+      elif (reviewAsk or reviewExplain or reviewRequest) and reviewBuf != reviewAgent:
+        reviewAsk = false
+        reviewExplain = false
+        reviewRequest = false
+        echoLine = "Agent answered, but the review was closed"
       elif reviewAsk:
         reviewAsk = false
         if explainHunk in 0..<explained.len:
@@ -661,10 +734,10 @@ proc pollAgent*(): bool =
       elif reviewRequest:
         # The answer to a request for changes: the new proposal replaces the review's.
         reviewRequest = false
-        if mode == "review" and b == agentBuf:
+        if reviewOpen() and reviewTarget == agentBuf:
           let at = currentHunk
           beginReviewText(text, "Agent")
-          if mode == "review":
+          if reviewOpen():
             currentHunk = min(at, reviewState.hunks.high)
             rebuildReview()
             echoLine = "Agent changed the proposal: " & $reviewState.hunks.len & " hunks"
@@ -685,27 +758,24 @@ const explainInstructions =
     "or technical term the hunk relies on as Org description items, one per line, exactly in the form `- term :: definition`. " &
     "Output plain text with those items; no code fences, no headings.\n"
 
-proc reviewOpen(): bool =
-  ## The review is up: as the overlay, as the side-by-side panes, or under one of its
-  ## own prompts (X asks, r requests changes), whose Enter runs before the overlay
-  ## takes the keys back.
-  mode == "review" or sidesOn or (mode in prompts and prompts[mode].over == "review")
-
 proc explainCurrentHunk*() =
   ## x: the agent explains the current hunk (what, why, and the domain terms in it as
   ## `- term :: definition`); the hunk counts as understood when taken afterwards.
-  if not reviewOpen(): raise newException(ValueError, "No review is open")
+  if not reviewCurrent():
+    echoLine = "No review is open"
+    return
   if agentProcess != nil: raise newException(ValueError, "Agent already running")
   let command = interp.env.values["agent-command"].asString
   if strutils.strip(command).len == 0: raise newException(ValueError, "agent-command is empty")
   let (removed, added) = reviewState.hunkText(currentHunk)
-  agentBuf = b
+  agentBuf = reviewTarget
+  reviewAgent = reviewBuf
   reviewExplain = true
   explainHunk = currentHunk
   launchAgent(command,
     "A reviewer is deciding whether to take one hunk of a proposed change to a text file and wants to understand it. " &
     explainInstructions &
-    "File path: " & (if b.path.len > 0: b.path else: "(unnamed)") & "\n" &
+    "File path: " & (if reviewTarget.path.len > 0: reviewTarget.path else: "(unnamed)") & "\n" &
     "--- HUNK: LINES REMOVED ---\n" & removed & "--- HUNK: LINES ADDED ---\n" & added &
     "--- WHOLE PROPOSED FILE (context) ---\n" & reviewState.proposedText() & "\n--- END ---\n")
   showExplain("Explaining hunk " & $(currentHunk + 1) & "...")
@@ -759,13 +829,16 @@ interp.defPrimitive("understanding-repay", proc(args: seq[Value]): Value =
 proc askAboutHunk*(question: string) =
   ## X: a follow-up question about the current hunk; the answer joins the explanation
   ## shown in *explain* and recorded in the ledger.
-  if not reviewOpen(): raise newException(ValueError, "No review is open")
+  if not reviewCurrent():
+    echoLine = "No review is open"
+    return
   if agentProcess != nil: raise newException(ValueError, "Agent already running")
   let command = interp.env.values["agent-command"].asString
   if strutils.strip(command).len == 0: raise newException(ValueError, "agent-command is empty")
   let (removed, added) = reviewState.hunkText(currentHunk)
   let sofar = if currentHunk < explanations.len: explanations[currentHunk] else: ""
-  agentBuf = b
+  agentBuf = reviewTarget
+  reviewAgent = reviewBuf
   reviewAsk = true
   askQuestion = question
   explainHunk = currentHunk
@@ -773,7 +846,7 @@ proc askAboutHunk*(question: string) =
     "A reviewer is trying to understand one hunk of a proposed change to a text file and asks a question about it. " &
     "Answer it directly and plainly, in the reviewer's language; define any domain term you use as `- term :: definition` " &
     "lines at the end. No code fences, no headings.\n" &
-    "File path: " & (if b.path.len > 0: b.path else: "(unnamed)") & "\n" &
+    "File path: " & (if reviewTarget.path.len > 0: reviewTarget.path else: "(unnamed)") & "\n" &
     "Question: " & question & "\n" &
     (if sofar.len > 0: "--- EXPLANATION GIVEN SO FAR ---\n" & sofar & "\n" else: "") &
     "--- HUNK: LINES REMOVED ---\n" & removed & "--- HUNK: LINES ADDED ---\n" & added &
@@ -782,7 +855,7 @@ proc askAboutHunk*(question: string) =
     "Q: " & question & "\nA: ...")
   echoLine = "Agent: answering about hunk " & $(currentHunk + 1) & "..."
 
-definePrompt(Prompt(kind: "review-ask", text: true, over: "review", onAccept: proc(value: string): bool =
+definePrompt(Prompt(kind: "review-ask", text: true, onAccept: proc(value: string): bool =
   if strutils.strip(value).len == 0: return false
   try: askAboutHunk(value)
   except CatchableError as e: echoLine = e.msg
@@ -795,24 +868,27 @@ interp.defPrimitive("review-ask", proc(args: seq[Value]): Value =
 proc requestChanges*(instruction: string) =
   ## r: the reviewer's instruction for the current hunk goes to the agent with the
   ## whole proposal and that hunk; its complete new text replaces the proposal.
-  if not reviewOpen(): raise newException(ValueError, "No review is open")
+  if not reviewCurrent():
+    echoLine = "No review is open"
+    return
   let command = interp.env.values["agent-command"].asString
   if strutils.strip(command).len == 0: raise newException(ValueError, "agent-command is empty")
   let (removed, added) = reviewState.hunkText(currentHunk)
-  agentBuf = b
+  agentBuf = reviewTarget
+  reviewAgent = reviewBuf
   reviewRequest = true
   launchAgent(command,
     "You proposed a new version of a text file. A reviewer asks for a change to one hunk of it. " &
     "Apply the request to the proposed version (keep everything else as proposed) and output ONLY the " &
     "complete new file content. No explanations, no code fences.\n" &
-    "File path: " & (if b.path.len > 0: b.path else: "(unnamed)") & "\n" &
+    "File path: " & (if reviewTarget.path.len > 0: reviewTarget.path else: "(unnamed)") & "\n" &
     "Request: " & instruction & "\n" &
     "--- HUNK: LINES THE PROPOSAL REMOVES ---\n" & removed &
     "--- HUNK: LINES THE PROPOSAL ADDS ---\n" & added &
     "--- PROPOSED FILE START ---\n" & reviewState.proposedText() & "\n--- PROPOSED FILE END ---\n")
   echoLine = "Agent: changing hunk " & $(currentHunk + 1) & "..."
 
-definePrompt(Prompt(kind: "review-request", text: true, over: "review", onAccept: proc(value: string): bool =
+definePrompt(Prompt(kind: "review-request", text: true, onAccept: proc(value: string): bool =
   if strutils.strip(value).len == 0: return false
   try: requestChanges(value)
   except CatchableError as e: echoLine = e.msg
@@ -1030,7 +1106,6 @@ interp.defPrimitive("glossary", proc(args: seq[Value]): Value =
   beginMini("glossary", "Term: ")
   nilValue())
 
-proc dispatchReview*(c: string)  # forward: the review's keys, also driven from Lisp
 
 for (name, key) in [("review-take", "y"), ("review-keep", "k"), ("review-next", "n"), ("review-previous", "p"),
                     ("review-finish", "q"), ("review-explain-hunk", "x"), ("review-attest", "U"),
@@ -1040,20 +1115,24 @@ for (name, key) in [("review-take", "y"), ("review-keep", "k"), ("review-next", 
     interp.defPrimitive(name, proc(args: seq[Value]): Value =
       ## The review's keys as commands, so an init file or an agent can drive a review.
       args.arity(0, 0)
-      if mode != "review" and not sidesOn: echoLine = "No review is open"
+      if not reviewCurrent(): echoLine = "No review is open"
       else: dispatchReview(key)
       nilValue())
 
 var hunkRows: seq[string]
-definePrompt(Prompt(kind: "review-hunks", text: true, over: "review", candidates: proc(): seq[string] = hunkRows,
+definePrompt(Prompt(kind: "review-hunks", text: true, candidates: proc(): seq[string] = hunkRows,
   onAccept: proc(value: string): bool =
     let i = hunkRows.find(value)
     if i >= 0 and i < reviewState.hunks.len:
       currentHunk = i
       rebuildReview()
+      if sidesOn: refreshSides()
     true))
 
 proc dispatchReview*(c: string) =
+  if not reviewCurrent():
+    echoLine = "No review is open"
+    return
   if reviewReadOnly and c in ["y", "k", "a", "A", "w", "r", "e"]:
     echoLine = "A comparison: nothing to take. x explains, X asks, U marks understood, q records"
     return
@@ -1061,6 +1140,7 @@ proc dispatchReview*(c: string) =
   of "C-g":
     for hook in cancelHooks: hook()
     finishReview(true)
+    return
   of "n": currentHunk = min(currentHunk + 1, reviewState.hunks.high)
   of "p": currentHunk = max(currentHunk - 1, 0)
   of "y", "k":
@@ -1123,31 +1203,16 @@ proc dispatchReview*(c: string) =
     finishReview()
     return
   else:
-    # Movement keys read the review as any buffer: the hunk stays where n / p left it.
-    if mode == "review" and reviewBuf != nil and overlayMove(reviewBuf, c, keymap.getOrDefault(c).symName): return
     echoLine = c & " is undefined"
     return
+  if reviewOpen(): rebuildReview()
   if sidesOn: refreshSides()
-  elif mode == "review": rebuildReview()
 
-const editingCommands = ["indent", "newline", "tab", "open-line", "delete", "backspace", "kill-line",
-  "kill-word", "backward-kill-word", "kill-region", "yank", "yank-pop", "clipboard-yank", "undo",
-  "transpose", "upcase", "downcase", "capitalize"]
-
-proc sideKey(c: string): bool =
-  if mode.len > 0 or prefix.len > 0 or not sidesOn or b notin sideBufs: return false
-  if c in ["n", "p", "y", "k", "u", "a", "A", "q", "|", "?", "C-g"]:
-    dispatchReview(c)
-    return true
-  # Typed characters and editing keys are swallowed (these ordinary buffers are
-  # read-only); movement, scrolling, search, window and prefix keys run as usual.
-  if c.runeLen == 1 or keymap.getOrDefault(c).symName in editingCommands:
-    echoLine = "The comparison is read-only (n p y k u a A q | ?)"
-    return true
-  false
-
-keyFilters.add sideKey
-runeFilters.add proc(r: Rune): bool = sideKey($r)
+argCommands.add "review-key"
+interp.defPrimitive("review-key", proc(args: seq[Value]): Value =
+  args.arity(1, 1)
+  dispatchReview(args[0].asString)
+  nilValue())
 
 interp.defPrimitive("agent", proc(args: seq[Value]): Value =
   args.arity(1, 1)
@@ -1219,12 +1284,6 @@ interp.defPrimitive("vc-review", proc(args: seq[Value]): Value =
     return nilValue()
   beginReview(output.replace("\r\n", "\n"), "git HEAD")
   nilValue())
-
-defineMode(core.Mode(name: "review", tag: "[Review]", editing: true, buffer: proc(): Buffer = reviewBuf,
-  faces: proc(): seq[seq[Face]] = (if reviewBuf == nil: @[] else: facesOf(reviewBuf)),  # the file's language
-  colors: proc(): seq[int8] = reviewColors, bgs: proc(): seq[seq[int8]] = reviewBgs,
-  message: proc(): string = reviewMessage() & (if echoLine != reviewMessage(): "  " & echoLine else: ""),
-  onKey: dispatchReview, onClose: proc() = finishReview(true)))
 
 definePrompt(Prompt(kind: "agent", text: true, onAccept: proc(value: string): bool =
   startAgent(value)

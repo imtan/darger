@@ -107,7 +107,7 @@ const
 (defhydra "f2" "zoom" '(("g" zoom-in "in") ("l" zoom-out "out") ("0" zoom-reset "reset")))
 """
 
-var argCommands* = @["global-set-key", "insert", "command", "find-file", "load-theme",
+var argCommands* = @["global-set-key", "local-set-key", "buffer-read-only", "insert", "command", "find-file", "load-theme",
   "hydra", "set-font", "set-fallback-fonts"]  # primitives M-x cannot call without arguments
 
 when defined(windows):
@@ -165,10 +165,11 @@ proc detectLang*() =
   lang = detect(path, if b.lines.len > 0: $b.lines[0] else: "")
   shownBuf = nil
 
-var
-  window* = newWindow("darger", ivec2(1000, 720), style = Undecorated, vsync = true)
-window.makeContextCurrent()
-window.runeInputEnabled = true
+var window*: Window
+when not defined(headless):
+  window = newWindow("darger", ivec2(1000, 720), style = Undecorated, vsync = true)
+  window.makeContextCurrent()
+  window.runeInputEnabled = true
 var renderer*: Renderer
 
 proc layoutPanes*() =
@@ -176,11 +177,12 @@ proc layoutPanes*() =
   bars = @[]
   layout.place(0, 0, renderer.frameCols, renderer.frameRows, bars)
   renderer.setPane(pane.x, pane.y, pane.w, pane.h)
-try: renderer = newRenderer()
-except CatchableError as e:
-  stderr.writeLine(e.msg)
-  window.close()
-  quit(1)
+when not defined(headless):
+  try: renderer = newRenderer()
+  except CatchableError as e:
+    stderr.writeLine(e.msg)
+    window.close()
+    quit(1)
 let inputMethod* = newSkk()
 var
   echoLine*, prefix*, mode*, prompt*: string
@@ -317,7 +319,37 @@ proc filterKey*(c: string): bool =
     if hook(c): return true
 var moveDirection* = 0  # the last buffer command's direction over hidden lines: 1, -1 or 0
 
+var
+  localKeys*: Table[Buffer, Table[string, Value]]
+  readOnly*: HashSet[Buffer]
+
+proc setLocalKey*(buf: Buffer, chord: string, command: Value) =
+  if chord.len == 0 or command.kind notin {vSymbol, vLambda, vPrimitive}:
+    raise newException(LispError, "Expected key and symbol or function")
+  localKeys.mgetOrPut(buf, initTable[string, Value]())[chord] = command
+
+proc clearLocalKeys*(buf: Buffer) = localKeys.del buf
+proc setReadOnly*(buf: Buffer, on: bool) =
+  if on: readOnly.incl buf
+  else: readOnly.excl buf
+proc isReadOnly*(buf: Buffer): bool = buf in readOnly
+proc refuseEdit*(buf: Buffer): bool =
+  result = buf.isReadOnly
+  if result: echoLine = "Buffer is read-only"
+proc localPrefix(buf: Buffer, chord: string): bool =
+  if buf in localKeys:
+    for key in localKeys[buf].keys:
+      if key.startsWith(chord & " "): return true
+proc hasLocalKey*(buf: Buffer, chord: string): bool =
+  buf in localKeys and chord in localKeys[buf]
+proc dispatch*(c: string)
+
 proc filterRune*(r: Rune): bool =
+  if mode.len == 0:
+    if b.hasLocalKey($r) or b.localPrefix($r):
+      dispatch($r)
+      return true
+    if b.refuseEdit(): return true
   for filter in runeFilters:
     if filter(r): return true
 proc beforeRune*() =
@@ -421,6 +453,8 @@ proc anyModified*(): bool =
 proc killBuffer*(buf: Buffer) =
   ## Killing the current buffer shows the previous one; the last one leaves a fresh *scratch*.
   for hook in killHooks: hook(buf)
+  clearLocalKeys(buf)
+  readOnly.excl buf
   reg.remove buf
   paneFaces.del buf
   if reg.len == 0: reg.add newBuffer()
@@ -718,7 +752,7 @@ proc beginOverlay*(kind: string) =
   mode = kind
   prefix = ""
   matchStart = -1
-  window.closeIme()
+  if window != nil: window.closeIme()
   renderer.top = 0
   renderer.left = 0
 
@@ -849,6 +883,9 @@ proc takeClipboard*(): bool =
 
 proc runCommand*(name: string): Value =
   if name notin bufferCommands: raise newException(LispError, "Unknown buffer command: " & name)
+  if name in ["newline", "tab", "indent", "open-line", "delete", "backspace", "kill-line",
+      "kill-word", "backward-kill-word", "kill-region", "yank", "yank-pop", "undo",
+      "transpose", "upcase", "downcase", "capitalize"] and b.refuseEdit(): return nilValue()
   moveDirection = case name
     of "next-line", "forward", "forward-word": 1
     of "previous-line", "backward", "backward-word": -1
@@ -875,6 +912,14 @@ interp.defPrimitive("global-set-key", proc(args: seq[Value]): Value =
   let tokens = strutils.splitWhitespace(key)
   for i in 1..<tokens.len: prefixKeys.incl tokens[0..<i].join(" ")  # "C-c n f": C-c, then C-c n
   args[1])
+interp.defPrimitive("local-set-key", proc(args: seq[Value]): Value =
+  args.arity(2, 2)
+  setLocalKey(b, args[0].asString, args[1])
+  args[1])
+interp.defPrimitive("buffer-read-only", proc(args: seq[Value]): Value =
+  args.arity(1, 1)
+  setReadOnly(b, args[0].kind != vNil)
+  args[0])
 interp.defPrimitive("insert", proc(args: seq[Value]): Value =
   ## Into the buffer, or, while a prompt is open, into the minibuffer as typing would
   ## (a one-key prompt takes the first rune), so scripts and agents can answer prompts.
@@ -885,7 +930,7 @@ interp.defPrimitive("insert", proc(args: seq[Value]): Value =
       if not inMini(): break
       mini.insert($r, true)
     if inMini(): (if mode == "search": search() else: refreshCandidates())
-  else: b.insert(args[0].asString)
+  elif not b.refuseEdit(): b.insert(args[0].asString)
   nilValue())
 interp.defPrimitive("message", proc(args: seq[Value]): Value =
   args.arity(1, 1)
@@ -1037,6 +1082,9 @@ proc following*(): Rune =
 
 proc applySkk*(res: SkkResult, t = target()): bool =
   ## Inserts the engine's text like typed input; true when SKK consumed the key.
+  if t.isReadOnly:
+    if res.text.len > 0: discard t.refuseEdit()
+    return res.consumed
   t.insert(res.text, true)
   if res.move != 0: t.cursor = t.point(t.offset(t.cursor) + res.move)
   if mode == "search" and res.text.len > 0: search()
@@ -1146,10 +1194,11 @@ proc rearm*(full: string) =
 
 proc leavesHydra*(full: string): bool =
   ## An unbound key after a hydra prefix leaves it; built-in chords stay chords.
-  full notin keymap and full notin builtinChords and sticky(full).len > 0
+  not b.hasLocalKey(full) and not b.localPrefix(full) and
+    full notin keymap and full notin builtinChords and sticky(full).len > 0
 
 proc overlayMove*(buf: Buffer, full, command: string): bool =
-  ## Cursor movement shared by the overlays (web page, RSS list, review); false when full is none.
+  ## Cursor movement shared by the overlays (web page, RSS list); false when full is none.
   result = true
   if full in ["n", "C-n", "down", "p", "C-p", "up"] or command in ["next-line", "previous-line"]:
     buf.vertical(if full in ["p", "C-p", "up"] or command == "previous-line": -1 else: 1)
@@ -1200,6 +1249,7 @@ proc copyText*(s: string) =
 interp.defPrimitive("clipboard-yank", proc(args: seq[Value]): Value =
   ## C-c C-y: the clipboard's text, whatever the kill ring holds; it joins the ring.
   args.arity(0, 0)
+  if b.refuseEdit(): return nilValue()
   let clip = getClipboardString()
   if clip.len == 0:
     echoLine = "Clipboard is empty"
@@ -1227,7 +1277,8 @@ proc dispatch*(c: string) =
   if mode in modes:
     modes[mode].onKey(c)
     return
-  if c == "C-g":
+  if c == "C-g" and not (mode.len == 0 and
+      b.hasLocalKey(if prefix.len > 0: prefix & " " & c else: c)):
     if mode in prompts and prompts[mode].onCancel != nil: prompts[mode].onCancel()
     if mode == "search": b.cursor = isearch.origin
     if isConsult(mode): restoreOrigin()
@@ -1282,14 +1333,14 @@ proc dispatch*(c: string) =
     if suppressRune: suppressRune = false
     else: dispatch(c)
     return
-  if full in prefixKeys:
+  if b.localPrefix(full) or (full in prefixKeys and not b.hasLocalKey(full)):
     prefix = full
     echoLine = hydras.getOrDefault(full, full & "-")
     b.finish()
     return
   if full != "C-l": recenterCycle = 0
-  if full in keymap:
-    let fn = keymap[full]
+  if b.hasLocalKey(full) or full in keymap:
+    let fn = if b.hasLocalKey(full): localKeys[b][full] else: keymap[full]
     if fn.kind == vSymbol and fn.str in bufferCommands:
       discard runCommand(fn.str)
     else:
@@ -1565,7 +1616,7 @@ interp.defPrimitive("type-string", proc(args: seq[Value]): Value =
     if inMini():
       mini.insert($r, true)
       if mode == "search": search() else: refreshCandidates()
-    else: b.insert($r, true)
+    elif not b.refuseEdit(): b.insert($r, true)
   nilValue())
 interp.defPrimitive("exit-minibuffer", proc(args: seq[Value]): Value =
   ## Accepts the open prompt with what is typed, as Enter does; for scripts and agents.
@@ -1669,7 +1720,9 @@ definePrompt(Prompt(kind: "killy", onCancel: proc() = (pendingKill = nil),
 definePrompt(Prompt(kind: "skk-register", text: true, onAccept: proc(value: string): bool =
   if value.len == 0: inputMethod.cancelRegister()  # Enter alone: back to ▽, as in DDSKK
   else:
-    b.insert(inputMethod.registerWord(value), true)
+    let word = inputMethod.registerWord(value)
+    if b.refuseEdit(): return true
+    b.insert(word, true)
     echoLine = "Registered " & value
   true,
   onCancel: proc() = inputMethod.cancelRegister()))

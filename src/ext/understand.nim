@@ -171,7 +171,7 @@ proc understandingKey(c: string): bool =
         switchTo(ubuf)
         buildUnderstanding(here)
       reviewBranchFile(row.rel, row.base)
-      if mode != "review":  # nothing to compare: stay here
+      if not reviewOpen():  # nothing to compare: stay here
         afterReview = nil
         switchTo(ubuf)
         buildUnderstanding(here)

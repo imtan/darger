@@ -128,7 +128,7 @@ window.onButtonPress = proc(key: Button) =
       dispatch(c)
       return
     if filterKey(c): return
-    if prefix.len == 0 and skkOn():
+    if prefix.len == 0 and skkOn() and not (mode.len == 0 and (b.isReadOnly or b.hasLocalKey(c))):
       var key: SkkKey
       var named = true
       case c
@@ -183,6 +183,7 @@ window.onRune = proc(rune: Rune) =
       if mode == "search": search() else: refreshCandidates()
     else:
       recenterCycle = 0
+      if b.refuseEdit(): return
       b.insert($Rune(scalar), true)
       inserted(Rune(scalar))
   except CatchableError as e: echoLine = e.msg

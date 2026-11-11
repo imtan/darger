@@ -20,6 +20,8 @@ the log below. Reorder or add items freely; the loop reads it fresh every round.
 
 ## Open
 
+- Convert the remaining overlays (Dired, buffer list, RSS, Web, help) and the hand-made key filters (grep, understanding, magit, tree) to local keys + read-only
+
 - Font catalog: add more pinned entries; Iosevka Nerd Font (92 MB tar.xz) is left out of this slice. Arbitrary-URL installs stay out.
 
 - TRAMP second slice: remote rgrep / consult-ripgrep through ssh, and remote LSP.
@@ -58,6 +60,8 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
     personal Emacs tools; port only on request.
 
 ## Log
+
+- 2026-11-12 buffer-local keys and read-only buffers in core; review is an ordinary *review* buffer with local keys, language colours and hunk bands; switching buffers/windows preserves it, killing the review or its target cancels it; headless dispatcher and review lifecycle regression tests.
 
 - 2026-11-11 fix: X (ask) and r (request changes) in a review said "No review is open" when their prompt was confirmed, because the prompt's Enter runs before the mode returns to the review; reviewOpen() counts the review's own prompts and the side-by-side panes
 - 2026-11-11 review reading: cursor keys, C-n / C-p, C-v / M-v, M-< / M->, C-l move in the review overlay (overlayMove shared from core) and the side-by-side panes let every non-editing key through; the review and both sides are highlighted in the file's language (user: C-n / C-p and syntax colours in the understanding comparison)
