@@ -59,6 +59,7 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 ## Log
 
+- 2026-11-11 fix: X (ask) and r (request changes) in a review said "No review is open" when their prompt was confirmed, because the prompt's Enter runs before the mode returns to the review; reviewOpen() counts the review's own prompts and the side-by-side panes
 - 2026-11-11 review reading: cursor keys, C-n / C-p, C-v / M-v, M-< / M->, C-l move in the review overlay (overlayMove shared from core) and the side-by-side panes let every non-editing key through; the review and both sides are highlighted in the file's language (user: C-n / C-p and syntax colours in the understanding comparison)
 - 2026-11-11 understanding range: t in *understanding* (and understanding-range "tip") compares with the base's tip as `git diff base` does instead of the merge base; remembered with the base per repository (ledger loadBases third column, rangeFor; tledger)
 - 2026-11-08 novel: C-n / C-p move one visual column in vertical panes, as Left / Right do (user: C-n jumped a whole paragraph); C-f / C-b stay forward / backward char, which already reads down / up

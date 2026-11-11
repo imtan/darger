@@ -685,10 +685,16 @@ const explainInstructions =
     "or technical term the hunk relies on as Org description items, one per line, exactly in the form `- term :: definition`. " &
     "Output plain text with those items; no code fences, no headings.\n"
 
+proc reviewOpen(): bool =
+  ## The review is up: as the overlay, as the side-by-side panes, or under one of its
+  ## own prompts (X asks, r requests changes), whose Enter runs before the overlay
+  ## takes the keys back.
+  mode == "review" or sidesOn or (mode in prompts and prompts[mode].over == "review")
+
 proc explainCurrentHunk*() =
   ## x: the agent explains the current hunk (what, why, and the domain terms in it as
   ## `- term :: definition`); the hunk counts as understood when taken afterwards.
-  if mode != "review": raise newException(ValueError, "No review is open")
+  if not reviewOpen(): raise newException(ValueError, "No review is open")
   if agentProcess != nil: raise newException(ValueError, "Agent already running")
   let command = interp.env.values["agent-command"].asString
   if strutils.strip(command).len == 0: raise newException(ValueError, "agent-command is empty")
@@ -753,7 +759,7 @@ interp.defPrimitive("understanding-repay", proc(args: seq[Value]): Value =
 proc askAboutHunk*(question: string) =
   ## X: a follow-up question about the current hunk; the answer joins the explanation
   ## shown in *explain* and recorded in the ledger.
-  if mode != "review": raise newException(ValueError, "No review is open")
+  if not reviewOpen(): raise newException(ValueError, "No review is open")
   if agentProcess != nil: raise newException(ValueError, "Agent already running")
   let command = interp.env.values["agent-command"].asString
   if strutils.strip(command).len == 0: raise newException(ValueError, "agent-command is empty")
@@ -789,7 +795,7 @@ interp.defPrimitive("review-ask", proc(args: seq[Value]): Value =
 proc requestChanges*(instruction: string) =
   ## r: the reviewer's instruction for the current hunk goes to the agent with the
   ## whole proposal and that hunk; its complete new text replaces the proposal.
-  if mode != "review": raise newException(ValueError, "No review is open")
+  if not reviewOpen(): raise newException(ValueError, "No review is open")
   let command = interp.env.values["agent-command"].asString
   if strutils.strip(command).len == 0: raise newException(ValueError, "agent-command is empty")
   let (removed, added) = reviewState.hunkText(currentHunk)
