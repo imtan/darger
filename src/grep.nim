@@ -7,11 +7,15 @@ type Hit* = object
   line*, col*: int   ## 0-based
   text*: string
 
-proc grepCommand*(dir, query: string): seq[string] =
+proc grepCommand*(dir, query: string, literal = false): seq[string] =
   ## rg with vimgrep output and smart case, or grep -rn (case-insensitive) without it.
   if findExe("rg").len > 0:
-    @["rg", "--vimgrep", "--no-heading", "--smart-case", "--max-count", "200", "--", query, dir]
-  else: @["grep", "-rnIi", "--exclude-dir=.git", "--", query, dir]
+    result = @["rg", "--vimgrep", "--no-heading", "--smart-case", "--max-count", "200"]
+    if literal: result.add "--fixed-strings"
+  else:
+    result = @["grep", "-rnIi", "--exclude-dir=.git"]
+    if literal: result.add "-F"
+  result.add @["--", query, dir]
 
 proc parseHit*(line: string, vimgrep: bool): Hit =
   ## `path:line:col:text` (rg --vimgrep) or `path:line:text` (grep); line.len == 0 when it is neither.
@@ -99,9 +103,9 @@ proc findReferences*(text, root: string): seq[Hit] =
         i = j
       else: inc i
 
-proc runGrep*(dir, query: string): tuple[hits: seq[Hit], error: string] =
+proc runGrep*(dir, query: string, literal = false): tuple[hits: seq[Hit], error: string] =
   ## Runs the search in dir; rg exits 1 for no match, which is not an error.
-  let cmd = grepCommand(dir, query)
+  let cmd = grepCommand(dir, query, literal)
   try:
     var shell = quoteShell(cmd[0])
     for a in cmd[1..^1]: shell.add " " & quoteShell(a)

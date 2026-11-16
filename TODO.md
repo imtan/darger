@@ -61,6 +61,8 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 ## Log
 
+- 2026-11-16 dumb-jump-go: buffer-first definition patterns for nine language families, project rg / grep fallback and consult previews with xref return; M-. falls back when LSP is absent, starting or returns no definition; pure extraction/ranking and headless navigation tests, no core changes.
+
 - 2026-11-12 buffer-local keys and read-only buffers in core; review is an ordinary *review* buffer with local keys, language colours and hunk bands; switching buffers/windows preserves it, killing the review or its target cancels it; headless dispatcher and review lifecycle regression tests.
 
 - 2026-11-11 fix: X (ask) and r (request changes) in a review said "No review is open" when their prompt was confirmed, because the prompt's Enter runs before the mode returns to the review; reviewOpen() counts the review's own prompts and the side-by-side panes

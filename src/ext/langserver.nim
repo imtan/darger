@@ -4,6 +4,7 @@ import ../remote
 import std/[os, strutils, unicode, times, tables, sets, json, math]
 from windy import imeCompositionString
 import ../[core, buffer, buffers, render, lisp, lsp, syntax, complete, skk]
+import dumbjump
 
 const
   compRows* = 8    # the completion box's most rows
@@ -394,15 +395,19 @@ proc lspHover*() =
 proc gotoLocation*(meth, what: string) =
   ## M-. and friends: jumps to the first location the server gives.
   let c = lspTarget()
-  if c == nil: return
+  if c == nil:
+    if meth == "textDocument/definition": dumbJumpGo()
+    return
   let buf = b
   let at = b.cursor
+  let version = b.version
   let (top, left) = (renderer.top, renderer.left)
   c.lspCall(meth, position(at)) do (res: JsonNode):
-    if b != buf or b.cursor != at or mode.len > 0: return  # the user moved on
+    if b != buf or b.cursor != at or b.version != version or mode.len > 0: return  # the user moved on
     let locs = parseLocations(res)
     if locs.len == 0:
-      echoLine = "No " & what
+      if meth == "textDocument/definition": dumbJumpGo()
+      else: echoLine = "No " & what
       return
     if reg.byPath(locs[0].path) != b: visit(locs[0].path)
     let line = clamp(locs[0].line, 0, b.lines.high)

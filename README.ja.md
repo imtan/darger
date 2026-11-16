@@ -879,7 +879,10 @@ found)` と出ます。言語のコマンド (空白で分割。`tcp://host:port
   通常通り実行される。`~/.darger.el` の `(setq lsp-auto-complete nil)` で C-M-i だけになる。
 - C-c h (`lsp-hover`) はポイントのシンボルについてのサーバーの説明をカーソル下の箱に表示する
   (最大 12 行。長いものは C-n / C-p / C-v / M-v でスクロール)。他のキーで閉じる。
-- M-. (`lsp-definition`) は定義にジャンプし、必要ならそのファイルを開く。M-, (`lsp-back`) で
+- M-. (`lsp-definition`) は定義にジャンプし、必要ならそのファイルを開く。サーバーがない・
+  起動中・定義が見つからない場合は `dumb-jump-go` で検索する。
+  M-x `dumb-jump-go` は現在のバッファ（カーソルより上の近い宣言を優先）、次にプロジェクトを
+  rg / grep で検索し、複数候補はプレビュー付き一覧で選べる。M-, (`lsp-back`) で
   戻る。元の位置は最新 50 件保たれる。M-x `lsp-type-definition` と `lsp-implementation` も
   同様にジャンプする。M-? (`lsp-references`) は参照を `path:line: text` としてウィンドウ下部に
   ファイルごとにまとめて一覧する。選択を動かすと各参照がプレビューされ、Enter で留まり
