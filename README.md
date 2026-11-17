@@ -963,12 +963,12 @@ connects instead of spawning) in `~/.darger.el`:
   under the cursor (up to 12 rows; C-n / C-p / C-v / M-v scroll a longer one); any
   other key closes it.
 - M-. (`lsp-definition`) jumps to the definition, opening its file when needed, and
-  M-, (`lsp-back`) returns; the last 50 origins are kept. M-x `lsp-type-definition` and
-  `lsp-implementation` jump the same way. M-? (`lsp-references`) lists the references as
-  `path:line: text` at the bottom of the window, grouped by file; moving the selection
   falls back to `dumb-jump-go` when the server is missing, starting, or finds no definition.
   M-x `dumb-jump-go` searches declarations in the current buffer (nearest above first),
   then the project with rg or grep, offering a preview list for multiple candidates.
+  M-, (`lsp-back`) returns; the last 50 origins are kept. M-x `lsp-type-definition` and
+  `lsp-implementation` jump the same way. M-? (`lsp-references`) lists the references as
+  `path:line: text` at the bottom of the window, grouped by file; moving the selection
   previews each one, Enter stays there (M-, comes back), C-g returns.
 - C-c = (`lsp-format-buffer`) formats the buffer with the server (4-space indents);
   C-/ undoes the whole format in one step.
