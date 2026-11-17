@@ -175,7 +175,7 @@ the spirit of nvim's start screens: the DARGER logo (drawn as filled cells with 
 shadow, so it looks the same in every font) with a line under it, a centred menu of
 one-key commands with their real bindings at the right (`j` journal entry, `J`
 journal quick add (`q` closes the dashboard, so the quick line takes the capital),
-`t` capture a task, `a` agenda, `u` understanding, `f` find file, `p` projects, `g`
+`t` capture a task, `a` agenda, `u` understanding, `d` branch diff, `f` find file, `p` projects, `g`
 agent chat, `s` shell, `m` manual), up to 10 recent files labelled 1-9 and 0 (HOME
 shown as `~`, long paths cut from the left), and a footer with the date, the file
 count and the understanding debt. The layout follows the window's size. C-n / C-p,
@@ -497,6 +497,16 @@ yours), where nothing is taken: x explains, X asks, U attests, and q records eve
 hunk (understood or not) in the ledger. Run it again and the attested files
 are gone; before a merge it answers "what did I do here that I do not yet
 understand?".
+
+`M-x branch-diff` opens `*branch-diff*`, a read-only Files changed view from the
+base's merge base to the working tree, including staged, unstaged and untracked
+files. The base is the one remembered by understanding for this repository, then
+`understanding-base-branch`, then main / master / develop; otherwise it asks.
+The summary and file headings show +/- counts, with unified hunks in review colours.
+`n` / `p` move between files, TAB folds a file, Shift-TAB folds/unfolds all, Enter
+visits the source line (M-, returns), `b` chooses and remembers a base, `g` refreshes,
+and `q` leaves. Movement, search and window commands work as usual. Large files
+start folded; deleted files are readable here but have no working-tree target.
 
 C-c u (`understanding`) opens the `*understanding*` buffer, the ledger as a view to
 work from (a magit status for understanding debt), an ordinary read-only buffer with

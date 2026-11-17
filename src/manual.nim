@@ -165,6 +165,9 @@ M-x agent-changes        直前のチャットターンで変わったファイ�
 M-x understanding-debt   理解台帳 (~/.darger-understanding.org) の今のブランチの未返済一覧 (-all で全部)
 M-x understanding-repay  現在のファイルの最寄りの負債を説明して DONE に (*understanding* の負債行では x)
 M-x branch-debt          このブランチで base から変わったファイルのうち未理解のもの。Enter で base と比較レビュー
+M-x branch-diff          *branch-diff*: base との merge base → 作業ツリーの差分だけを読む (未追跡ファイルも含む)
+                         n/p: 次/前のファイル、TAB: 開閉、Shift-TAB: 全体を開閉、Enter: 対応行へ (M-, で戻る)
+                         b: understanding と共通の base を選んで記憶、g: 更新、q: 離れる。通常の移動・検索も可
 C-c u                    *understanding* バッファ: ブランチの未理解 / 理解済みファイル、未返済エントリ、用語集
                          Enter で比較 (閉じると戻る) / 負債の場所へ、b で base ブランチ選択 (origin/develop も可)、
                          t で範囲を切替 (分岐点から / base の先端と = git diff base)、U でファイル全体を理解済み、

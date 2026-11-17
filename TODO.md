@@ -61,6 +61,8 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 ## Log
 
+- 2026-11-17 branch-diff: read-only Files changed buffer from the merge base to the working tree, including untracked files; per-file counts, review colours, folds, source/xref navigation and shared remembered base selection; pure parser and headless Git/navigation tests, no core changes.
+
 - 2026-11-16 dumb-jump-go: buffer-first definition patterns for nine language families, project rg / grep fallback and consult previews with xref return; M-. falls back when LSP is absent, starting or returns no definition; pure extraction/ranking and headless navigation tests, no core changes.
 
 - 2026-11-12 buffer-local keys and read-only buffers in core; review is an ordinary *review* buffer with local keys, language colours and hunk bands; switching buffers/windows preserves it, killing the review or its target cancels it; headless dispatcher and review lifecycle regression tests.

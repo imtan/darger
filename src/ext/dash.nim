@@ -7,7 +7,7 @@ import std/[os, strutils, unicode, tables, times]
 import ../[core, buffer, lisp, recent, syntax, ledger]
 
 const
-  dashMessage* = "Dashboard  Enter:open  menu keys j J t a u f p g s m  files 1-9 0  q:scratch  other keys run as usual"
+  dashMessage* = "Dashboard  Enter:open  menu keys j J t a u d f p g s m  files 1-9 0  q:scratch  other keys run as usual"
   dashLabels* = "1234567890"
   # The menu: key, caption, the binding shown at the right, the command (a key chord
   # when it starts with "key:").
@@ -16,6 +16,7 @@ const
                   ("t", "Capture a task", "C-c t", "org-capture"),
                   ("a", "Agenda", "M-x org-agenda", "org-agenda"),
                   ("u", "Understanding", "C-c u", "understanding"),
+                  ("d", "Branch diff", "M-x branch-diff", "branch-diff"),
                   ("f", "Find file", "C-x C-f", "key:C-x C-f"),
                   ("p", "Projects", "C-x p p", "project-switch-project"),
                   ("g", "Agent chat", "C-c c", "agent-chat"),

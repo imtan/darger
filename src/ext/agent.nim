@@ -982,6 +982,9 @@ proc tipRange*(): bool =
   let v = interp.env.values.getOrDefault("understanding-range")
   v != nil and v.kind in [vString, vSymbol] and v.str == "tip"
 
+proc branchMergeBase*(root, base: string): tuple[output: string, ok: bool] =
+  git(root, "merge-base " & quoteShell(base) & " HEAD")
+
 proc branchChanges*(root, branch, base: string, tip = false): tuple[mergeBase: string, files: seq[BranchFile], error: string] =
   ## The branch's work: files changed since the merge base with `base` (or, with tip,
   ## from the base's tip itself, as `git diff base` shows), with +/- line counts, in
@@ -989,7 +992,7 @@ proc branchChanges*(root, branch, base: string, tip = false): tuple[mergeBase: s
   ## commits of the files the ledger knows), so large branches stay quick.
   result.mergeBase = base
   if branch != base and not tip:
-    let (mb, ok) = git(root, "merge-base " & quoteShell(base) & " HEAD")
+    let (mb, ok) = branchMergeBase(root, base)
     if ok and mb.len > 0: result.mergeBase = mb
   let (numstat, ok) = git(root, "diff --numstat " & quoteShell(result.mergeBase))
   if not ok:
