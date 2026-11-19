@@ -159,6 +159,10 @@ C-c a                    agent-command に指示を送る (結果はレビュー
 M-x diff-buffer-with-file  ディスク上のファイルとの差分をレビュー (保存時の確認でも r)
 M-x vc-review            git HEAD との差分をレビュー。M-x review-file は別ファイルとの比較
 M-x agent-changes        直前のチャットターンで変わったファイル一覧。Enter でレビュー
+M-x agent-checkpoints    ターン直前の保存状態（番号・時刻・プロンプト先頭・変更ファイル数）。最新50件／セッション
+                         Enter: ターンの差分  r: ファイルを y/k で巻き戻しレビュー（q で確定） q: 一覧を閉じる
+                         巻き戻し前も保存。未追跡／Git 外は ~/.darger-checkpoints/ にコピー
+                         未保存バッファ・バイナリ・リンクは対象外。会話の巻き戻しは Claude Code の /rewind
   x (レビュー中)         今のハンクの説明をエージェントに求める (*explain*)。説明なしで採用 → 理解負債
   X (レビュー中)         今のハンクについて質問する。答えは説明に追記され台帳にも残る
   U (レビュー中)         説明なしで「理解した」と自己申告 (DONE で記録)

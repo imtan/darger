@@ -4,7 +4,7 @@ import ../remote
 import std/[os, osproc, tempfiles, strutils, unicode, times, tables, sequtils]
 from windy import closeIme
 import notify
-import ../[core, buffer, buffers, render, lisp, review, chat, lsp, changes, ledger, wrap, syntax]
+import ../[core, buffer, buffers, render, lisp, review, chat, lsp, changes, ledger, wrap, syntax, checkpoints]
 
 when defined(windows):
   import std/[winlean, streams]
@@ -20,6 +20,7 @@ type
     buf*: Buffer
     started*: bool
     turn*: Turn
+    checkpoint*: Checkpoint
 
 var chats*: Table[string, ChatSession]
 proc chatFor*(buf: Buffer): ChatSession =
@@ -587,6 +588,10 @@ proc sendChat*(message: string, commandOverride = "",
   if session == nil:
     session = ChatSession(root: chatRoot, id: sessionId(), buf: newBuffer())
   chatBefore = snapshot(session.root)
+  try: session.checkpoint = createCheckpoint(session.root, session.id, message)
+  except CatchableError as e:  # a failed checkpoint must not stop the turn
+    session.checkpoint = nil
+    echoLine = "Checkpoint not saved: " & e.msg
   launchAgent(expandId(command, session.id), message, session.root)
   agentChat = session
   chatResultHook = onResult
@@ -681,6 +686,9 @@ proc pollAgent*(): bool =
       discard updateChat(code)
       agentChanged = changedSince(chatBefore, root)
       agentChangedRoot = root
+      if agentChat.checkpoint != nil:
+        try: finishCheckpoint(agentChat.checkpoint, agentChanged)
+        except CatchableError as e: echoLine = "Checkpoint not saved: " & e.msg
       chatBefore = Snapshot()
       if agentChanged.len > 0:
         let summary = "Agent changed " & $agentChanged.len & (if agentChanged.len == 1: " file" else: " files") &

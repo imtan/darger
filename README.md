@@ -26,6 +26,22 @@ never require saving, and no chat history is saved to disk. `M-x agent-chat-new`
 empties the current root's transcript and resets its session (refused while
 that conversation is running).
 
+Before each chat turn, darger saves a file checkpoint. `M-x agent-checkpoints`
+opens a read-only list with the number, time, prompt prefix and changed-file count.
+Enter shows that turn's diff in the branch-diff view; `r` reviews a rewind to its
+starting files with `y` / `k` (finish each file with `q`); `q` closes the list.
+A checkpoint of the current files is saved first, so the rewind can itself be
+undone through the same list. Git uses `stash create` and
+`refs/darger/checkpoints/<session>/<n>` without changing the index or worktree;
+untracked files, prompt prefixes and metadata are stored in
+`~/.darger-checkpoints/`. Outside Git (or before the first commit), file contents
+are copied there too. The newest 50 checkpoints per session are retained.
+Capture follows the project file list (ignored files and non-Git hidden/build
+folders are excluded). Rewind skips binary files, symlinks and dirty/read-only
+buffers, and refuses files changed during review. It restores files only, leaving
+the index and conversation alone; use Claude Code's `/rewind` to rewind its
+conversation.
+
 Chat replies appear live, with tool names and short summaries as Markdown quote
 lines and `...` at the end while the process runs. Thinking and tool results are
 hidden. Only complete output lines are displayed; ordinary plain-text agent

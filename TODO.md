@@ -61,6 +61,8 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 ## Log
 
+- 2026-11-19 agent checkpoints: per-turn stash-create refs and untracked/non-Git copies, persistent read-only turn list and shared branch-diff view, human-reviewed file rewind with redo checkpoints, conflict guards and fifty checkpoints per session; isolated Git/storage and review workflow tests, no core changes.
+
 - 2026-11-19 Claude IDE bridge: authenticated loopback WebSocket MCP with private discovery locks, throttled selections and M-x mentions, deferred openDiff through human hunk review, read-only Darger tools and combined LSP/compilation diagnostics; configurable tool allowlist, protocol and isolated workflow tests, no core changes.
 
 - 2026-11-19 review comments and plans: persistent per-repository line comments across branch-diff, magit and review with display-only annotations and batched agent-chat feedback; editable Markdown agent-plan with same-session approval, configurable storage and plan permissions; pure and isolated workflow tests, no core changes.

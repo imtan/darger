@@ -10,6 +10,7 @@ var
   view: DiffView
   faces: seq[seq[Face]]
   bands: seq[int8]
+  frozen = false
 
 proc rawGit(args: string): tuple[output: string, exitCode: int] =
   # agent.git strips whitespace; patches and NUL-delimited paths must keep it.
@@ -90,16 +91,7 @@ proc selectBase() =
     base = value
     rebuild())
 
-proc openBranchDiff*() =
-  let repo = if b == diffBuf and diffBuf != nil: root else: currentRoot()
-  if not (dirExists(repo / ".git") or fileExists(repo / ".git")):
-    echoLine = "Not in a git repository"
-    return
-  root = repo
-  branch = branchOf(root)
-  if branch.len == 0: branch = "HEAD"
-  base = baseFor(loadBases(basesPath()), root)
-  if base.len == 0: base = baseBranch(root)
+proc prepareDiffBuffer() =
   if diffBuf == nil or diffBuf notin reg:
     diffBuf = newBuffer()
     reg.add(diffBuf, "*branch-diff*")
@@ -107,6 +99,30 @@ proc openBranchDiff*() =
     bindCommentKeys(diffBuf)
     for key in ["n", "p", "tab", "C-i", "S-tab", "enter", "C-m", "C-j", "b", "g", "q"]:
       setLocalKey(diffBuf, key, interp.evalString("(lambda () (branch-diff-key \"" & key & "\"))", "<branch-diff>"))
+
+proc openFileDiff*(repo, title, comparison: string, changed: seq[DiffFile]) =
+  ## Reuse the branch-diff view for a frozen checkpoint comparison.
+  root = repo
+  branch = title
+  base = comparison
+  frozen = true
+  prepareDiffBuffer()
+  files = changed
+  showDiff()
+  switchTo(diffBuf)
+
+proc openBranchDiff*() =
+  let repo = if b == diffBuf and diffBuf != nil: root else: currentRoot()
+  if not (dirExists(repo / ".git") or fileExists(repo / ".git")):
+    echoLine = "Not in a git repository"
+    return
+  frozen = false
+  root = repo
+  branch = branchOf(root)
+  if branch.len == 0: branch = "HEAD"
+  base = baseFor(loadBases(basesPath()), root)
+  if base.len == 0: base = baseBranch(root)
+  prepareDiffBuffer()
   files = @[]
   showDiff(message = if base.len == 0: "Choose a base branch (b)" else: "Loading diff…")
   switchTo(diffBuf)
@@ -152,8 +168,10 @@ proc branchDiffKey(input: string) =
       pushXref(diffBuf, origin, top, left)
       b.cursor = (clamp(row.newLine - 1, 0, b.lines.high), 0)
     except CatchableError as e: echoLine = e.msg
-  of "b": selectBase()
+  of "b":
+    if not frozen: selectBase()
   of "g":
+    if frozen: return
     branch = branchOf(root)
     if branch.len == 0: branch = "HEAD"
     if base.len == 0: selectBase()
