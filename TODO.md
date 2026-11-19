@@ -61,6 +61,8 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 ## Log
 
+- 2026-11-19 agent notifications and rules: background OS notices and mode-line completion for turns and terminal BEL/OSC, read-only agent-rules with xref return, agent-remember as one reviewed append with conflict checks; pure parser/discovery and headless workflow tests, no core changes.
+
 - 2026-11-19 magit: inline section-aware diffs and persistent TAB/Shift-TAB folds, Enter source jumps with M-, return, r for HEAD review, hunk stage/unstage and visible key hints; reuse branch-diff parsing/colours and xref, pure and temporary Git/navigation tests, no core changes.
 
 - 2026-11-17 branch-diff: read-only Files changed buffer from the merge base to the working tree, including untracked files; per-file counts, review colours, folds, source/xref navigation and shared remembered base selection; pure parser and headless Git/navigation tests, no core changes.

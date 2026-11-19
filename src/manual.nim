@@ -188,6 +188,17 @@ C-c c                    プロジェクト単位の agent-chat（複数ター�
                          改行まで届いた出力だけを表示。通常のテキスト出力も対応
 実行状況                 Agent running 1:23 と最新のツール活動をエコー欄に表示
                          C-c a も経過時間を表示。取消中は Agent cancelling...
+完了通知                 agent ✓ done / agent ✗ failed。キー入力か対象バッファに戻ると消える
+                         背景では OS 通知（macOS / Linux の notify-send）。端末 BEL / OSC 9 / 777 も対応
+                         前面で表示中の端末は通知しない。agent-notify は既定 t、nil で無効
+                         agent-notify-sound は既定 nil。"Glass" などで macOS 通知音を指定
+M-x agent-rules          user → 上位 → プロジェクトのルールファイル（スコープ・パス・行数）
+                         CLAUDE.md / CLAUDE.local.md / .claude/CLAUDE.md / AGENTS.md、Cursor / Copilot
+                         ~/.claude/CLAUDE.md / ~/.codex/AGENTS.md は行数のみ。Enter で本文を開く
+                         M-, で戻る、g で更新、q で閉じる。条件付きルールの適用判定はしない
+M-x agent-remember       1行と追記先を選び、末尾の - text を追加ハンク1つでレビュー
+                         既定 CLAUDE.md → AGENTS.md → 新規 CLAUDE.md。y/k、q/Enter で確定
+                         開いていればバッファに反映、未オープンなら保存。対象の変更時は追記中止
 M-x agent-chat-new       現在のルートの会話を空にして新規セッションへ
                          その会話の実行中はリセット不可
 会話のルート             ファイルの最寄りの .git、なければそのディレクトリ

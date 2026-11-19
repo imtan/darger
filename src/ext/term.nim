@@ -4,6 +4,8 @@
 ## interrupts, C-d at an empty input sends end-of-file. Slice 1 of the terminal: line
 ## mode, no colours, no full-screen programs.
 when not defined(windows):
+  import notify
+  import ../agentnotify
   import std/[os, strutils, unicode, tables, sequtils]
   import ../[core, buffer, buffers, lisp, pty, termtext, termscreen, syntax, render]
 
@@ -11,6 +13,7 @@ when not defined(windows):
     shellBuf: Buffer
     proc1: Pty
     term: TermText
+    shellNotices: NoticeParser
     outputLen: int   # runes of process output at the top of the buffer; input follows
     sentSize: tuple[cols, rows: int]  # the window size the process has
 
@@ -35,6 +38,7 @@ when not defined(windows):
       renderer.resize(window, core.b)
       layoutPanes()
     term = TermText()
+    shellNotices = NoticeParser()
     outputLen = 0
     shellBuf.splice(0, shellBuf.text.runeLen, "")
     try:
@@ -72,6 +76,7 @@ when not defined(windows):
       proc1.resize(size.cols, size.rows)
     let data = proc1.read()
     if data.len > 0:
+      if shellNotices.feed(data) > 0: notifyAgent(shellBuf, terminal = true)
       term.feed(data)
       term.trim(400_000)
       showOutput()
@@ -129,6 +134,7 @@ when not defined(windows):
   type Terminal* = ref object
     buf*: Buffer
     pty*: Pty
+    notices: NoticeParser
     screen*: Screen
     size: tuple[cols, rows: int]
     lineMode*: bool    ## C-c C-j: the buffer is edited as text and Enter sends the input
@@ -194,6 +200,7 @@ when not defined(windows):
       renderer.resize(window, core.b)
       layoutPanes()
     result.size = (max(20, renderer.cols), max(5, renderer.rows))
+    result.notices = NoticeParser()
     result.screen = initScreen(result.size.cols, result.size.rows)
     result.buf.splice(0, result.buf.text.runeLen, "")
     try:
@@ -228,6 +235,7 @@ when not defined(windows):
         result = true
       let data = t.pty.read()
       if data.len > 0:
+        if t.notices.feed(data) > 0: notifyAgent(t.buf, terminal = true)
         t.screen.feed(data)
         t.showScreen()
         result = true

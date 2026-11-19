@@ -35,6 +35,26 @@ last line; move up to read without following. Updates do not add undo history.
 Both chat and one-shot agents show elapsed time (`Agent running 1:23`) in the
 echo line, with the latest tool activity for chat.
 
+Completed or failed turns also show `agent ✓ done` / `agent ✗ failed` in the mode
+line, cleared by a key or by returning to the notified buffer. In the background,
+Darger sends a macOS notification (Linux: `notify-send` if available; Windows:
+mode line only). Terminal BEL / OSC 9 / OSC 777 notifications use the same route,
+unless that terminal is already visible in the foreground. `(setq agent-notify nil)`
+disables both; `(setq agent-notify-sound "Glass")` adds a macOS sound (default: nil).
+
+`M-x agent-rules` lists rule files from user scope through ancestors to the current
+project: `CLAUDE.md`, `.claude/CLAUDE.md`, `AGENTS.md`, `.cursor/rules/*.mdc`,
+`.github/copilot-instructions.md`, and `CLAUDE.local.md`, plus
+`~/.claude/CLAUDE.md` / `~/.codex/AGENTS.md`. It shows scope, path and line count;
+user contents are counted without being retained or displayed until opened.
+Enter opens a file, M-, returns, g refreshes and q leaves. This is a discovery
+order across clients; conditional rules are not evaluated.
+`M-x agent-remember` asks for one line and a destination (project `CLAUDE.md`,
+otherwise `AGENTS.md`, otherwise a new `CLAUDE.md`). The appended `- text` is a
+single addition hunk: y accepts, k rejects, q / Enter finishes the review.
+An open file receives an unsaved buffer edit; an unopened file is saved after
+acceptance. Concurrent destination changes stop the append.
+
 The defaults (override them in `~/.darger.el`) are:
 
 ```lisp

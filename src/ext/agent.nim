@@ -3,6 +3,7 @@ import ../remote
 ## chat per project root with a live transcript (C-c c, chat.nim).
 import std/[os, osproc, tempfiles, strutils, unicode, times, tables, sequtils]
 from windy import closeIme
+import notify
 import ../[core, buffer, buffers, render, lisp, review, chat, lsp, changes, ledger, wrap, syntax]
 
 when defined(windows):
@@ -478,8 +479,8 @@ proc cleanAgentFiles*() =
 
 proc launchAgent*(command, input: string, workingDir = "") =
   if agentProcess != nil: raise newException(ValueError, "Agent already running")
-  agentDir = createTempDir("darger-agent-", "")
   try:
+    agentDir = createTempDir("darger-agent-", "")
     when defined(windows):
       agentJob = createJobObject(nil, nil)
       if agentJob == 0: raiseOSError(osLastError())
@@ -524,6 +525,7 @@ proc launchAgent*(command, input: string, workingDir = "") =
         discard closeHandle(agentJob)
         agentJob = 0
     cleanAgentFiles()
+    notifyAgent(b, failed = true)
     raise
 
 proc startAgent*(instruction: string) =
@@ -647,6 +649,8 @@ proc pollAgent*(): bool =
   if code == -1:
     return if agentChat != nil: updateChat() else: false
   result = true
+  let notified = if agentChat != nil: agentChat.buf else: agentBuf
+  var failed = code != 0 or agentCancelled
   agentProcess.close()
   agentProcess = nil
   when defined(windows):
@@ -747,8 +751,11 @@ proc pollAgent*(): bool =
         abandonLine()
         switchTo(agentBuf)  # review the buffer the instruction was about
         beginReview(text)
-  except CatchableError as e: echoLine = e.msg
+  except CatchableError as e:
+    failed = true
+    echoLine = e.msg
   finally:
+    notifyAgent(notified, failed = failed or agentOutput.isError)
     agentChat = nil
     cleanAgentFiles()
 

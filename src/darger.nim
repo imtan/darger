@@ -5,7 +5,7 @@ import windy, vmath
 when defined(macosx): import macwin
 import core, buffer, buffers, render, skk, update
 import execpath
-import ext/[org, web, rss, dired, help, dash, blist, agent, selfupdate, langserver, revert, shader, term, claude, grep, eagle, project, migemo, pasteimage, orgimage, understand, branchdiff, places, locate, writing, magit, vcline, olivetti, fonts, novel, alpha, tramp, treemacs]
+import ext/[notify, org, web, rss, dired, help, dash, blist, agent, agentrules, selfupdate, langserver, revert, shader, term, claude, grep, eagle, project, migemo, pasteimage, orgimage, understand, branchdiff, places, locate, writing, magit, vcline, olivetti, fonts, novel, alpha, tramp, treemacs]
 
 when defined(macosx):
   # AppKit reports a borderless window as always zoomed and zoom() leaves it alone, so
@@ -83,6 +83,7 @@ window.onButtonRelease = proc(key: Button) =
   except CatchableError as e: echoLine = e.msg
 
 window.onButtonPress = proc(key: Button) =
+  if key >= Key0: clearAgentNotice()
   dirty = true
   if key == MouseLeft:
     let hit = renderer.titleHit(window, window.mousePos)
@@ -150,6 +151,7 @@ window.onButtonPress = proc(key: Button) =
   except CatchableError as e: echoLine = e.msg
 
 window.onRune = proc(rune: Rune) =
+  clearAgentNotice()
   dirty = true
   if ctrl() or alt() or int(rune) < 32 or int(rune) == 127: return
   if suppressRune:

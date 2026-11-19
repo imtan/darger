@@ -30,6 +30,24 @@ C-c a (`agent-prompt`) は現在のファイルと指示を `agent-command` に�
 追加されません。チャットと一回限りのエージェントの両方で、経過時間 (`Agent running 1:23`)
 がエコー行に表示され、チャットでは最新のツール活動も出ます。
 
+ターンの完了・失敗時はモードラインに `agent ✓ done` / `agent ✗ failed` を表示し、
+キー入力または対象バッファに戻ると消えます。Darger が前面にない場合は macOS 通知も出します
+（Linux は `notify-send` があれば使用、Windows はモードラインのみ）。端末の BEL / OSC 9 /
+OSC 777 通知も同じ方法で知らせますが、前面でその端末を表示中なら通知しません。
+`(setq agent-notify nil)` で無効化、`(setq agent-notify-sound "Glass")` で macOS の通知音を
+指定できます（既定は nil、音なし）。
+
+`M-x agent-rules` は user → 上位ディレクトリ → プロジェクトの順に、ルールのスコープ・パス・
+行数を読み取り専用バッファに表示します。対象は `CLAUDE.md`、`.claude/CLAUDE.md`、`AGENTS.md`、
+`.cursor/rules/*.mdc`、`.github/copilot-instructions.md`、`CLAUDE.local.md` と、
+`~/.claude/CLAUDE.md` / `~/.codex/AGENTS.md`。ユーザールールは行数だけを数え、開くまで本文を
+保持・表示しません。Enter で開き、M-, で戻り、g で更新、q で一覧を離れます。
+複数クライアントの探索順を示す一覧で、条件付きルールの適用判定は行いません。
+`M-x agent-remember` は1行と追記先を受け取り、末尾の `- text` を追加ハンク1つでレビューします。
+既定の追記先はプロジェクトの `CLAUDE.md`、なければ `AGENTS.md`、両方なければ新規 `CLAUDE.md`。
+y で採用、k で却下、q / Enter で確定します。開いているファイルはバッファに反映して未保存のまま、
+未オープンなら承認後に保存します。レビュー中に対象が変わると追記を中止します。
+
 デフォルト (`~/.darger.el` で上書きできます) は次の通りです。
 
 ```lisp
