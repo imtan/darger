@@ -696,6 +696,8 @@ type
     line*: int
     key*: string   ## the renderer's picture key (addPicture)
     w*, h*: int    ## pixels
+    annotation*: string  ## display-only text in reserved rows, using the same scrolling/mouse map
+    rowOffset*: int
 
   PaneView* = object
     ## One pane to draw: its buffer, scroll (updated so the cursor stays in view) and
@@ -892,13 +894,21 @@ proc drawPane(r: Renderer, window: Window, p: var PaneView, composition: seq[Run
       marks = if line < p.marks.len: p.marks[line] else: @[], paren = paren,
       x0 = gutter, width = cols, bgs = if line < p.bgs.len: p.bgs[line] else: @[],
       bolds = if line < p.bolds.len: p.bolds[line] else: @[], decorations = decorations)
+    for pic in p.pictures:
+      if pic.line == line and pic.annotation.len > 0:
+        r.drawLine("▌".toRunes, row, 0, x0 = gutter + cols - 1, width = 1, tint = theme.label)
     offset += b.lines[line].len + 1
     inc row
     # The rows under a line hold its picture, cropped at the pane's bottom.
     if below(line) > 0:
       for pic in p.pictures:
         if pic.line == line and row < r.rows:
-          r.drawPicture(pic, r.cellX(gutter), r.rowY(row), (r.rows - row) * r.cellH)
+          if pic.annotation.len > 0:
+            if row + pic.rowOffset < r.rows:
+              r.drawLine(("  ▌ " & pic.annotation).toRunes, row + pic.rowOffset, 0,
+                x0 = gutter, width = cols, tint = theme.lineNo)
+          else:
+            r.drawPicture(pic, r.cellX(gutter), r.rowY(row), (r.rows - row) * r.cellH)
       row += below(line)
   r.glyphHook = nil
   if p.box.lines.len > 0 and p.box.line >= top and rowOf(p.box.line) < r.rows:

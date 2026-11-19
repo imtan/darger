@@ -1,7 +1,7 @@
 ## A read-only branch diff, without the understanding ledger's other views.
 import std/[os, osproc, strutils, unicode, tables]
 import ../[core, buffer, buffers, lisp, syntax, chat, ledger, branchdiff]
-import agent, understand
+import agent, understand, reviewcomments
 
 var
   diffBuf: Buffer
@@ -38,6 +38,12 @@ proc showDiff(line = 0, message = "") =
       of dkRemoved: 1'i8
       of dkAdded: 2'i8
       else: 0'i8)
+  var anchors: seq[CommentAnchor]
+  for row in view.rows:
+    anchors.add (if row.kind in [dkAdded, dkRemoved, dkContext]:
+      CommentAnchor(path: row.path, line: row.newLine, content: row.text[1..^1], excerpt: row.text)
+      else: CommentAnchor())
+  setCommentView(diffBuf, root, anchors)
   diffBuf.splice(0, diffBuf.text.runeLen, view.text)
   diffBuf.modified = false
   diffBuf.cursor = (clamp(line, 0, diffBuf.lines.high), 0)
@@ -98,6 +104,7 @@ proc openBranchDiff*() =
     diffBuf = newBuffer()
     reg.add(diffBuf, "*branch-diff*")
     setReadOnly(diffBuf, true)
+    bindCommentKeys(diffBuf)
     for key in ["n", "p", "tab", "C-i", "S-tab", "enter", "C-m", "C-j", "b", "g", "q"]:
       setLocalKey(diffBuf, key, interp.evalString("(lambda () (branch-diff-key \"" & key & "\"))", "<branch-diff>"))
   files = @[]

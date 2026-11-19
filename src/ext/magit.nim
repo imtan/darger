@@ -1,7 +1,7 @@
 ## An ordinary status buffer: its own keys, with normal window/buffer switching.
 import std/[os, osproc, strutils, unicode, sets, streams]
 import ../[core, buffer, buffers, lisp, syntax, magit, branchdiff]
-import agent
+import agent, reviewcomments
 
 var
   mbuf: Buffer
@@ -68,7 +68,7 @@ proc buildStatus(keepLine = -1) =
     let head = runGit(mroot, "log -1 --format=%s")
     add("Head: " & (if branch.exitCode == 0: strutils.strip(branch.output) else: "(detached)") &
       " " & (if head.exitCode == 0: strutils.strip(head.output) else: "(no commits)"), face = fKeyword)
-    add("TAB diff  S-TAB all  Enter open (M-, back)  s/u stage  c commit  r review  ? keys", face = fComment)
+    add("TAB diff  S-TAB all  Enter open (M-, back)  s/u stage  c commit  C comment  r review  ? keys", face = fComment)
     let upstream = runGit(mroot, "rev-parse --abbrev-ref --symbolic-full-name " & quoteShell("@{u}"))
     if upstream.exitCode == 0:
       let counts = runGit(mroot, "rev-list --left-right --count " & quoteShell("@{u}...HEAD"))
@@ -111,9 +111,16 @@ proc buildStatus(keepLine = -1) =
     mbuf = newBuffer()
     reg.add(mbuf, "*magit*")
     setReadOnly(mbuf, true)
+    bindCommentKeys(mbuf, key = "C", send = false)
     for key in ["s", "u", "k", "c", "P", "F", "g", "q", "n", "p", "?", "r",
                 "tab", "C-i", "S-tab", "enter", "C-m", "C-j"]:
       setLocalKey(mbuf, key, interp.evalString("(lambda () (magit-key \"" & key & "\"))", "<magit>"))
+  var anchors: seq[CommentAnchor]
+  for row in mrows:
+    anchors.add (if row.kind in [dkAdded, dkRemoved, dkContext] and row.entry.path.len > 0:
+      CommentAnchor(path: row.entry.path, line: row.newLine, content: row.text[1..^1], excerpt: row.text)
+      else: CommentAnchor())
+  setCommentView(mbuf, mroot, anchors)
   mbuf.splice(0, mbuf.text.runeLen, lines.join("\n"))
   mbuf.modified = false
   var line = restoredRow(mrows, selected, keepLine)
@@ -217,7 +224,7 @@ proc magitKey(input: string) =
       let other = if layout.leaves.len > 1: otherPaneFor() else: nil
       if other != nil and other != pane: selectPane(other)
       else: discard interp.evalString("(previous-buffer)", "<magit>")
-    of "?": echoLine = "TAB: diff/section  S-TAB: all diffs  Enter: open  M-,: back  r: review HEAD  s/u: stage/unstage file or hunk  k: discard (y/n)  c: commit  P: push  F: pull  g: refresh  n/p: move  q: leave"
+    of "?": echoLine = "TAB: diff/section  S-TAB: all diffs  Enter: open  M-,: back  r: review HEAD  s/u: stage/unstage file or hunk  k: discard (y/n)  c: commit  C: comment  C-c C-k: delete comment  P: push  F: pull  g: refresh  n/p: move  q: leave"
     else: discard
   except CatchableError as e: echoLine = e.msg
 faceProviders.add proc(buf: Buffer): seq[seq[Face]] =

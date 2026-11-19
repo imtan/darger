@@ -71,9 +71,9 @@ var
   killingReview = false
   sidesOn = false
   sidesSplit = false
-  sideBufs: array[2, Buffer]
+  sideBufs*: array[2, Buffer]
   sidePanes: array[2, Pane]
-  sideViews: array[2, SideView]
+  sideViews*: array[2, SideView]
   sideReused: Pane
   sideOther: Pane
   explainText: string         # unwrapped source, independent of pane width
@@ -89,6 +89,10 @@ proc reviewKeys(buf: Buffer, sides = false) =
     else: "y k u n p l a A w e r x X U | q ? enter C-m C-j C-g"
   for key in strutils.splitWhitespace(keys):
     setLocalKey(buf, key, interp.evalString("(lambda () (review-key \"" & key & "\"))", "<review-keys>"))
+
+  for (key, command) in [("c", "review-comment"), ("S", "review-comments-send"),
+                          ("C-c C-k", "review-comment-delete")]:
+    setLocalKey(buf, key, symbol(command))
 
 proc resetUnderstanding() =
   explained = newSeq[bool](reviewState.hunks.len)
@@ -557,20 +561,24 @@ proc setChatText*(session: ChatSession, text: string): bool {.discardable.} =
   session.buf.finish()
   true
 
-proc sendChat*(message: string) =
+var chatResultHook: proc(session: ChatSession, text: string, ok: bool)
+
+proc sendChat*(message: string, commandOverride = "",
+               onResult: proc(session: ChatSession, text: string, ok: bool) = nil) =
   var session = chats.getOrDefault(chatRoot)
   if message.len == 0:
     if session != nil: switchTo(session.buf)
     return
   if agentProcess != nil: raise newException(ValueError, "Agent already running")
   let variable = if session != nil and session.started: "agent-chat-resume-command" else: "agent-chat-command"
-  let command = interp.env.values[variable].asString
+  let command = if commandOverride.len > 0: commandOverride else: interp.env.values[variable].asString
   if strutils.strip(command).len == 0: raise newException(ValueError, variable & " is empty")
   if session == nil:
     session = ChatSession(root: chatRoot, id: sessionId(), buf: newBuffer())
   chatBefore = snapshot(session.root)
   launchAgent(expandId(command, session.id), message, session.root)
   agentChat = session
+  chatResultHook = onResult
   chats[chatRoot] = session
   reg.add(session.buf, "*agent " & extractFilename(chatRoot) & "*")
   session.turn = appendTurn(session.buf.text, session.root, message)
@@ -755,6 +763,14 @@ proc pollAgent*(): bool =
     failed = true
     echoLine = e.msg
   finally:
+    let completed = agentChat
+    let callback = chatResultHook
+    chatResultHook = nil
+    if callback != nil:
+      try: callback(completed, agentOutput.reply, not (failed or agentOutput.isError) and completed != nil and completed.buf in reg)
+      except CatchableError as e:
+        failed = true
+        echoLine = e.msg
     notifyAgent(notified, failed = failed or agentOutput.isError)
     agentChat = nil
     cleanAgentFiles()
@@ -1199,7 +1215,7 @@ proc dispatchReview*(c: string) =
     if sidesOn:
       echoLine = "n / p: move  y / k / u: take / keep / undo  a / A: take / keep all  q: finish  |: unified view  C-g: cancel"
       return
-    echoLine = "y: take the proposed hunk  k: keep the buffer's  u: undo the decision  " &
+    echoLine = "c: comment  S: send comments  C-c C-k: delete comment  y: take the proposed hunk  k: keep the buffer's  u: undo the decision  " &
       "n / p: move  l: list  x: explain this hunk  X: ask a question about it  U: I understand it  " &
       "|: side-by-side view  e: edit proposed lines (C-c C-c applies, C-c C-k cancels)  r: ask the agent to change it  w: apply so far, go on  " &
       "a / A: take / keep all pending and finish  q / Enter: apply decisions  C-g: cancel"

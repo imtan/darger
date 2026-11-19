@@ -11,11 +11,13 @@ type
     text*: string
     colors*: seq[int8]
     bgs*: seq[seq[int8]]
+    newLines*: seq[int]   ## display rows mapped to the proposed file
     starts*: seq[int]
   ReviewView* = object
     text*: string
     colors*: seq[int8] # 1/2: removed/added, 3/4: current removed/added
     bgs*: seq[seq[int8]] # per rune: 9/10 the changed part of a removed/added line, 11/12 in the current hunk
+    newLines*: seq[int]   ## display rows mapped to the proposed file
     starts*: seq[int]
 
 proc lines(text: string): seq[string] =
@@ -102,17 +104,24 @@ proc view*(r: Review, current: int): ReviewView =
     rows.add prefix & line.strip(leading = false, chars = {'\r', '\n'})
     colors.add color
     bgs.add @[]
-  var pos = 0
+  var pos, newPos = 0
   for i, h in r.hunks:
-    for n in pos..<h.startA: add(r.original[n], "", 0)
+    for n in pos..<h.startA:
+      add(r.original[n], "", 0)
+      result.newLines.add newPos + 1
+      inc newPos
     result.starts.add rows.len
     let highlight = if i == current: 2'i8 else: 0'i8
     let removedAt = rows.len
     if r.decisions[i] != accepted:
-      for n in h.startA..<h.startA + h.deletedA: add(r.original[n], "-", 1 + highlight)
+      for n in h.startA..<h.startA + h.deletedA:
+        add(r.original[n], "-", 1 + highlight)
+        result.newLines.add clamp(h.startB + 1, 1, max(1, r.proposed.len))
     let addedAt = rows.len
     if r.decisions[i] != rejected:
-      for n in h.startB..<h.startB + h.insertedB: add(r.proposed[n], "+", 2 + highlight)
+      for n in h.startB..<h.startB + h.insertedB:
+        add(r.proposed[n], "+", 2 + highlight)
+        result.newLines.add n + 1
     # Refine: the k-th removed line against the k-th added one, when both are shown.
     if r.decisions[i] == pending:
       for k in 0..<min(h.deletedA, h.insertedB):
@@ -127,7 +136,11 @@ proc view*(r: Review, current: int): ReviewView =
         bgs[removedAt + k] = ra
         bgs[addedAt + k] = rb
     pos = h.startA + h.deletedA
-  for n in pos..<r.original.len: add(r.original[n], "", 0)
+    newPos = h.startB + h.insertedB
+  for n in pos..<r.original.len:
+    add(r.original[n], "", 0)
+    result.newLines.add newPos + 1
+    inc newPos
   result.text = rows.join("\n")
   result.colors = colors
   result.bgs = bgs
@@ -139,9 +152,12 @@ proc sideBySide*(r: Review, current: int): tuple[left, right: SideView] =
     rows.add line.strip(leading = false, chars = {'\r', '\n'})
     v.colors.add color
     v.bgs.add @[]
-  var pos = 0
+  var pos, newPos = 0
   for i, h in r.hunks:
     for n in pos..<h.startA:
+      result.left.newLines.add newPos + 1
+      result.right.newLines.add newPos + 1
+      inc newPos
       add(result.left, left, r.original[n], 0)
       add(result.right, right, r.original[n], 0)
     result.left.starts.add left.len
@@ -150,6 +166,8 @@ proc sideBySide*(r: Review, current: int): tuple[left, right: SideView] =
     for k in 0..<max(h.deletedA, h.insertedB):
       let showA = k < h.deletedA and r.decisions[i] != accepted
       let showB = k < h.insertedB and r.decisions[i] != rejected
+      result.left.newLines.add (if showA: clamp(h.startB + 1, 1, max(1, r.proposed.len)) else: 0)
+      result.right.newLines.add (if showB: h.startB + k + 1 else: 0)
       add(result.left, left, (if showA: r.original[h.startA + k] else: ""),
           (if showA: 1 + highlight else: 0))
       add(result.right, right, (if showB: r.proposed[h.startB + k] else: ""),
@@ -166,7 +184,11 @@ proc sideBySide*(r: Review, current: int): tuple[left, right: SideView] =
           result.left.bgs[^1] = ra
           result.right.bgs[^1] = rb
     pos = h.startA + h.deletedA
+    newPos = h.startB + h.insertedB
   for n in pos..<r.original.len:
+    result.left.newLines.add newPos + 1
+    result.right.newLines.add newPos + 1
+    inc newPos
     add(result.left, left, r.original[n], 0)
     add(result.right, right, r.original[n], 0)
   result.left.text = left.join("\n")

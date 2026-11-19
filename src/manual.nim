@@ -175,6 +175,14 @@ M-x compile-ask-agent    *compilation* の a: 失敗を既存チャットへ。�
 M-x branch-diff          *branch-diff*: base との merge base → 作業ツリーの差分だけを読む (未追跡ファイルも含む)
                          n/p: 次/前のファイル、TAB: 開閉、Shift-TAB: 全体を開閉、Enter: 対応行へ (M-, で戻る)
                          b: understanding と共通の base を選んで記憶、g: 更新、q: 離れる。通常の移動・検索も可
+行コメント               branch-diff / レビュー: c、magit: C（c はコミットのまま）。▌ と薄い注釈は表示のみ
+                         C-c C-k / M-x review-comment-delete: 削除。M-x review-comments: 一覧、Enter で移動
+                         パス・新しい側の行番号・内容で照合。g 後も保持し ~/.darger-review-comments.json に保存
+                         S（差分/レビュー）/ M-x review-comments-send: 全コメントを既存チャットへ送り、送信分を消す
+M-x agent-plan           計画だけを依頼（Claude は --permission-mode plan）。*agent-plan* を Markdown として編集、c でコメント
+                         C-c C-c: 編集後の計画とコメントを同じセッションへ送り実装。変更は agent-changes でレビュー
+                         C-c C-k: 破棄（保存済み Markdown は残す）。コメント削除は M-x review-comment-delete
+                         agent-plan-command: 計画用コマンド。agent-plan-directory: 既定 .darger/plans、nil で保存しない
 C-c u                    *understanding* バッファ: ブランチの未理解 / 理解済みファイル、未返済エントリ、用語集
                          Enter で比較 (閉じると戻る) / 負債の場所へ、b で base ブランチ選択 (origin/develop も可)、
                          t で範囲を切替 (分岐点から / base の先端と = git diff base)、U でファイル全体を理解済み、

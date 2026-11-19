@@ -423,6 +423,34 @@ is retained; resizing alone does not reflow an already displayed buffer.
 
 ## Review
 
+Line comments: `c` in `*branch-diff*` or a review (`C` in `*magit*`, where
+`c` still commits) prompts for one line. A dim annotation and `▌` mark are display
+only. `C-c C-k` / `M-x review-comment-delete` removes the comment at point;
+`M-x review-comments` lists the project's comments, with Enter to jump and M-,
+to return. Comments are stored per repository in `~/.darger-review-comments.json`,
+matched by path, new-side line number and content, so `g` preserves matching
+comments; changed lines keep their comments in the list without attaching them
+to different text. Deleted lines use the nearest new-side line. `S` in a branch
+diff or review, or `M-x review-comments-send`, sends all project comments with
+`path:line` and diff excerpts to the existing agent chat, then clears those sent on success.
+Failed or cancelled turns keep them for retry.
+
+`M-x agent-plan` asks for a task and requests Markdown planning only in the
+project's chat session. Claude commands add `--permission-mode plan`; override
+with `(setq agent-plan-command "claude -p --output-format stream-json --verbose --session-id {id} --permission-mode plan")`
+(`--session-id` becomes `--resume` for an existing session).
+Edit `*agent-plan*` directly or add line comments with `c`; use
+`M-x review-comment-delete` here because `C-c C-k` discards the plan.
+`C-c C-c` saves the edited plan and sends it with its comments to the same
+session for implementation through the normal agent-changes review workflow.
+Claude resumes with the normal chat command's permission mode (explicitly
+`default` when that command has none). Failed/cancelled replies and changed
+sessions cannot be approved. A pending plan must be approved or discarded before
+sending a review-comment batch, so feedback cannot bypass plan approval. Plans are saved on receipt and approval under
+`.darger/plans/<timestamp>-<title>.md`; `agent-plan-directory` changes the directory
+(relative to the project), and `nil` disables saving. Discard leaves any saved
+Markdown in place and sends nothing. `.gitignore` is unchanged.
+
 Reviews use the ordinary read-only buffer `*review*`, with review keys local to
 that buffer. C-x b, C-x o, C-x C-f, M-x, isearch and all movement keys remain
 available. Leaving the buffer keeps the review alive; returning resumes it.
