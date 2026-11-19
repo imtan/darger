@@ -479,6 +479,20 @@ base ブランチ (`main` / `master` / `develop`、または `understanding-base
 記録します。もう一度実行すると申告済みのファイルは
 消えます。マージ前の「自分がここでやったことで、まだ理解していないものは何か」に答える道具です。
 
+`M-x compile` はコマンドをミニバッファで受け取り、プロジェクトルートで非同期に実行します。
+既定値は前回のコマンド、初回は darger.nimble / package.json / Cargo.toml / go.mod /
+Makefile から推測します。読み取り専用の `*compilation*` に標準出力・標準エラーを逐次表示し、
+最後に終了コードと所要時間を出します。`M-x recompile` またはバッファ内の `g` で再実行
+（実行中なら停止・再実行を確認）、`C-c C-k` または `M-x compile-stop` で子プロセスごと停止します。
+Nim、GCC/Clang/Rust/Go/TypeScript、Python、Node、汎用の `path:line:` を認識・色分けし、
+相対パスは実行ディレクトリから解決します。`M-g n` / `M-g p`（`next-error` / `previous-error`）、
+次へ進む ``C-x ` ``、出力行の Enter でソースへ移動し、`M-,` で戻れます。`consult-flymake` は従来どおりです。
+失敗後の `a` または `M-x compile-ask-agent` は、コマンド・終了コード・出力最大200行
+（エラー周辺を優先、残りは末尾）と該当コードの前後20行を既存の agent-chat に送ります。
+変更は `agent-changes` から開き、`y` / `k` でレビューします。
+`(setq compile-ask-agent-on-failure t)` なら失敗時に一度だけ送信を確認します（既定は nil）。
+リモート実行には未対応です。
+
 `M-x branch-diff` は、GitHub の Files changed のように差分だけを読む
 `*branch-diff*` バッファを開きます。base との merge base から作業ツリーまでを比較し、
 ステージ済み・未コミットの変更と未追跡ファイルも含めます。base はリポジトリごとに

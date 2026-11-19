@@ -165,6 +165,13 @@ M-x agent-changes        直前のチャットターンで変わったファイ�
 M-x understanding-debt   理解台帳 (~/.darger-understanding.org) の今のブランチの未返済一覧 (-all で全部)
 M-x understanding-repay  現在のファイルの最寄りの負債を説明して DONE に (*understanding* の負債行では x)
 M-x branch-debt          このブランチで base から変わったファイルのうち未理解のもの。Enter で base と比較レビュー
+M-x compile              前回／プロジェクトから推測したコマンドを入力し、ルートで非同期実行
+                         *compilation* に出力・終了コード・所要時間。g / recompile: 再実行 (実行中は確認)
+                         C-c C-k / compile-stop: 子プロセスごと停止。Enter: 出力行のソースへ、M-, で戻る
+M-g n / M-g p           next-error / previous-error。C-x ` も次へ。Nim・各言語のコンパイラ／スタック位置を認識
+M-x compile-ask-agent    *compilation* の a: 失敗を既存チャットへ。出力最大200行と該当コード前後20行を添付
+                         変更は agent-changes → y/k でレビュー。compile-ask-agent-on-failure は既定 nil
+                         t にすると失敗時に一度だけ送信を確認。リモート実行は未対応
 M-x branch-diff          *branch-diff*: base との merge base → 作業ツリーの差分だけを読む (未追跡ファイルも含む)
                          n/p: 次/前のファイル、TAB: 開閉、Shift-TAB: 全体を開閉、Enter: 対応行へ (M-, で戻る)
                          b: understanding と共通の base を選んで記憶、g: 更新、q: 離れる。通常の移動・検索も可

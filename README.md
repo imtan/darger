@@ -521,6 +521,22 @@ hunk (understood or not) in the ledger. Run it again and the attested files
 are gone; before a merge it answers "what did I do here that I do not yet
 understand?".
 
+`M-x compile` prompts for a shell command (the last command, initially guessed from
+darger.nimble / package.json / Cargo.toml / go.mod / Makefile), runs it asynchronously
+at the project root, and streams stdout/stderr into read-only `*compilation*`, ending
+with its exit code and elapsed time. `M-x recompile` or `g` there repeats it; a running
+job requires confirmation before stopping and restarting. `C-c C-k` in that buffer
+(or `M-x compile-stop`) stops the job and its children. Compiler and traceback
+locations are coloured: `M-g n` / `M-g p` (`next-error` / `previous-error`), also
+``C-x ` `` for next, visit them; Enter visits the current output row, and `M-,` returns.
+Nim, GCC/Clang/Rust/Go/TypeScript, Python, Node and generic `path:line:` locations
+resolve relative to the build directory. LSP's `consult-flymake` remains separate.
+After failure, `a` or `M-x compile-ask-agent` sends the command, exit code, up to 200
+output lines (error context preferred), and source within 20 lines of each location
+to the existing project chat. Inspect changes with `agent-changes` and review with
+`y` / `k`. `(setq compile-ask-agent-on-failure t)` offers this once per failure;
+the default is nil. Remote compilation is not supported.
+
 `M-x branch-diff` opens `*branch-diff*`, a read-only Files changed view from the
 base's merge base to the working tree, including staged, unstaged and untracked
 files. The base is the one remembered by understanding for this repository, then
