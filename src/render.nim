@@ -1,7 +1,7 @@
 import std/[os, unicode, sets, tables, math, strutils, times]
 import windy, boxy, pixie, opengl
 import panes
-import buffer, syntax, pictures
+import buffer, syntax, pictures, textgamma
 when not defined(windows) and not defined(macosx): import std/osproc
 
 type
@@ -13,6 +13,8 @@ type
     fallbacks: string  # set-fallback-fonts / DARGER_FALLBACK_FONTS entries; "" uses the defaults
     chosen: Table[int, int]
     glyphs*: HashSet[string]
+    textGamma: float
+    gammaLut: TextGammaLut
     scale*: float32
     zoom*: float32
     lastTitle: string
@@ -175,7 +177,7 @@ proc loadFallbacks(fonts: var seq[Font], fallbacks: string, loaded: var HashSet[
       loaded.incl extractFilename(path)
 
 proc newRenderer*(): Renderer =
-  result = Renderer(zoom: 1)
+  result = Renderer(zoom: 1, textGamma: 2.0, gammaLut: textGammaLut(2.0))
   var paths: seq[string]
   let primary = getEnv("DARGER_FONT")
   if primary.len > 0: paths.add primary
@@ -269,6 +271,15 @@ proc setFallbackFonts*(r: Renderer, fallbacks: string) =
   fonts = r.withInstalled(fonts)
   r.fallbacks = fallbacks
   r.swapFonts(fonts)
+
+proc setTextGamma*(r: Renderer, gamma: float) =
+  ## Changes text coverage and drops cached glyphs.
+  if not (gamma >= 1.0 and gamma <= 3.0):
+    raise newException(ValueError, "Expected text gamma from 1.0 to 3.0")
+  r.textGamma = gamma
+  r.gammaLut = textGammaLut(gamma)
+  for key in r.glyphs: r.gpu.removeImage(key)
+  r.glyphs.clear()
 
 proc envScale(name: string): float32 =
   try:
@@ -370,6 +381,7 @@ proc glyph(r: Renderer, rune: Rune, x, y: int, tint: Color, bold = false) =
       img.fillPath(path, color(1, 1, 1, 1), translate(vec2(xOffset, ascent + baselineOffset)))
       if synthetic:
         img.fillPath(path, color(1, 1, 1, 1), translate(vec2(xOffset + max(1'f32, r.scale * 0.6), ascent + baselineOffset)))
+      if r.textGamma != 1.0: img.applyTextGamma(r.gammaLut)
     else:
       let path = newPath()
       path.rect(1, 3, (img.width - 2).float32, (img.height - 6).float32)

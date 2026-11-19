@@ -211,6 +211,9 @@ Segoe UI Symbol を、それ以外で Noto Sans CJK、Noto Sans Symbols 2、Hira
 使え、読み込めないフォントは現在のフォントをそのままにして、エコー領域に
 `Cannot load font …` と報告します。
 
+`(set-text-gamma 2.0)` は文字の濃さを補正し、細い線を見やすくします。
+デフォルトは 2.0、設定範囲は 1.0〜3.0 で、1.0 にすると補正を無効にします。
+
 テキストは 16 ピクセル × ウィンドウの DPI スケール × ズームで、フォールバックのベースラインは
 揃えられます。`DARGER_SCALE` (例: `2`) で DPI スケールを上書きできます。Linux で windy が 1.0 を
 報告する場合 (`Xft.dpi` のない X11、XWayland) は、設定されていれば `GDK_SCALE` を使います。

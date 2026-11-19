@@ -223,6 +223,9 @@ fallbacks, and `(set-fallback-fonts "path;path")` replaces the fallbacks; both
 work at any time (M-: too), and a font that cannot be loaded leaves the current
 fonts in place and reports `Cannot load font …` in the echo area.
 
+`(set-text-gamma 2.0)` adjusts glyph coverage so thin strokes look less faint;
+the default is 2.0, the range is 1.0–3.0, and 1.0 turns correction off.
+
 Text is 16 pixels times the window DPI scale times the zoom, with aligned fallback
 baselines. `DARGER_SCALE` (e.g. `2`) overrides the DPI scale; on Linux, when windy
 reports 1.0 (X11 without `Xft.dpi`, XWayland), `GDK_SCALE` is used if set. F2 starts

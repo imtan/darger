@@ -108,7 +108,7 @@ const
 """
 
 var argCommands* = @["global-set-key", "local-set-key", "buffer-read-only", "insert", "command", "find-file", "load-theme",
-  "hydra", "set-font", "set-fallback-fonts"]  # primitives M-x cannot call without arguments
+  "hydra", "set-font", "set-fallback-fonts", "set-text-gamma"]  # primitives M-x cannot call without arguments
 
 when defined(windows):
   import std/[winlean, streams]
@@ -1443,6 +1443,15 @@ interp.defPrimitive("set-fallback-fonts", proc(args: seq[Value]): Value =
   try: renderer.setFallbackFonts(paths.join(";"))
   except CatchableError as e:
     raise newException(LispError, "Cannot load fallback fonts: " & e.msg)
+  args[0])
+interp.defPrimitive("set-text-gamma", proc(args: seq[Value]): Value =
+  args.arity(1, 1)
+  if args[0].kind != vNumber:
+    raise newException(LispError, "Expected text gamma number from 1.0 to 3.0")
+  let gamma = args[0].asNumber
+  if not (gamma >= 1.0 and gamma <= 3.0):
+    raise newException(LispError, "Expected text gamma number from 1.0 to 3.0")
+  renderer.setTextGamma(gamma)
   args[0])
 interp.defPrimitive("hydra", proc(args: seq[Value]): Value =
   args.arity(2, 2)

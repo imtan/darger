@@ -310,6 +310,7 @@ M-:                      Lisp 式を評価
   (setq agent-command "...")
   (load-theme "catppuccin")    ; 既定は modus-vivendi
   (set-font "/path/mono.ttf")  ; 主フォント。DARGER_FONT と既定より優先、読めなければ現状維持
+  (set-text-gamma 2.0)  ; 文字の濃さの補正。既定 2.0、範囲 1.0〜3.0、1.0 で無効
   (set-fallback-fonts "/path/a.ttc;/path/b.ttf")  ; 代替フォントを ; 区切りで置き換え
   (rss-feed "https://example.com/feed.xml")
   (setq fetch-command "curl -sSL --max-time 30 --compressed")
