@@ -526,23 +526,34 @@ The review's keys are also commands (`review-take`, `review-keep`, `review-next`
 `review-previous`, `review-finish`, `review-explain-hunk`, `review-attest`), so an
 init file or an agent can drive a review.
 
-## Git (magit, minimal)
+## Git (magit)
 
 `C-x g` (`magit-status`) opens the read-only `*magit*` buffer for the current
 file's repository: HEAD, upstream ahead/behind counts, untracked / unstaged /
 staged files, and the ten recent commits. `n` / `p` move, `g` refreshes, `q`
 leaves (the other window, or the previous buffer), and `?` lists the keys.
 
-- `s` / `u`: stage / unstage the file. On an untracked or unstaged heading,
+- TAB (`C-i`): expand/collapse a file's inline diff or a whole section, including
+  recent commits. Inside a diff, TAB closes it and returns to the file row.
+  Shift-TAB toggles all file diffs. Unstaged diffs compare with the index; staged
+  diffs compare the index with HEAD. Untracked files show added lines; large or
+  binary untracked files show a notice instead.
+- `s` / `u`: stage / unstage the file, or just the hunk when inside a diff.
+  Untracked hunks stage the whole file. On an untracked or unstaged heading,
   `s` stages all changes (`git add -A`); on the staged heading, `u` unstages all.
-- Enter: visit the file; files with unstaged changes open a review against HEAD
+- Enter: open the file without a review. Inside a diff, jump to the new-side line;
+  removed lines jump to the nearest new-side line in the hunk. `M-,` returns to
+  the position in `*magit*`, as the echo line reminds you after opening a file.
+- `r`: visit the file; files with unstaged changes open a review against HEAD
   (`git HEAD`, as in `vc-review`). Accepting a hunk restores its HEAD version in
   the buffer. Untracked and staged-only files are just visited.
 - `k`: discard an unstaged file's changes after a y/n prompt (restore the index version).
 - `c`: prompt for a commit message; `P`: push; `F`: pull with `--ff-only`.
 
 Git operations run synchronously on saved files; save edits before staging.
-The status refreshes after operations and keeps the cursor row where possible.
+The status refreshes after operations and keeps the selected file/line where
+possible. File expansion (by section and path) and section folds survive `g`,
+staging and unstaging. A key guide stays at the top of the buffer.
 
 ## Remote files over ssh (TRAMP)
 

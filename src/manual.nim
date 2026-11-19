@@ -238,10 +238,14 @@ C-c n s                  Org ディレクトリを全文検索 (M-x consult-ripg
 C-x p f / p / b          プロジェクトのファイルを開く / プロジェクト切替 / プロジェクトのバッファ
 C-c p                    projectile hydra: f ファイル  p 切替  b バッファ  s grep  r rgrep  v magit  d dired  l 場所を聞く  q
 C-x g                    Git status (*magit*): HEAD / upstream / 未追跡 / 未ステージ / ステージ済み / 履歴
-  s / u                  ファイルを stage / unstage (見出しでは全変更を stage / 全件を unstage)
-  Enter / k              ファイルを開き HEAD とレビュー / 未ステージの変更を y/n 確認後に破棄
+  TAB / C-i              差分・節を開閉 (差分内では閉じてファイル行へ)。S-TAB は全差分を開閉
+                         未ステージは index と、ステージ済みは HEAD と比較。未追跡は全行追加 (大きい/バイナリは説明のみ)
+  s / u                  ファイル・ハンクを stage / unstage (未追跡はファイル単位、見出しでは全件)
+  Enter / M-,            ファイル・差分の変更後の行へ移動 / *magit* の元の位置へ戻る (削除行は最も近い行へ)
+  r / k                  ファイルを開き HEAD とレビュー / 未ステージの変更を y/n 確認後に破棄
   c / P / F              メッセージを入力して commit / push / pull --ff-only
   n / p / g / q / ?      行移動 / 更新 / 離れる / キー一覧 (Git 操作は保存済みの内容が対象)
+                         差分・節の開閉状態は g や stage / unstage 後も維持
 C-c l                    エージェントに「どこ?」と聞き、答えを *places* (grep バッファ風) で開く
   n / p / Enter / o / q  場所を移動 (隣のウィンドウが追従) / そこへ移動 / 編集切替 / 離れる (普通のバッファ。C-x o 可)
 M-x grep-mode            今のバッファを Grep モードに (-*- mode: grep -*- や grep 出力風のファイルは自動)
