@@ -22,6 +22,37 @@ C-c a (`agent-prompt`) は現在のファイルと指示を `agent-command` に�
 `M-x agent-chat-new` は現在のルートのトランスクリプトを空にしてセッションをリセットします
 (その会話が実行中なら拒否されます)。
 
+`M-x acp-chat` は [ACP v1](https://agentclientprotocol.com/protocol/v1/overview)
+エージェントを選び、プロジェクトルートで起動します（前回の選択を入力済みにします）。
+セッションごとの読み取り専用 `*acp:<agent>:<project>*` に、メッセージ・ツールの種類／状態／題名・
+色付き差分・計画のチェックリストを逐次表示します。Enter または `M-x acp-chat` で次の入力、
+`M-x acp-toggle-thoughts` で薄色の思考を開閉、バッファ内の C-c C-k で中止します。
+`M-x acp-chat-new` は別セッションを作ります。最終セッション ID はエージェント／プロジェクトごとに
+`~/.darger-acp-sessions.json` に保存し、再接続時は対応エージェントだけ `session/load` で再開します。
+
+権限要求は `*acp-approval*` に詳細を表示し、番号1キーで allow once / always / reject などから
+選びます。差分があれば先に一時バッファでレビューします（y/k、q で終了後に権限選択）。
+ファイル読み取りは未保存のバッファ内容も返します。書き込み要求は別途 y/k でレビューし、q で
+確定して採用分を保存します。全却下やレビュー中の競合はエージェントにエラーを返します。
+差分のない空ファイル作成や未保存内容の保存は y/n で確認します。
+対象ファイルはリンク解決後もプロジェクト内に限ります。端末は読み取り専用 `*acp-terminal*` に表示し、
+権限要求とは別の y/n で実行を確認します（`acp-terminal-confirm` は既定 t、nil で確認なし）。
+`(setq agent-backend 'acp)` で行コメント・`agent-plan`・`compile-ask-agent` を現在の ACP セッションへ
+送れます。計画段階では ACP の書き込みと端末作成を拒否します。既定の送り先は従来の `cli` です。
+
+ACP の stdio 接続は現時点では macOS/Linux 対応です。エージェントの導入・認証は別途必要です。
+[ACP レジストリ](https://github.com/agentclientprotocol/registry) で確認した既定値は次のとおりです。
+
+```lisp
+(setq acp-agents '(("claude" . "npx -y @agentclientprotocol/claude-agent-acp")
+                   ("codex" . "codex-acp") ("gemini" . "gemini --acp")))
+```
+
+既定の `npx -y` は起動時に未導入のアダプタを取得し得るため、取得を避ける場合は導入済みの実行ファイルを
+指定してください。ACP 経由の書き込みはレビューを通しますが、このクライアントは端末コマンドや
+エージェント独自のファイル操作を隔離しません。それらの直接書き込みには ACP レビューを強制できません。
+チャットの更新描画は既存部品を共有し、従来の CLI チェックポイントとは別に動作します。
+
 各チャットターンの直前にファイルのチェックポイントを保存します。
 `M-x agent-checkpoints` は番号・時刻・プロンプトの先頭・変更ファイル数の読み取り専用一覧です。
 Enter でそのターンの差分を branch-diff と同じ形式で表示し、`r` でターン直前の状態への

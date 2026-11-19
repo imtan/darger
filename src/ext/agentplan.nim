@@ -7,7 +7,7 @@ type Plan = ref object
   root, sessionId, title, path, anchorPath: string
   buf: Buffer
   origin: Buffer
-  pending: bool
+  pending, acp: bool
 
 var plans: Table[Buffer, Plan]
 var requestRoot: string
@@ -25,14 +25,14 @@ proc startPlan*(request: string) =
   for plan in plans.values:
     if plan.root == root and plan.pending:
       raise newException(ValueError, "Approve or discard this project's existing plan first")
-  let session = chats.getOrDefault(root)
+  let session = activeChatSession(root)
   let resumed = session != nil and session.started
   let variable = if resumed: "agent-chat-resume-command" else: "agent-chat-command"
   let configured = interp.env.values.getOrDefault("agent-plan-command")
   let override = if configured != nil and configured.kind != vNil: configured.asString else: ""
-  let command = planCommand(interp.env.values[variable].asString, override, resumed)
+  let command = if acpBackend(): "acp" else: planCommand(interp.env.values[variable].asString, override, resumed)
   if strutils.strip(command).len == 0: raise newException(ValueError, "Agent plan command is empty")
-  let plan = Plan(root: root, title: planTitle(request), origin: requestOrigin, pending: true)
+  let plan = Plan(root: root, title: planTitle(request), origin: requestOrigin, pending: true, acp: acpBackend())
   let setting = interp.env.values.getOrDefault("agent-plan-directory")
   let stamp = now().format("yyyyMMdd-HHmmss-fff")
   plan.anchorPath = ".darger/plans/" & stamp & "-" & plan.title & ".md"
@@ -55,7 +55,7 @@ proc startPlan*(request: string) =
     setLocalKey(plan.buf, "C-c C-k", symbol("agent-plan-discard"))
     switchTo(plan.buf)
     persist(plan)
-    echoLine = "Edit the plan; c comments, C-c C-c approves, C-c C-k discards")
+    echoLine = "Edit the plan; c comments, C-c C-c approves, C-c C-k discards", planning = true)
 
 definePrompt(Prompt(kind: "agent-plan", text: true, onAccept: proc(value: string): bool =
   startPlan(value)
@@ -77,7 +77,8 @@ interp.defPrimitive("agent-plan-approve", proc(args: seq[Value]): Value =
   args.arity(0, 0)
   let plan = currentPlan()
   if agentProcess != nil: raise newException(ValueError, "Agent already running")
-  let session = chats.getOrDefault(plan.root)
+  if plan.acp != acpBackend(): raise newException(ValueError, "Plan backend changed; select the original backend")
+  let session = activeChatSession(plan.root)
   if session == nil or session.id != plan.sessionId or not session.started:
     raise newException(ValueError, "Plan session changed; request a new plan")
   if strutils.strip(plan.buf.text).len == 0: raise newException(ValueError, "Plan is empty")

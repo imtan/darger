@@ -26,6 +26,43 @@ never require saving, and no chat history is saved to disk. `M-x agent-chat-new`
 empties the current root's transcript and resets its session (refused while
 that conversation is running).
 
+`M-x acp-chat` selects an [ACP v1](https://agentclientprotocol.com/protocol/v1/overview)
+agent (last choice prefilled) and starts it at the project root. Each session has a
+read-only `*acp:<agent>:<project>*` transcript; Enter or `M-x acp-chat` prompts for
+the next message. Messages, tool kind/status/title, coloured diffs and plan
+checkboxes stream into it. `M-x acp-toggle-thoughts` expands/collapses dimmed
+thoughts. C-c C-k in this buffer cancels; `M-x acp-chat-new` creates another session.
+The last session ID per agent/project is stored in `~/.darger-acp-sessions.json`;
+reopening a disconnected session uses `session/load` only when advertised.
+
+ACP permission requests show the full operation in `*acp-approval*` and numbered
+single-key choices (including the agent's once/always/reject options). Diff content
+first opens a scratch review; y/k and q finish it before the permission choice.
+`fs/read_text_file` reads open buffers, including unsaved changes.
+`fs/write_text_file` waits for a separate y/k review and q to finish, saves accepted
+hunks, and reports rejection or concurrent changes as errors. Empty-file creation
+or saving identical unsaved text asks y/n because there are no diff hunks. Files must resolve
+inside the project. Terminals use read-only `*acp-terminal*` buffers, with a separate
+y/n confirmation by default; `(setq acp-terminal-confirm nil)` disables it.
+`(setq agent-backend 'acp)` routes review comments, `agent-plan` and
+`compile-ask-agent` to the selected session for that project. Planning denies ACP
+writes and terminal creation until approval. The default backend remains `cli`.
+
+ACP stdio currently supports macOS/Linux. Install and authenticate agents yourself;
+Darger does not manage authentication. Defaults, verified against the
+[ACP registry](https://github.com/agentclientprotocol/registry), can be overridden:
+
+```lisp
+(setq acp-agents '(("claude" . "npx -y @agentclientprotocol/claude-agent-acp")
+                   ("codex" . "codex-acp") ("gemini" . "gemini --acp")))
+```
+
+The default `npx -y` command can download a missing adapter when launched; use a
+locally installed executable to avoid that. ACP file requests pass review, but
+commands and agents with their own filesystem access are not sandboxed by this
+client; their direct writes cannot be forced through ACP review. ACP transcripts
+share the existing chat update renderer; CLI checkpoints remain separate.
+
 Before each chat turn, darger saves a file checkpoint. `M-x agent-checkpoints`
 opens a read-only list with the number, time, prompt prefix and changed-file count.
 Enter shows that turn's diff in the branch-diff view; `r` reviews a rewind to its

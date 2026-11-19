@@ -218,6 +218,18 @@ M-x agent-rules          user → 上位 → プロジェクトのルールフ�
 M-x agent-remember       1行と追記先を選び、末尾の - text を追加ハンク1つでレビュー
                          既定 CLAUDE.md → AGENTS.md → 新規 CLAUDE.md。y/k、q/Enter で確定
                          開いていればバッファに反映、未オープンなら保存。対象の変更時は追記中止
+M-x acp-chat             ACP v1 エージェントを選び、*acp:<agent>:<project>* で会話（macOS/Linux）
+                         Enter で入力、C-c C-k で取消。acp-chat-new は新規セッション
+M-x acp-toggle-thoughts  薄色の思考を開閉。ツール状態・差分・計画を逐次表示
+                         権限は番号1キー、差分は先にレビュー。書き込みは別途 y/k、q で確定して保存
+                         未保存バッファの読み取り対応。全却下・競合はエラー。対象はプロジェクト内
+                         *acp-terminal* は読み取り専用。acp-terminal-confirm は既定 t（実行前 y/n）
+                         acp-agents: 名前とコマンドの alist。認証は外部で行う
+                         既定 claude: npx -y @agentclientprotocol/claude-agent-acp（未導入なら取得し得る）
+                         codex: codex-acp、gemini: gemini --acp
+                         agent-backend を 'acp にするとコメント・計画承認・compile-ask-agent も同じセッションへ
+                         ~/.darger-acp-sessions.json に ID を保存。loadSession 対応時だけ再開
+                         端末やエージェント独自の直接書き込みは隔離されず、ACP レビューを強制できない
 M-x agent-chat-new       現在のルートの会話を空にして新規セッションへ
                          その会話の実行中はリセット不可
 会話のルート             ファイルの最寄りの .git、なければそのディレクトリ

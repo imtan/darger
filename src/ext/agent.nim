@@ -554,7 +554,24 @@ proc startAgent*(instruction: string) =
     "File path: " & (if b.path.len > 0: b.path else: "(unnamed)") & "\n" &
     "Instruction: " & instruction & "\n--- FILE START ---\n" & b.text & "\n--- FILE END ---\n")
 
+var
+  backendSend*: proc(root, message: string, planning: bool,
+    onResult: proc(session: ChatSession, text: string, ok: bool))
+  backendSession*: proc(root: string): ChatSession
+  backendRoot*: proc(buf: Buffer): string
+
+proc acpBackend*(): bool =
+  let setting = interp.env.values.getOrDefault("agent-backend")
+  setting != nil and setting.kind == vSymbol and setting.str == "acp"
+
+proc activeChatSession*(root: string): ChatSession =
+  if acpBackend() and backendSession != nil: backendSession(root)
+  else: chats.getOrDefault(root)
+
 proc currentChatRoot*(): string =
+  if backendRoot != nil:
+    let root = backendRoot(b)
+    if root.len > 0: return root
   let session = chatFor(b)
   if session != nil: session.root
   elif b.path.len > 0: rootOf(b.path)
@@ -576,7 +593,12 @@ proc setChatText*(session: ChatSession, text: string): bool {.discardable.} =
 var chatResultHook: proc(session: ChatSession, text: string, ok: bool)
 
 proc sendChat*(message: string, commandOverride = "",
-               onResult: proc(session: ChatSession, text: string, ok: bool) = nil) =
+               onResult: proc(session: ChatSession, text: string, ok: bool) = nil,
+               planning = false) =
+  if acpBackend():
+    if backendSend == nil: raise newException(ValueError, "ACP backend is unavailable")
+    backendSend(chatRoot, message, planning, onResult)
+    return
   var session = chats.getOrDefault(chatRoot)
   if message.len == 0:
     if session != nil: switchTo(session.buf)
