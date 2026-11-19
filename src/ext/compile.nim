@@ -17,6 +17,10 @@ var
   seconds: float
   promptRoot, restartCommand, restartRoot: string
 
+proc compilationDiagnostics*(): seq[tuple[location: CompileLocation, message: string]] =
+  for error in errors:
+    result.add (error, (if error.row < outputLines.len: outputLines[error.row] else: ""))
+
 proc projectDirectory(): string =
   if b == compilationBuf and compileRoot.len > 0: return compileRoot
   let dir = if b.path.len > 0: parentDir(b.path) else: getCurrentDir()

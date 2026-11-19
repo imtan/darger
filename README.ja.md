@@ -688,6 +688,28 @@ Claude Code はこの端末で、あなたの Emacs 設定と同じキーで動�
 Enter、C-c C f (`claude-code-send-file`) は `このファイルを見てください: <プロジェクトからの相対パス>`
 と Enter を送ります。
 
+IDE 連携は端末の起動時に有効になります（`(setq claude-code-ide nil)` で無効）。
+認証付きの loopback WebSocket で接続し、接続中はモードラインに `Claude ⇄` を表示します。
+選択範囲は最短150 ms間隔で通知し、`M-x claude-code-mention` でファイル・範囲を明示的に渡せます。
+C-c C r のリージョン送信はそのままです。Claude の `openDiff` は普段のレビューで待機し、
+y/k で選択、q で確定、a で全部採用、C-g で却下します。全ハンクを y にした場合も確定します。
+部分採用・ハンク編集後の本文を Claude に返し、保存は Claude が行います。承認前には保存しません。
+レビューは順番に表示し、切断時はその接続の未確定レビューを却下します。
+対象は `openDiff` の提案であり、端末内の任意のシェル書き込みを制限する機能ではありません。
+
+MCP は標準 IDE ツールに加え、読み取り専用の `darger_xref_definition`、`darger_references`、
+`darger_buffer_text`、`darger_list_buffers`、`darger_imenu`、`darger_org_agenda`、
+`darger_project_files` を公開します。定義は LSP／dumb-jump、参照は LSP、診断は LSP と
+*compilation* を使います。既定は全ツール有効で、例えば
+`(setq claude-code-ide-tools '(openDiff close_tab getCurrentSelection darger_buffer_text))`
+で公開・呼び出しの両方を絞れます。nil は全ツールを無効にします。連携を再び有効にしたら
+Claude 端末を再起動してください。任意の Lisp 評価や Darger 独自の書き込みツールは公開しません。
+
+非公式プロトコルは [claudecode.nvim](https://github.com/coder/claudecode.nvim/blob/main/PROTOCOL.md) と
+[claude-code-ide.el](https://github.com/manzaltu/claude-code-ide.el/blob/main/claude-code-ide-mcp-handlers.el)
+に準拠します。列位置は VS Code と同じ UTF-16（Neovim の UTF-8 バイト位置とは異なる）、
+承認応答は Emacs 実装と同じ `FILE_SAVED` ＋確定本文です。
+
 ## ウィンドウの半透明
 
 `(setq frame-alpha 0.85)` でウィンドウ全体が (文字も含めて) その不透明度になります。Emacs の `alpha`

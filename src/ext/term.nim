@@ -185,7 +185,7 @@ when not defined(windows):
     echoLine = if on: "Line mode: edit, Enter sends the line (C-c C-k for char mode)"
                else: "Char mode: keys go to the program (C-c C-j for line mode)"
 
-  proc startTerminal*(name, command, dir: string): Terminal =
+  proc startTerminal*(name, command, dir: string, environment: seq[(string, string)] = @[]): Terminal =
     ## A terminal buffer called `name` running `command` in `dir` (an existing live one is reused).
     result = terminalNamed(name)
     if result != nil and result.pty != nil and not result.pty.exited: return
@@ -205,7 +205,7 @@ when not defined(windows):
     result.buf.splice(0, result.buf.text.runeLen, "")
     try:
       result.pty = spawn(command, dir, result.size.cols, result.size.rows,
-        [("TERM", "xterm-256color"), ("COLORTERM", ""), ("INSIDE_DARGER", "1")])
+        @[("TERM", "xterm-256color"), ("COLORTERM", ""), ("INSIDE_DARGER", "1")] & environment)
     except OSError as e:
       result.pty = nil
       echoLine = e.msg

@@ -80,6 +80,15 @@ proc save*(b: Buffer, path = "") =
   b.saved = s
   b.modified = false
 
+proc acknowledgeSave*(b, fresh: Buffer): bool =
+  ## A matching external write is a save, not an edit; preserve point, mark and undo.
+  if b.text != fresh.text: return false
+  b.saved = fresh.text
+  b.bom = fresh.bom
+  b.crlf = fresh.crlf
+  b.modified = false
+  true
+
 proc finish*(b: Buffer) =
   b.last = ""
   b.goal = -1

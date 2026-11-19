@@ -5,7 +5,7 @@ import ../remote
 when not defined(windows):
   import std/[os, strutils, unicode, tables]
   import ../[core, buffer, buffers, lisp, chat]
-  import term
+  import term, idebridge
 
   proc claudeRoot(): string =
     ## The project: the nearest directory with .git above the file, else its directory.
@@ -35,7 +35,7 @@ when not defined(windows):
     let name = claudeName(root)
     result = terminalNamed(name)
     if (result == nil or result.pty == nil or result.pty.exited) and start:
-      result = startTerminal(name, interp.env.values["claude-command"].asString, root)
+      result = startTerminal(name, interp.env.values["claude-command"].asString, root, ideEnvironment(root))
 
   proc claudeCode*() =
     ## C-c C c: Claude Code for this project in the side window.

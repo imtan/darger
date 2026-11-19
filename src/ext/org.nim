@@ -793,16 +793,19 @@ proc agendaGroups(): seq[AgendaGroup] =
       i += 2
     if group.name.len > 0: result.add group
 
-proc orgAgenda*() =
-  ## M-x org-agenda: today's scheduled, deadline and dated items and the undated TODOs
-  ## of org-agenda-files, as a list; Enter goes to the headline, C-g comes back.
+proc agendaSnapshot*(): seq[AgendaItem] =
+  ## Shared read-only agenda query; preserve unsaved buffer contents.
   syncTodoKeywords()
-  var items: seq[AgendaItem]
   for path in agendaFiles():
     let open = reg.byPath(path)
     let lines = if open != nil: open.lines else: loadBuffer(path).lines
-    items.add agendaItems(path, lines, now())
-  items = agendaOrder(items)
+    result.add agendaItems(path, lines, now())
+  result = agendaOrder(result)
+
+proc orgAgenda*() =
+  ## M-x org-agenda: today's scheduled, deadline and dated items and the undated TODOs
+  ## of org-agenda-files, as a list; Enter goes to the headline, C-g comes back.
+  let items = agendaSnapshot()
   if items.len == 0:
     echoLine = if agendaFiles().len == 0: "No agenda files (setq org-agenda-files ...)" else: "Agenda is empty"
     return

@@ -268,3 +268,18 @@ block clipboardPriority:  # C-y takes clipboard text copied elsewhere since the 
   doAssert not newerClipboard("older", "older", @["ours"])      # seen before the last kill
   doAssert not newerClipboard("ours", "something", @["ours"])   # already the newest kill
   doAssert not newerClipboard("", "ours", @["ours"])            # nothing to paste
+
+block externalSave:
+  let b = newBuffer("old")
+  b.insert("new")
+  b.mark = (0, 1)
+  b.regionActive = true
+  let at = b.cursor
+  doAssert not b.acknowledgeSave(newBuffer("different"))
+  doAssert b.modified
+  let fresh = newBuffer(b.text)
+  fresh.bom = true
+  doAssert b.acknowledgeSave(fresh)
+  doAssert not b.modified and b.cursor == at and b.mark == (0, 1) and b.regionActive and b.bom
+  discard b.command("undo")
+  doAssert b.text == "old" and b.modified

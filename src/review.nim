@@ -58,6 +58,8 @@ proc changedSpan*(a, b: seq[Rune]): tuple[a, b: Slice[int]] =
   while tail < a.len - head and tail < b.len - head and a[^(tail+1)] == b[^(tail+1)]: inc tail
   (head ..< a.len - tail, head ..< b.len - tail)
 
+proc originalText*(r: Review): string = r.original.join("")
+
 proc proposedText*(r: Review): string = r.proposed.join("")
   ## The whole proposed text.
 

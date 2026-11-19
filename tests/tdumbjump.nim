@@ -77,4 +77,11 @@ block ranking:
   let sorted = rankDefinitions(mixed & mixed, "/p/test.nim", 3, 9, "needle")
   doAssert sorted.len == 7
   doAssert sorted[4..6].mapIt(it.path) == @["/p/a.nim", "/p/z.nim", "/q/a.nim"]
+block outline:
+  let lines = "proc alpha(x: int) =\n  let beta = x\n  echo beta\nproc unfinished".splitLines.mapIt(it.toRunes)
+  let hits = definitions(lines, detect("outline.nim", ""), "", "outline.nim", all = true)
+  doAssert hits.len >= 3
+  doAssert hits.anyIt(it.line == 0) and hits.anyIt(it.line == 1)
+  doAssert definitions(lines, detect("outline.nim", ""), "", "outline.nim").len == 0
+  discard definitions(@["proc".toRunes], detect("broken.nim", ""), "", "broken.nim", all = true)
 echo "dumbjump ok"

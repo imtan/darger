@@ -61,6 +61,8 @@ rule: only add what is missing; never rebind or remove existing darger keys.)
 
 ## Log
 
+- 2026-11-19 Claude IDE bridge: authenticated loopback WebSocket MCP with private discovery locks, throttled selections and M-x mentions, deferred openDiff through human hunk review, read-only Darger tools and combined LSP/compilation diagnostics; configurable tool allowlist, protocol and isolated workflow tests, no core changes.
+
 - 2026-11-19 review comments and plans: persistent per-repository line comments across branch-diff, magit and review with display-only annotations and batched agent-chat feedback; editable Markdown agent-plan with same-session approval, configurable storage and plan permissions; pure and isolated workflow tests, no core changes.
 
 - 2026-11-19 compile: asynchronous project builds in read-only *compilation*, compiler/traceback colours and next/previous-error with xref return, confirmed restart and process-tree stop, bounded failure context through agent-chat and agent-changes review; pure parser and isolated workflow tests, no core changes.

@@ -297,6 +297,13 @@ M-x term                 *terminal*: 全画面対応の端末 (全キーをプ�
   C-c C-j / C-c C-k      行モード (普通に編集し Enter で送る。SKK 可) / 文字モードに戻す
 C-c C c / C-c C t        Claude Code を右のウィンドウで起動・フォーカス / 隠す・出す
 C-c C n / C-c C r / C-c C f  新セッション / リージョンを送る / このファイルを見てと送る
+M-x claude-code-mention   ファイル・選択範囲を IDE の at-mention として渡す（既存キーは変更なし）
+  Claude ⇄              IDE 接続中。openDiff は y/k、q で確定、a で全部採用、C-g で却下
+                         全ハンクの y でも確定。編集・部分採用した本文を Claude に返して保存させる
+                         (setq claude-code-ide nil) で無効（既定 t）。再有効化後は Claude 端末を再起動
+                         claude-code-ide-tools のリストで MCP ツールを制限（既定は全部、nil は無し）
+                         darger_ の定義・参照・本文・バッファ・imenu・Org agenda・プロジェクトは読み取り専用
+                         診断は LSP と *compilation*。任意のシェル書き込みは openDiff の対象外
 
 [背景シェーダー]  （.glsl バッファで。(background-shader "path") を ~/.darger.el に）
 C-c C-c                  このバッファを背景シェーダーとして適用（保存・外部変更でも再適用）

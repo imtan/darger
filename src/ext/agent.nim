@@ -57,6 +57,8 @@ var
   reviewExplain = false   # the running agent explains a hunk (x)
   reviewAsk = false       # the running agent answers a question about a hunk (X)
   reviewReadOnly = false  # a comparison (branch base -> buffer): nothing is taken, only understood
+  reviewApplyGuard*: proc(target: Buffer): bool
+  reviewFinishedHooks*: seq[proc(target: Buffer, cancelled: bool, taken: int)]
   afterReview*: proc()    # run once when the next review closes (the understanding buffer comes back)
   reviewAfter: proc()
   onAgentResult*: proc(text: string)  # takes the next one-shot agent's output instead of a review
@@ -399,6 +401,9 @@ proc applyDecisions(): int =
 
 proc applyAndContinue() =
   ## w: the decisions so far go into the buffer; the pending hunks stay under review.
+  if reviewApplyGuard != nil and not reviewApplyGuard(reviewTarget):
+    finishReview(true)
+    return
   recordUnderstanding()
   let taken = applyDecisions()
   let proposed = reviewState.proposedText()
@@ -407,7 +412,7 @@ proc applyAndContinue() =
   resetUnderstanding()
   reviewSource = source
   if reviewState.hunks.len == 0:
-    finishReview(true)
+    finishReview()
     echoLine = "Applied " & $taken & " hunks; nothing left to review"
     return
   currentHunk = min(currentHunk, reviewState.hunks.high)
@@ -416,9 +421,14 @@ proc applyAndContinue() =
 
 proc finishReview*(cancel = false) =
   if not reviewOpen(): return
+  let cancelled = cancel or (reviewApplyGuard != nil and not reviewApplyGuard(reviewTarget))
+  let finishedTarget = reviewTarget
+  var taken = 0
+  for decision in reviewState.decisions:
+    if decision == accepted: inc taken
   closeSides()  # decisions and ledger entries belong to the original buffer
   reviewSuspended = false
-  if cancel: echoLine = "Review cancelled"
+  if cancelled: echoLine = "Review cancelled"
   elif reviewReadOnly:
     var understood = 0
     for e in explained:
@@ -441,6 +451,7 @@ proc finishReview*(cancel = false) =
   resetUnderstanding()
   renderer.top = savedTop
   renderer.left = savedLeft
+  for hook in reviewFinishedHooks: hook(finishedTarget, cancelled, taken)
   if reviewAfter != nil:
     let f = reviewAfter
     reviewAfter = nil

@@ -52,8 +52,8 @@ proc identifier(t: Token, language: string): bool =
   let r = t.text.toRunes
   r.len > 0 and symbolRune(r[0], language) and not (int(r[0]) in ord('0')..ord('9'))
 
-proc definitions*(lines: seq[seq[Rune]], language: Lang, name, path: string): seq[Hit] =
-  if name.len == 0: return
+proc definitions*(lines: seq[seq[Rune]], language: Lang, name, path: string, all = false): seq[Hit] =
+  if name.len == 0 and not all: return
   let pattern = patterns.getOrDefault(language.name, generic)
   # Unknown languages still get conventional comment/string exclusion.
   let lexer = if language.name in patterns: language else: detect("fallback.js", "")
@@ -79,7 +79,8 @@ proc definitions*(lines: seq[seq[Rune]], language: Lang, name, path: string): se
   proc word(i: int): string =
     if i >= 0 and i < tokens.len: tokens[i].text else: ""
   proc add(i: int) =
-    if word(i) == name and i notin found: found.add i
+    if i >= 0 and i < tokens.len and ((all and tokens[i].identifier(language.name)) or
+        word(i) == name) and i notin found: found.add i
   proc matching(open: int): int =
     var depth = 0
     for i in open..<tokens.len:

@@ -750,6 +750,30 @@ C-c C n (`claude-code-new`) kills the session and starts a fresh one; C-c C r
 do not submit) and presses Enter; C-c C f (`claude-code-send-file`) sends
 `このファイルを見てください: <path relative to the project>` and Enter.
 
+IDE integration starts with the terminal by default (`(setq claude-code-ide nil)` disables
+it). An authenticated loopback WebSocket advertises this project to Claude; `Claude ⇄`
+in the mode line means it is connected. Selections are sent at most every 150 ms;
+`M-x claude-code-mention` explicitly mentions the file/range (C-c C r still sends the region).
+Claude's `openDiff` waits for the usual review: y/k choose hunks, q confirms, a accepts
+all, C-g rejects; accepting every hunk also finishes. Edited/partly accepted contents are
+returned to Claude to write; Darger does not save the proposal before approval. Pending
+reviews are queued, and disconnecting rejects that connection's unfinished reviews.
+This gate covers `openDiff` requests, not arbitrary shell writes by a terminal program.
+
+MCP also exposes `openFile`, selections/editors/workspaces/diagnostics, dirty/save queries
+and diff closing, plus read-only `darger_xref_definition`, `darger_references`,
+`darger_buffer_text`, `darger_list_buffers`, `darger_imenu`, `darger_org_agenda` and
+`darger_project_files`. Definitions use LSP or dumb-jump; references require LSP.
+`getDiagnostics` combines LSP and *compilation*. Restrict both discovery and calls with
+`(setq claude-code-ide-tools '(openDiff close_tab getCurrentSelection darger_buffer_text))`;
+all listed tools are enabled by default, nil permits none. Restart the Claude terminal
+after re-enabling integration. No arbitrary Lisp evaluation or Darger write tool is exposed.
+
+The unofficial dialect follows [claudecode.nvim's protocol](https://github.com/coder/claudecode.nvim/blob/main/PROTOCOL.md)
+and [claude-code-ide.el's handlers](https://github.com/manzaltu/claude-code-ide.el/blob/main/claude-code-ide-mcp-handlers.el).
+Darger uses UTF-16 selection columns (as VS Code does; Neovim uses UTF-8 byte columns),
+and returns `FILE_SAVED` followed by final contents, as the Emacs implementation does.
+
 ## Window transparency
 
 `(setq frame-alpha 0.85)` makes the whole window that opaque, text included, like
