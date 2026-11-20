@@ -147,6 +147,8 @@ nim r tests/tfeed.nim     # RSS / Atom parsing
 nim r tests/tfetch.nim    # curl downloads (needs curl; uses file:// URLs)
 nim r tests/tupdate.nim   # self-update against a local bare repository (needs git)
 nim r tests/torg.nim      # Org structure and org-roam notes
+nim r tests/tfootnote.nim # Org footnote parsing, insertion and diagnostics
+nim r tests/tfootnotenav.nim # footnote commands, navigation, preview and undo
 nim r tests/tterm.nim     # shell output text and the pty (needs /bin/sh)
 nim r tests/tscreen.nim   # the terminal screen model and key sequences
 nim r tests/tpanes.nim    # window layout
@@ -410,6 +412,7 @@ fcitx/ibus, dead keys and Compose do not work on Linux; use the built-in SKK
 | Org: TODO / checkbox / new item | C-c C-t / C-c C-c / M-Enter |
 | Org: promote / demote / move subtree up / down | M-Left / M-Right / M-Up / M-Down |
 | Org: headline list / open link / timestamp | C-c C-j / C-c C-o / C-c . |
+| Org: footnote insert or jump | C-c C-x f |
 | Org: fold the headline / the whole file | TAB / Shift-TAB |
 | Org: refile / schedule / deadline / archive | C-c C-w / C-c C-s / C-c C-d / C-c C-x C-a |
 | Org: priority up / down (on a headline) | Shift-Up / Shift-Down |
@@ -1152,6 +1155,20 @@ M-g l (the preview follows the selection, C-g returns, M-, comes back after a
 jump), C-c C-o follows the `[[link]]` at point (`id:` opens the note, `file:` and
 plain paths open files, URLs go to the system browser, `*Headline` jumps), and
 C-c . inserts `<2026-10-07 Wed>`.
+
+C-c C-x f (`org-footnote-action`) inserts a `[fn:N]` reference at point and its
+definition under `* Footnotes`, leaving point ready to type the body. On a footnote,
+it jumps between the reference and definition; M-, returns. M-x org-footnote-preview
+shows the definition in a box under the cursor (C-n/C-p scroll), and M-x
+org-footnote-check lists undefined references, unreferenced or duplicate definitions,
+and malformed footnotes as a jump list with preview. Named `[fn:label:body]` and
+anonymous `[fn::body]` inline footnotes, Japanese labels and multi-line definitions
+are supported. Labels stay unchanged; display numbers follow first-reference order.
+`org-footnote-section` defaults to `"Footnotes"`; set it to `"脚注"` for that heading,
+or `nil` to append after the last definition (at EOF when none exists).
+`org-footnote-auto-label` defaults to `t` for the smallest unused positive number;
+a string such as `"note-"` supplies a prefix, and `nil` prompts for a label.
+M-x org-footnote-insert and M-x org-footnote-jump are also available separately.
 
 `(setq org-todo-keywords '("TODO(t)" "NEXT(n)" "WAITING(w)" "|" "DONE(d)"))` sets
 the keyword sequence (default `TODO` `DONE`): C-c C-t cycles through it and back to

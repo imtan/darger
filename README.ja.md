@@ -130,6 +130,8 @@ nim r tests/tfeed.nim     # RSS / Atom の解析
 nim r tests/tfetch.nim    # curl ダウンロード (curl が必要。file:// URL を使う)
 nim r tests/tupdate.nim   # ローカルの bare リポジトリに対する自己更新 (git が必要)
 nim r tests/torg.nim      # Org 構造と org-roam ノート
+nim r tests/tfootnote.nim # Org 脚注の解析・挿入・診断
+nim r tests/tfootnotenav.nim # 脚注コマンド・移動・プレビュー・undo
 nim r tests/tterm.nim     # シェル出力のテキスト化と pty (/bin/sh が必要)
 nim r tests/tscreen.nim   # 端末の画面モデルとキー列
 nim r tests/tpanes.nim    # ウィンドウ配置
@@ -385,6 +387,7 @@ CJK と対応する絵文字範囲は 2 セルを占めます。結合文字、�
 | Org: TODO / チェックボックス / 新しい項目 | C-c C-t / C-c C-c / M-Enter |
 | Org: 昇格 / 降格 / サブツリーを上 / 下へ | M-Left / M-Right / M-Up / M-Down |
 | Org: 見出し一覧 / リンクを開く / タイムスタンプ | C-c C-j / C-c C-o / C-c . |
+| Org: 脚注の挿入 / ジャンプ | C-c C-x f |
 | Org: 見出しを折りたたむ / ファイル全体 | TAB / Shift-TAB |
 | Org: refile / スケジュール / 締切 / アーカイブ | C-c C-w / C-c C-s / C-c C-d / C-c C-x C-a |
 | Org: 優先度を上げる / 下げる (見出し上) | Shift-Up / Shift-Down |
@@ -1048,6 +1051,18 @@ M-Left / M-Right は見出しを昇格・降格し、M-Up / M-Down はそのサ�
 戻り、ジャンプ後は M-, で戻れます)。C-c C-o はポイントの `[[link]]` をたどります (`id:` は
 ノートを開き、`file:` とプレーンなパスはファイルを開き、URL はシステムブラウザへ、
 `*Headline` はジャンプ)。C-c . は `<2026-10-07 Wed>` を挿入します。
+
+C-c C-x f (`org-footnote-action`) はポイントに `[fn:N]` の参照を挿入し、
+`* Footnotes` の下に定義を作って本文の入力位置へ移動します。脚注上では参照と定義の間を
+ジャンプし、M-, で戻れます。M-x org-footnote-preview はカーソル下のボックスに定義を表示
+します (C-n/C-p でスクロール)。M-x org-footnote-check は未定義の参照、未参照・重複の定義、
+不正な脚注をプレビュー付きのジャンプ一覧にします。名前付きの `[fn:label:本文]`、匿名の
+`[fn::本文]`、日本語ラベル、複数行の定義に対応します。ラベルは書き換えず、表示番号は
+最初の参照の出現順で決まります。`org-footnote-section` の既定値は `"Footnotes"` で、
+`"脚注"` ならその見出しの下へ、`nil` なら最後の定義の後 (定義がなければファイル末尾) に
+追加します。`org-footnote-auto-label` は既定の `t` で未使用の最小の正整数、`"note-"` などの
+文字列で接頭辞付きの番号、`nil` でラベルの入力になります。M-x org-footnote-insert と
+M-x org-footnote-jump も個別に実行できます。
 
 `(setq org-todo-keywords '("TODO(t)" "NEXT(n)" "WAITING(w)" "|" "DONE(d)"))` でキーワード列
 (既定 `TODO` `DONE`) を決めます。C-c C-t はその順に巡回してなしに戻り、`|` の後の語 (`|` がなければ

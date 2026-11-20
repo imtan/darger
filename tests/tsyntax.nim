@@ -127,6 +127,11 @@ check("a.org", "* TODO Heading\n#+title: T\nsee [[https://x][x]] and =verb= ~cod
    "[[https": fVariable, "=verb=": fString, "~code~": fString, "*b*": fConstant,
    "#+BEGIN": fComment, "echo 1": fString, "#+end_src": fComment, "plain": fPlain})
 
+check("a.org", "日本語 [fn:組合] [fn:name:本文 [補足]] [fn::匿名]\n[fn:組合] body\n* Head [fn:1]\n#+begin_src org\n[fn:literal]\n#+end_src",
+  {"[fn:組合]": fVariable, "[fn:name:": fVariable, "補足]]": fVariable,
+   "[fn::匿名]": fVariable, "body": fPlain, "[fn:1]": fVariable, "[fn:literal]": fString})
+doAssert face("a.org", "参照 [fn:x]\n[fn:x] body", "[fn:x]", 2) == fVariable
+
 # Regressions: tokens that used to flip string/code parity for the rest of the file.
 check("init.el", "(eq c ?\\\")\n(setq x 1) ; c\n(eq c ?\")\n(foo ?\\; ?a)\n(bar)",
   {"?\\\"": fConstant, "setq": fKeyword, "; c": fComment, "?\")": fConstant, "foo": fFnname,

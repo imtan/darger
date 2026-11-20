@@ -1,6 +1,6 @@
 ## Table-driven syntax highlighting: one pass over the buffer, one Face per rune.
 import std/[unicode, sets, strutils, os]
-import orgmode
+import orgmode, orgfootnote
 
 type
   Face* = enum
@@ -662,6 +662,8 @@ proc orgLines(lines: seq[seq[Rune]], faces: var seq[seq[Face]]) =
           of 'B': fAnsi3
           else: fAnsi4
         faces[n].paint(start, start + 4, face)
+      for note in footnotesOnLine(line, n):
+        faces[n].paint(note.col, note.endCol, fVariable)
       continue
     var i = 0
     var failed: seq[(Rune, int)]
@@ -681,6 +683,9 @@ proc orgLines(lines: seq[seq[Rune]], faces: var seq[seq[Face]]) =
         let e = emphasis(line, faces[n], i, if ch == '*': fConstant else: fString, failed)
         i = if e > 0: e else: i + 1
       else: inc i
+
+    for note in footnotesOnLine(line, n):
+      faces[n].paint(note.col, note.endCol, fVariable)
 
 proc erbLines(lines: seq[seq[Rune]], faces: var seq[seq[Face]]) =
   ## ERB: the Ruby inside <% %> (also <%= and <%#, comments) is highlighted as Ruby
